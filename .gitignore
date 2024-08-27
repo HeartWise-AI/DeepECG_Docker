@@ -1,3 +1,4 @@
-__pycache__
-models/__pycache__
 weights
+utils/__pycache__
+models/__pycache__
+models/modules/__pycache__
