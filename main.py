@@ -29,10 +29,7 @@ def main():
         signal_processing_model=efficient_netV2,
         classification_model=bert_classifier
     )
-    
-    with open(os.path.join(output_folder, 'metrics.json'), 'w') as f:
-        json.dump(metrics, f, indent=4)
-    
+        
     df = convert_to_df(df_path)
     save_to_csv(df, os.path.join(output_folder, 'df.csv'))
     save_to_json(metrics, os.path.join(output_folder, 'metrics.json'))
