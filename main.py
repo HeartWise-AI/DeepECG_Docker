@@ -28,10 +28,9 @@ def main():
         signal_processing_model=efficient_netV2,
         diagnosis_classifier_model=bert_classifier
     )
-    save_to_json(metrics, os.path.join(output_folder, 'metrics.json'))
-        
-    df = convert_to_df(df_path)
-    save_to_csv(df, os.path.join(output_folder, 'df.csv'))
+
+    save_to_json(metrics, os.path.join(output_folder, 'metrics.json'))        
+    save_to_csv(metrics, os.path.join(output_folder, 'metrics.csv'))
 
         
 if __name__ == '__main__':
