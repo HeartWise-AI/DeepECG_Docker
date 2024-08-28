@@ -57,5 +57,6 @@ class BertClassifier(ModelFactory):
         input_ids = batch_t['input_ids'].to(self.device)
         token_type_ids = batch_t['token_type_ids'].to(self.device)
         attention_mask = batch_t['attention_mask'].to(self.device)
-        return self.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)['logits']
+        logits = self.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)['logits']
+        return torch.sigmoid(logits)
 

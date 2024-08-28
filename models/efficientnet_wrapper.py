@@ -36,4 +36,4 @@ class EfficientNetWrapper(ModelFactory):
 
     def __call__(self, signal):
         signal = signal.to(self.device)
-        return self.model(signal)
+        return torch.sigmoid(self.model(signal))
