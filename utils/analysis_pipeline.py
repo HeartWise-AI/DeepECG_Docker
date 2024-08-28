@@ -1,3 +1,5 @@
+import os
+import csv
 import json
 import torch
 import numpy as np
@@ -13,10 +15,30 @@ def convert_to_df(df_path: str) -> pd.DataFrame:
     df = pd.read_parquet(df_path)
     return df
 
-def save_to_csv(df: pd.DataFrame, path: str) -> None:
-    df.to_csv(path)
+def save_to_csv(metrics: dict, path: str) -> None:
+    if not os.path.exists('/'.join(path.split('/')[:-1])):
+        os.makedirs('/'.join(path.split('/')[:-1]))
+
+    # Open the file and create a CSV writer
+    with open(path, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        for category in ECG_CATEGORIES:
+            writer.writerow([category, 'macro_auc', metrics[category]['macro_auc']])
+            writer.writerow([category, 'macro_auprc', metrics[category]['macro_auprc']])
+            writer.writerow([category, 'micro_auc', metrics[category]['micro_auc']])
+            writer.writerow([category, 'micro_auprc', metrics[category]['micro_auprc']])
+            for pattern in ECG_CATEGORIES[category]:
+                writer.writerow([pattern, 'auc', metrics[pattern]['auc']])
+                writer.writerow([pattern, 'auprc', metrics[pattern]['auprc']])
+        
+        writer.writerow(['dataset', 'macro_auc', metrics['macro_auc_dataset']])
+        writer.writerow(['dataset', 'macro_auprc', metrics['macro_auprc_dataset']])
+        writer.writerow(['dataset', 'micro_auc', metrics['micro_auc_dataset']])
+        writer.writerow(['dataset', 'micro_auprc', metrics['micro_auprc_dataset']])
 
 def save_to_json(data: dict, path: str) -> None:
+    if not os.path.exists('/'.join(path.split('/')[:-1])):
+        os.makedirs('/'.join(path.split('/')[:-1]))
     with open(path, 'w') as f:
         json.dump(data, f, indent=4)
 
@@ -30,17 +52,21 @@ class AnalysisPipeline:
         # Load data
         df = pd.read_parquet(df_path)
         
+        batch_size = 32
+        
         # Compute bert diagnoses predictions
         predictions = []
         ground_truth = []
-        dataloader = create_dataloader(df)
-        for diagnosis, npy_path in tqdm(dataloader, total=len(dataloader)):
-            output = diagnosis_classifier_model(diagnosis)
-            ground_truth.append(torch.where(output > 0.5, 1, 0).detach().cpu().numpy())
+        dataloader = create_dataloader(df, batch_size=batch_size)
+        for diagnosis, npy_path, labels in tqdm(dataloader, total=len(dataloader)):
+            diag_prob = diagnosis_classifier_model(diagnosis)
+            sig_prob = signal_processing_model(npy_path)
+            for i in range(len(sig_prob)):
+                # ground_truth.append(torch.where(diag_prob[i] > 0.5, 1, 0).detach().cpu().numpy())
+                predictions.append(sig_prob[i].detach().cpu().numpy())
 
-            output = signal_processing_model(npy_path)
-            predictions.append(torch.where(output > 0.5, 1, 0).detach().cpu().numpy())
-        
+                ground_truth.append(labels[i].detach().cpu().numpy())                
+
         # Convert to dataframe
         df_gt = pd.DataFrame(ground_truth, columns=ECG_PATTERNS)
         df_pred = pd.DataFrame(predictions, columns=ECG_PATTERNS)
@@ -100,9 +126,9 @@ class AnalysisPipeline:
             auc_scores.append(metrics[col]['auc'])
             auprc_scores.append(metrics[col]['auprc'])
 
-        metrics['macro_auc_diagnosis'] = np.mean(auc_scores)
-        metrics['macro_auprc_diagnosis'] = np.mean(auprc_scores)
-        metrics['micro_auc_diagnosis'] = roc_auc_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro')
-        metrics['micro_auprc_diagnosis'] = average_precision_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro')          
+        metrics['macro_auc_dataset'] = np.mean(auc_scores)
+        metrics['macro_auprc_dataset'] = np.mean(auprc_scores)
+        metrics['micro_auc_dataset'] = roc_auc_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro')
+        metrics['micro_auprc_dataset'] = average_precision_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro')          
         
         return metrics
