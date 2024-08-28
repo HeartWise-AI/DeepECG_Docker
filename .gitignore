@@ -1,4 +1,5 @@
 weights
+data/__pycache__
 utils/__pycache__
 models/__pycache__
 models/modules/__pycache__
