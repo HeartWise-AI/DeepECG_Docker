@@ -22,25 +22,80 @@ def save_to_csv(metrics: dict, path: str) -> None:
     # Open the file and create a CSV writer
     with open(path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        for category in ECG_CATEGORIES:
-            writer.writerow([category, 'macro_auc', metrics[category]['macro_auc']])
-            writer.writerow([category, 'macro_auprc', metrics[category]['macro_auprc']])
-            writer.writerow([category, 'micro_auc', metrics[category]['micro_auc']])
-            writer.writerow([category, 'micro_auprc', metrics[category]['micro_auprc']])
-            for pattern in ECG_CATEGORIES[category]:
-                writer.writerow([pattern, 'auc', metrics[pattern]['auc']])
-                writer.writerow([pattern, 'auprc', metrics[pattern]['auprc']])
-        
-        writer.writerow(['dataset', 'macro_auc', metrics['macro_auc_dataset']])
-        writer.writerow(['dataset', 'macro_auprc', metrics['macro_auprc_dataset']])
-        writer.writerow(['dataset', 'micro_auc', metrics['micro_auc_dataset']])
-        writer.writerow(['dataset', 'micro_auprc', metrics['micro_auprc_dataset']])
+        for metric in metrics:
+            for value in metrics[metric]:
+                writer.writerow([metric, value, metrics[metric][value]])
 
 def save_to_json(data: dict, path: str) -> None:
     if not os.path.exists('/'.join(path.split('/')[:-1])):
         os.makedirs('/'.join(path.split('/')[:-1]))
     with open(path, 'w') as f:
         json.dump(data, f, indent=4)
+
+def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
+    categories_gt = {category: [] for category in ECG_CATEGORIES}
+    categories_pred = {category: [] for category in ECG_CATEGORIES}
+    for col in df_gt.columns[1:]:
+        for category in ECG_CATEGORIES:
+            if col in ECG_CATEGORIES[category]:
+                if df_gt[col].sum() == 0:
+                    continue
+                categories_gt[category].append(df_gt[col])
+                categories_pred[category].append(df_pred[col])
+
+    metrics = {}
+    for category in ECG_CATEGORIES:
+        if not categories_gt[category] or not categories_pred[category]:
+            metrics[category] = {
+                "macro_auc": np.nan,
+                "macro_auprc": np.nan,
+                "micro_auc": np.nan,
+                "micro_auprc": np.nan
+            }
+            continue
+        cat_auc_scores = []
+        cat_auprc_scores = []
+        for col_gt, col_pred in zip(categories_gt[category], categories_pred[category]):
+            cat_auc_scores.append(roc_auc_score(col_gt, col_pred))
+            cat_auprc_scores.append(average_precision_score(col_gt, col_pred))
+
+        metrics[category] = {
+            "macro_auc": np.mean(cat_auc_scores),
+            "macro_auprc": np.mean(cat_auprc_scores),
+            "micro_auc": roc_auc_score(
+                np.array(categories_gt[category]).ravel(), 
+                np.array(categories_pred[category]).ravel(), 
+                average='micro'
+            ),
+            "micro_auprc": average_precision_score(
+                np.array(categories_gt[category]).ravel(), 
+                np.array(categories_pred[category]).ravel(), 
+                average='micro'
+            )
+        }
+
+    # Compute per-class metrics and collect data for each pattern
+    auc_scores = []
+    auprc_scores = []
+    for col in ECG_PATTERNS:
+        class_sum = df_gt[col].sum()
+        if class_sum == 0:
+            continue
+        metrics[col] = {
+            "auc": roc_auc_score(df_gt[col], df_pred[col]),
+            "auprc": average_precision_score(df_gt[col], df_pred[col])
+        }
+        auc_scores.append(metrics[col]['auc'])
+        auprc_scores.append(metrics[col]['auprc'])
+
+    metrics['dataset'] = {
+        'macro_auc': np.mean(auc_scores),
+        'macro_auprc': np.mean(auprc_scores),
+        'micro_auc': roc_auc_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro'),
+        'micro_auprc': average_precision_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro')          
+    }
+        
+    return metrics
 
 class AnalysisPipeline:
     @staticmethod
@@ -59,7 +114,7 @@ class AnalysisPipeline:
         ground_truth = []
         dataloader = create_dataloader(df, batch_size=batch_size)
         for diagnosis, npy_path, labels in tqdm(dataloader, total=len(dataloader)):
-            diag_prob = diagnosis_classifier_model(diagnosis)
+            # diag_prob = diagnosis_classifier_model(diagnosis)
             sig_prob = signal_processing_model(npy_path)
             for i in range(len(sig_prob)):
                 # ground_truth.append(torch.where(diag_prob[i] > 0.5, 1, 0).detach().cpu().numpy())
@@ -67,68 +122,6 @@ class AnalysisPipeline:
 
                 ground_truth.append(labels[i].detach().cpu().numpy())                
 
-        # Convert to dataframe
-        df_gt = pd.DataFrame(ground_truth, columns=ECG_PATTERNS)
-        df_pred = pd.DataFrame(predictions, columns=ECG_PATTERNS)
-    
-        categories_gt = {category: [] for category in ECG_CATEGORIES}
-        categories_pred = {category: [] for category in ECG_CATEGORIES}
-        for col in df_gt.columns[1:]:
-            for category in ECG_CATEGORIES:
-                if col in ECG_CATEGORIES[category]:
-                    if df_gt[col].sum() == 0:
-                        continue
-                    categories_gt[category].append(df_gt[col])
-                    categories_pred[category].append(df_pred[col])
-
-        metrics = {}
-        for category in ECG_CATEGORIES:
-            if not categories_gt[category] or not categories_pred[category]:
-                metrics[category] = {
-                    "macro_auc": np.nan,
-                    "macro_auprc": np.nan,
-                    "micro_auc": np.nan,
-                    "micro_auprc": np.nan
-                }
-                continue
-            cat_auc_scores = []
-            cat_auprc_scores = []
-            for col_gt, col_pred in zip(categories_gt[category], categories_pred[category]):
-                cat_auc_scores.append(roc_auc_score(col_gt, col_pred))
-                cat_auprc_scores.append(average_precision_score(col_gt, col_pred))
-
-            metrics[category] = {
-                "macro_auc": np.mean(cat_auc_scores),
-                "macro_auprc": np.mean(cat_auprc_scores),
-                "micro_auc": roc_auc_score(
-                    np.array(categories_gt[category]).ravel(), 
-                    np.array(categories_pred[category]).ravel(), 
-                    average='micro'
-                ),
-                "micro_auprc": average_precision_score(
-                    np.array(categories_gt[category]).ravel(), 
-                    np.array(categories_pred[category]).ravel(), 
-                    average='micro'
-                )
-            }
-
-        # Compute per-class metrics and collect data for each pattern
-        auc_scores = []
-        auprc_scores = []
-        for col in ECG_PATTERNS:
-            class_sum = df_gt[col].sum()
-            if class_sum == 0:
-                continue
-            metrics[col] = {
-                "auc": roc_auc_score(df_gt[col], df_pred[col]),
-                "auprc": average_precision_score(df_gt[col], df_pred[col])
-            }
-            auc_scores.append(metrics[col]['auc'])
-            auprc_scores.append(metrics[col]['auprc'])
-
-        metrics['macro_auc_dataset'] = np.mean(auc_scores)
-        metrics['macro_auprc_dataset'] = np.mean(auprc_scores)
-        metrics['micro_auc_dataset'] = roc_auc_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro')
-        metrics['micro_auprc_dataset'] = average_precision_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro')          
-        
-        return metrics
+        # Compute and return metrics
+        return compute_metrics(
+            df_gt=pd.DataFrame(ground_truth, columns=ECG_PATTERNS), df_pred=pd.DataFrame(predictions, columns=ECG_PATTERNS))
