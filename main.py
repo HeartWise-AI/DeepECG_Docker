@@ -1,38 +1,48 @@
 import os
 import torch
-from models import ModelFactory
-from utils.analysis_pipeline import AnalysisPipeline, convert_to_df, save_to_csv, save_to_json
+import argparse
+
+from utils.parser import HearWiseArgs
+from models import HeartWiseModelFactory
+from utils.analysis_pipeline import AnalysisPipeline
+from utils.files_handler import save_to_csv, save_to_json
 
 
-
-def main():
-    output_folder = 'results'
-    df_path = '../Llava-ECG/hw_QA_generator/parquet_files/npy_data_validatedByMD_test.parquet'
-    device = torch.device('cuda:0')
-    bert_classifier = ModelFactory.create_model(
+def main(args: HearWiseArgs):
+    data_path = args.data_path
+    batch_size = args.batch_size
+    output_file = args.output_file
+    output_folder = args.output_folder
+    device = torch.device(args.device)
+    signal_processing_model_name = args.signal_processing_model_name
+    diagnosis_classifier_model_name = args.diagnosis_classifier_model_name
+    
+    diagnosis_classifier_model = HeartWiseModelFactory.create_model(
         {
-            'model_name': 'bert_diagnosis2classification',
+            'model_name': diagnosis_classifier_model_name,
             'map_location': device
         }
     )
         
-    efficient_netV2 = ModelFactory.create_model(
+    signal_processing_model = HeartWiseModelFactory.create_model(
         {
-            'model_name': 'efficientnetv2',
+            'model_name': signal_processing_model_name,
             'map_location': device
         }
     )
     
     metrics = AnalysisPipeline.run_analysis(
-        df_path=df_path,
-        signal_processing_model=efficient_netV2,
-        diagnosis_classifier_model=bert_classifier
+        data_path=data_path,
+        batch_size=batch_size,
+        signal_processing_model=signal_processing_model,
+        diagnosis_classifier_model=diagnosis_classifier_model
     )
 
-    save_to_json(metrics, os.path.join(output_folder, 'metrics.json'))        
-    save_to_csv(metrics, os.path.join(output_folder, 'metrics.csv'))
+    save_to_json(metrics, os.path.join(output_folder, f'{output_file}.json'))        
+    save_to_csv(metrics, os.path.join(output_folder, f'{output_file}.csv'))
 
         
 if __name__ == '__main__':
-    main()
+    args = HearWiseArgs.parse_arguments()
+    main(args)
 
