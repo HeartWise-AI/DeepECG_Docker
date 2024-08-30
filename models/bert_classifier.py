@@ -3,11 +3,11 @@
 import os
 import torch
 
-from models.model_factory import ModelFactory
 from utils.huggingface_wrapper import HuggingFaceWrapper
+from models.heartwise_model_factory import HeartWiseModelFactory
 from transformers import BertTokenizer, BertForSequenceClassification
 
-class BertClassifier(ModelFactory):
+class BertClassifier(HeartWiseModelFactory):
     
     name = 'bert_diagnosis2classification'
     

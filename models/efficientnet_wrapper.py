@@ -3,12 +3,11 @@ import os
 import sys
 import torch
 
-from models.model_factory import ModelFactory
 from utils.huggingface_wrapper import HuggingFaceWrapper
+from models.heartwise_model_factory import HeartWiseModelFactory
 sys.path.append('models/modules')
 
-
-class EfficientNetWrapper(ModelFactory):
+class EfficientNetWrapper(HeartWiseModelFactory):
     
     name = 'efficientnetv2'
     
