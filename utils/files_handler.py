@@ -18,3 +18,8 @@ def save_to_json(data: dict, path: str) -> None:
         os.makedirs('/'.join(path.split('/')[:-1]))
     with open(path, 'w') as f:
         json.dump(data, f, indent=4)
+
+def read_api_key(path: str) -> dict[str, str]:
+    with open(path) as f:
+        api_key = json.load(f)
+    return api_key
