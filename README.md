@@ -18,4 +18,19 @@ DeepECG_Deploy is a repository designed for deploying deep learning models for E
 
 ### Usage
 
-To use the models, you can refer to the `main.py` script which demonstrates how to load and use the models for inference.
+# Set up HuggingFace API key
+Add your HuggingFace API key to the `api_key.json` file.
+
+# Set configuration
+Edit the `heartwise.config` file to set the configuration for the pipeline.
+
+# Create docker image
+docker build -t deepecg-deploy .
+
+# Run docker image
+**With GPU:**   
+docker run --gpus"device=0" -v $(pwd)/inputs:/inputs -v $(pwd)/outputs:/outputs -i deepecg-deploy 
+
+**Without CPU:**
+docker run -v $(pwd)/inputs:/inputs -v $(pwd)/outputs:/outputs deepecg-deploy
+
