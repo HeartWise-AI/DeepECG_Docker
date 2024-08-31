@@ -14,14 +14,16 @@ class EfficientNetWrapper(HeartWiseModelFactory):
     def __init__(
         self, 
         model_name: str, 
-        map_location: torch.device
+        map_location: torch.device,
+        huggingface_api_key: str
     ):
         self.device = map_location
         self._load_model(
             model_path=HuggingFaceWrapper.get_model(
                 model_name=model_name, 
                 repo_id="heartwise/DeepECG_EfficientNetV2", 
-                local_dir=os.path.join("weights", model_name)
+                local_dir=os.path.join("weights", model_name),
+                huggingface_api_key=huggingface_api_key
             ),
             map_location=map_location
         )
@@ -31,7 +33,7 @@ class EfficientNetWrapper(HeartWiseModelFactory):
         if not pt_file:
             raise ValueError("No .pt file found in the directory")
         model_path = os.path.join(model_path, pt_file)
-        self.model = torch.load(model_path, map_location=map_location)
+        self.model = torch.load(model_path, map_location=map_location, weights_only=False)
 
     def __call__(self, signal):
         signal = signal.to(self.device)

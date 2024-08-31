@@ -15,6 +15,7 @@ class BertClassifier(HeartWiseModelFactory):
         self, 
         model_name: str, 
         map_location: torch.device, 
+        huggingface_api_key: str,
         num_classes: int = 77
     ) -> None:
         self.device = map_location
@@ -22,7 +23,8 @@ class BertClassifier(HeartWiseModelFactory):
             model_path=HuggingFaceWrapper.get_model(
                 model_name=model_name, 
                 repo_id="heartwise/Bert_diagnosis2classification", 
-                local_dir=os.path.join("weights", model_name)
+                local_dir=os.path.join("weights", model_name),
+                huggingface_api_key=huggingface_api_key
             ), 
             map_location=map_location, 
             num_classes=num_classes
