@@ -33,20 +33,26 @@ def read_api_key(path: str) -> dict[str, str]:
         api_key = json.load(f)
     return api_key
 
-def save_ecg_signal(data, filename):
-    base64_str = base64.b64encode(data.tobytes()).decode('utf-8')
-    with open(filename, 'w') as f:
-        f.write(base64_str)
 
-def load_ecg_signal(filename):
-    with open(filename, 'r') as f:
-        base64_str = f.read()
-    binary_data = base64.b64decode(base64_str)
-    return np.frombuffer(binary_data, dtype=np.float32).reshape((2500, 12))
+class ECGFileHandler:
+    @staticmethod
+    def save_ecg_signal(data, filename):
+        base64_str = base64.b64encode(data.tobytes()).decode('utf-8')
+        with open(filename, 'w') as f:
+            f.write(base64_str)
+
+    @staticmethod
+    def load_ecg_signal(filename):
+        with open(filename, 'r') as f:
+            base64_str = f.read()
+        binary_data = base64.b64decode(base64_str)
+        return np.frombuffer(binary_data, dtype=np.float32).reshape((2500, 12))
 
 class XMLProcessor:
     def __init__(self):
         self.report = []
+        self.tmp_folder = "/tmp"
+        os.makedirs(self.tmp_folder, exist_ok=True)
 
     @staticmethod
     def parse_xml_to_dict(element):
@@ -84,19 +90,17 @@ class XMLProcessor:
         byte_array = struct.unpack(unpack_symbols, arr)
         return np.array(byte_array, dtype=np.float32)
 
-    @staticmethod
-    def process_waveform_data(df, waveform_keys, expected_shape, decode_base64=False):
+    def process_waveform_data(self, data_dict, waveform_keys, expected_shape, decode_base64=False):
         waveforms = {}
         correct_lead_order = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
 
         for key in waveform_keys:
-            if key in df.columns:
-                data = df[key].iloc[0]
+            if key in data_dict:
+                data = data_dict[key]
                 if decode_base64 and isinstance(data, str):
-                    data = XMLProcessor.decode_as_base64(data)
+                    data = self.decode_as_base64(data)
                 else:
                     data = np.array(data.split(','), dtype=float)
-                # actual_lengths.append(len(data))
                 lead_name = correct_lead_order[waveform_keys.index(key)]
                 waveforms[lead_name] = data
 
@@ -120,33 +124,31 @@ class XMLProcessor:
         return np.vstack(leads)
     
     @staticmethod
-    def xml_to_dataframe(xml_file):
+    def xml_to_dict(xml_file):
         tree = ET.parse(xml_file)
         root = tree.getroot()
         xml_dict = XMLProcessor.parse_xml_to_dict(root)
         flattened_dict = XMLProcessor.flatten_dict(xml_dict)
-        df = pd.DataFrame([flattened_dict])
-        return df
+        return flattened_dict
 
     def process_single_file(self, file_path):
         try:
-            df = self.xml_to_dataframe(file_path)
+            data_dict = self.xml_to_dict(file_path)
             file_id = os.path.splitext(os.path.basename(file_path))[0]
 
-            if 'RestingECGMeasurements.MeasurementTable.LeadOrder' in df.columns and any(f'RestingECGMeasurements.MedianSamples.WaveformData.{i}' in df.columns for i in range(12)):
+            if 'RestingECGMeasurements.MeasurementTable.LeadOrder' in data_dict and any(f'RestingECGMeasurements.MedianSamples.WaveformData.{i}' in data_dict for i in range(12)):
                 xml_type = 'CLSA'
-                self._process_clsa_xml(df, file_id)
-            elif any(f'Waveform.1.LeadData.{j}.LeadID' in df.columns for j in range(12)):
+                self._process_clsa_xml(data_dict, file_id)
+            elif any(f'Waveform.1.LeadData.{j}.LeadID' in data_dict for j in range(12)):
                 xml_type = 'MHI'
-                self._process_mhi_xml(df, file_id)
+                self._process_mhi_xml(data_dict, file_id)
             else:
                 xml_type = 'Unknown'
                 return (file_id, xml_type, 'Failed', 'Unknown XML format'), None, None
 
-            df['file_id'] = file_id
-            return (file_id, xml_type, 'Success', ''), df, self.full_leads_array
+            return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array
         except Exception as e:
-            return (file_id, 'Unknown', 'Failed', str(e)), None, None
+            return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
 
     def process_batch(self, directory_path, num_workers=None):
         xml_files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.xml')]
@@ -155,61 +157,73 @@ class XMLProcessor:
             self.report.append(('N/A', 'N/A', 'Failed', f'No XML files found in the directory: {directory_path}'))
             return [], []
 
-        dfs = []
-        lead_arrays = []
-
+        processed_files = []
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             future_to_file = {executor.submit(self.process_single_file, file): file for file in xml_files}
             for future in as_completed(future_to_file):
                 file = future_to_file[future]
                 try:
-                    report_entry, df, lead_array = future.result()
+                    report_entry, file_id, lead_array = future.result()
                     self.report.append(report_entry)
-                    if df is not None and lead_array is not None:
-                        dfs.append(df)
-                        lead_arrays.append(lead_array)
+                    if lead_array is not None:
+                        out_file = os.path.join(self.tmp_folder, f"{file_id}.base64")
+                        ECGFileHandler.save_ecg_signal(
+                            data=lead_array, 
+                            filename=out_file
+                        )
+                        processed_files.append(out_file)
                 except Exception as e:
+                    print(f"Error processing file: {str(e)}")
                     file_id = os.path.splitext(os.path.basename(file))[0]
                     self.report.append((file_id, 'Unknown', 'Failed', str(e)))
 
-        return dfs, lead_arrays
+        return processed_files
 
-    def _process_clsa_xml(self, df, file_id):
+    def _process_clsa_xml(self, data_dict, file_id):
         try:
             strip_data_keys = [f'StripData.WaveformData.{i}' for i in range(12)]
             leads = []
             for key in strip_data_keys:
-                if key in df.columns:
-                    lead_data = df[key].iloc[0].lstrip('\t').split(',')
+                if key in data_dict:
+                    lead_data = data_dict[key].lstrip('\t').split(',')
                     lead_data = np.array(lead_data, dtype=float)
                     leads.append(lead_data)
 
             if len(leads) == 12:
                 self.full_leads_array = np.vstack(leads)
             else:
-                self.full_leads_array = self.process_waveform_data(df, strip_data_keys, expected_shape=(12, 2500), decode_base64=False)
+                self.full_leads_array = self.process_waveform_data(
+                    data_dict=data_dict, 
+                    waveform_keys=strip_data_keys, 
+                    expected_shape=(12, 2500), 
+                    decode_base64=False
+                )
         except Exception as e:
-            print(f"\033[91mError processing file {file_id}: {str(e)}\033[0m")
+            raise Exception(f"Error processing CLSA XML for file {file_id}: {str(e)}")
 
-    def _process_mhi_xml(self, df, file_id):
+    def _process_mhi_xml(self, data_dict, file_id):
         try:
             strip_data_keys = [f'Waveform.1.LeadData.{i}.WaveFormData' for i in range(12)]
             leads = []
 
             for key in strip_data_keys:
-                if key in df.columns:
-                    lead_data = self.decode_as_base64(df[key].iloc[0])
+                if key in data_dict:
+                    lead_data = self.decode_as_base64(data_dict[key])
                     leads.append(lead_data)
         
             if len(leads) == 12:
                 self.full_leads_array = np.vstack(leads)
-                print(self.full_leads_array.shape)
             else:
-                self.full_leads_array = self.process_waveform_data(df, strip_data_keys, expected_shape=(12, 2500), decode_base64=True)
+                self.full_leads_array = self.process_waveform_data(
+                    data_dict=data_dict, 
+                    waveform_keys=strip_data_keys, 
+                    expected_shape=(12, 2500), 
+                    decode_base64=True
+                )
         except Exception as e:
-            print(f"\033[91mError processing file {file_id}: {str(e)}\033[0m")
+            raise Exception(f"Error processing MHI XML for file {file_id}: {str(e)}")
 
-    def save_report(self, output_directory):
+    def save_report(self, output_folder: str):
         report_df = pd.DataFrame(self.report, columns=['file_id', 'xml_type', 'status', 'message'])
         
         # Calculate summary statistics
@@ -226,32 +240,33 @@ class XMLProcessor:
         summary_df = pd.DataFrame(summary_data)
 
         # Save detailed report
-        detailed_report_path = os.path.join(output_directory, 'ecg_processing_detailed_report.csv')
+        detailed_report_path = os.path.join(output_folder, 'ecg_processing_detailed_report.csv')
         report_df.to_csv(detailed_report_path, index=False)
 
         # Save summary report
-        summary_report_path = os.path.join(output_directory, 'ecg_processing_summary_report.csv')
+        summary_report_path = os.path.join(output_folder, 'ecg_processing_summary_report.csv')
         summary_df.to_csv(summary_report_path, index=False)
 
 
 
 if __name__ == "__main__":
-    root_dir = ""
-    output_folder = "."
+    root_dir = "/path/to/xml/files"
+    output_folder = "/path/to/output/folder"
     
-    # # Process single file
+    # Process single file
     xml_processor = XMLProcessor()
-    report_entry,df, full_leads_array = xml_processor.process_single_file(
-        file_path=os.path.join(root_dir, ".xml")
+    report_entry, data_dict, full_leads_array = xml_processor.process_single_file(
+        file_path=os.path.join(root_dir, "file.xml")
     )
     print(full_leads_array.shape)
     
     # Process all XML files in a directory
-    dfs, lead_arrays = xml_processor.process_batch(
+    processed_files = xml_processor.process_batch(
         directory_path=root_dir,
         num_workers=4
     )
-    print(f"Processed {len(dfs)} files.")
+    print(f"Processed {len(processed_files)} files.")
+    print(processed_files)
     
     # Save report
-    xml_processor.save_report(output_directory=".")
+    xml_processor.save_report(output_folder=output_folder)
