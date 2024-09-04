@@ -1,6 +1,8 @@
 import os
 import csv
 import json
+import base64
+import numpy as np
 
 def save_to_csv(metrics: dict, path: str) -> None:
     if not os.path.exists('/'.join(path.split('/')[:-1])):
@@ -24,7 +26,17 @@ def read_api_key(path: str) -> dict[str, str]:
         api_key = json.load(f)
     return api_key
 
+def save_ecg_signal(data, filename):
+    base64_str = base64.b64encode(data.tobytes()).decode('utf-8')
+    with open(filename, 'w') as f:
+        f.write(base64_str)
 
+def load_ecg_signal(filename):
+    with open(filename, 'r') as f:
+        base64_str = f.read()
+    binary_data = base64.b64decode(base64_str)
+    return np.frombuffer(binary_data, dtype=np.float32).reshape((2500, 12))
+        
 import os
 import xml.etree.ElementTree as ET
 import pandas as pd
