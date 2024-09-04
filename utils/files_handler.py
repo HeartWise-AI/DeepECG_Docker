@@ -236,7 +236,8 @@ class XMLProcessor:
 
 
 if __name__ == "__main__":
-    root_dir = "/path/to/your/xml/files"
+    root_dir = ""
+    output_folder = "."
     
     # # Process single file
     xml_processor = XMLProcessor()
