@@ -127,9 +127,7 @@ class XMLProcessor:
     def xml_to_dict(xml_file):
         tree = ET.parse(xml_file)
         root = tree.getroot()
-        xml_dict = XMLProcessor.parse_xml_to_dict(root)
-        flattened_dict = XMLProcessor.flatten_dict(xml_dict)
-        return flattened_dict
+        return XMLProcessor.flatten_dict(XMLProcessor.parse_xml_to_dict(root))
 
     def process_single_file(self, file_path):
         try:
