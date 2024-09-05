@@ -3,11 +3,11 @@ import csv
 import json
 import struct
 import base64
-
 import numpy as np
 import pandas as pd
 import xml.etree.ElementTree as ET
 
+from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
@@ -45,13 +45,12 @@ class ECGFileHandler:
     def load_ecg_signal(filename):
         with open(filename, 'r') as f:
             base64_str = f.read()
-        binary_data = base64.b64decode(base64_str)
-        return np.frombuffer(binary_data, dtype=np.float32).reshape((2500, 12))
+        return base64.b64decode(base64_str)
 
 class XMLProcessor:
     def __init__(self):
         self.report = []
-        self.tmp_folder = "/tmp"
+        self.tmp_folder = "./tmp"
         os.makedirs(self.tmp_folder, exist_ok=True)
 
     @staticmethod
@@ -158,7 +157,7 @@ class XMLProcessor:
         processed_files = []
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             future_to_file = {executor.submit(self.process_single_file, file): file for file in xml_files}
-            for future in as_completed(future_to_file):
+            for future in tqdm(as_completed(future_to_file), total=len(xml_files), desc="Processing files"):
                 file = future_to_file[future]
                 try:
                     report_entry, file_id, lead_array = future.result()
@@ -197,7 +196,7 @@ class XMLProcessor:
                     decode_base64=False
                 )
         except Exception as e:
-            raise Exception(f"Error processing CLSA XML for file {file_id}: {str(e)}")
+            raise ValueError(f"Error processing CLSA XML for file {file_id}: {str(e)}") from e
 
     def _process_mhi_xml(self, data_dict, file_id):
         try:
@@ -219,9 +218,9 @@ class XMLProcessor:
                     decode_base64=True
                 )
         except Exception as e:
-            raise Exception(f"Error processing MHI XML for file {file_id}: {str(e)}")
+            raise ValueError(f"Error processing MHI XML for file {file_id}: {str(e)}") from e
 
-    def save_report(self, output_folder: str):
+    def save_report(self, output_folder: str):        
         report_df = pd.DataFrame(self.report, columns=['file_id', 'xml_type', 'status', 'message'])
         
         # Calculate summary statistics
@@ -248,15 +247,13 @@ class XMLProcessor:
 
 
 if __name__ == "__main__":
-    root_dir = "/path/to/xml/files"
-    output_folder = "/path/to/output/folder"
+    root_dir = "/path/to/your/xml/files"
+    output_folder = "test_results"
+    
+    os.makedirs(output_folder, exist_ok=True)
     
     # Process single file
     xml_processor = XMLProcessor()
-    report_entry, data_dict, full_leads_array = xml_processor.process_single_file(
-        file_path=os.path.join(root_dir, "file.xml")
-    )
-    print(full_leads_array.shape)
     
     # Process all XML files in a directory
     processed_files = xml_processor.process_batch(
@@ -264,7 +261,6 @@ if __name__ == "__main__":
         num_workers=4
     )
     print(f"Processed {len(processed_files)} files.")
-    print(processed_files)
     
     # Save report
     xml_processor.save_report(output_folder=output_folder)
