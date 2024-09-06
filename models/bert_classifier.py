@@ -42,17 +42,13 @@ class BertClassifier(HeartWiseModelFactory):
         )
 
     def preprocessing(self, text: str) -> dict:
-        # Process inputs and transfer to device
-        batch_t = self.processor(
+        return self.processor(
             text,
             padding='max_length', 
-            max_length=128, 
+            max_length=512, 
             truncation=True,
             return_tensors='pt', 
         )
-        
-        return batch_t
-
 
     def __call__(self, text: str) -> torch.Tensor:
         batch_t = self.preprocessing(text)
