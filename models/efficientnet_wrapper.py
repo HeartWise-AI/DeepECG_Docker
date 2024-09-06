@@ -27,6 +27,7 @@ class EfficientNetWrapper(HeartWiseModelFactory):
             ),
             map_location=map_location
         )
+        print(f"Model {model_name} loaded to {map_location}")
 
     def _load_model(self, model_path: str, map_location: torch.device) -> None:       
         pt_file = next((f for f in os.listdir(model_path) if f.endswith('.pt')), None)
