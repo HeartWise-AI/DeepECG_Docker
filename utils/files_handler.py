@@ -36,22 +36,29 @@ def read_api_key(path: str) -> dict[str, str]:
 
 class ECGFileHandler:
     @staticmethod
-    def save_ecg_signal(data, filename):
-        base64_str = base64.b64encode(data.tobytes()).decode('utf-8')
+    def save_ecg_signal(ecg_signal, filename) -> None:
+        ecg_signal = ecg_signal.astype(np.float32)
+        base64_str = base64.b64encode(ecg_signal.tobytes()).decode('utf-8')
         with open(filename, 'w') as f:
             f.write(base64_str)
-
+    
     @staticmethod
-    def load_ecg_signal(filename):
+    def load_ecg_signal(filename) -> np.ndarray:
         with open(filename, 'r') as f:
             base64_str = f.read()
-        return base64.b64decode(base64_str)
+        np_array = np.frombuffer(base64.b64decode(base64_str), dtype=np.float32)
+        writable_array = np.copy(np_array)
+        return writable_array.reshape(-1, 12)
+    
+    @staticmethod
+    def list_files(directory_path: str) -> list[str]:
+        return [os.path.join(directory_path, f) for f in os.listdir(directory_path) if os.path.isfile(os.path.join(directory_path, f))]
 
 class XMLProcessor:
     def __init__(self):
         self.report = []
         self.tmp_folder = "./tmp"
-        os.makedirs(self.tmp_folder, exist_ok=True)
+        # os.makedirs(self.tmp_folder, exist_ok=True)
 
     @staticmethod
     def parse_xml_to_dict(element):
@@ -123,12 +130,12 @@ class XMLProcessor:
         return np.vstack(leads)
     
     @staticmethod
-    def xml_to_dict(xml_file):
+    def xml_to_dict(xml_file: str) -> dict:
         tree = ET.parse(xml_file)
         root = tree.getroot()
         return XMLProcessor.flatten_dict(XMLProcessor.parse_xml_to_dict(root))
 
-    def process_single_file(self, file_path):
+    def process_single_file(self, file_path: str) -> tuple[tuple[str, str, str, str], str, np.ndarray]:
         try:
             data_dict = self.xml_to_dict(file_path)
             file_id = os.path.splitext(os.path.basename(file_path))[0]
@@ -147,14 +154,10 @@ class XMLProcessor:
         except Exception as e:
             return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
 
-    def process_batch(self, directory_path, num_workers=None):
-        xml_files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) if f.endswith('.xml')]
-        
-        if not xml_files:
-            self.report.append(('N/A', 'N/A', 'Failed', f'No XML files found in the directory: {directory_path}'))
-            return [], []
-
+    def process_batch(self, df: pd.DataFrame, num_workers: int = 32) -> tuple[list[str], np.ndarray]:
+        xml_files = df['XML_path'].tolist()
         processed_files = []
+        ecgs = []
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             future_to_file = {executor.submit(self.process_single_file, file): file for file in xml_files}
             for future in tqdm(as_completed(future_to_file), total=len(xml_files), desc="Processing files"):
@@ -163,20 +166,23 @@ class XMLProcessor:
                     report_entry, file_id, lead_array = future.result()
                     self.report.append(report_entry)
                     if lead_array is not None:
+                        ecgs.append(lead_array.transpose(1, 0))
                         out_file = os.path.join(self.tmp_folder, f"{file_id}.base64")
-                        ECGFileHandler.save_ecg_signal(
-                            data=lead_array, 
-                            filename=out_file
-                        )
+                        # ECGFileHandler.save_ecg_signal(
+                        #     data=lead_array.transpose(1, 0), 
+                        #     filename=out_file
+                        # )
                         processed_files.append(out_file)
                 except Exception as e:
                     print(f"Error processing file: {str(e)}")
                     file_id = os.path.splitext(os.path.basename(file))[0]
                     self.report.append((file_id, 'Unknown', 'Failed', str(e)))
 
-        return processed_files
+        ecgs = np.array(ecgs)
+        ecgs = ecgs[:, 1::2, :]
+        return processed_files, ecgs
 
-    def _process_clsa_xml(self, data_dict, file_id):
+    def _process_clsa_xml(self, data_dict: dict, file_id: str) -> None:
         try:
             strip_data_keys = [f'StripData.WaveformData.{i}' for i in range(12)]
             leads = []
@@ -198,7 +204,7 @@ class XMLProcessor:
         except Exception as e:
             raise ValueError(f"Error processing CLSA XML for file {file_id}: {str(e)}") from e
 
-    def _process_mhi_xml(self, data_dict, file_id):
+    def _process_mhi_xml(self, data_dict: dict, file_id: str) -> None:
         try:
             strip_data_keys = [f'Waveform.1.LeadData.{i}.WaveFormData' for i in range(12)]
             leads = []
@@ -220,7 +226,7 @@ class XMLProcessor:
         except Exception as e:
             raise ValueError(f"Error processing MHI XML for file {file_id}: {str(e)}") from e
 
-    def save_report(self, output_folder: str):        
+    def save_report(self, output_folder: str) -> None:        
         report_df = pd.DataFrame(self.report, columns=['file_id', 'xml_type', 'status', 'message'])
         
         # Calculate summary statistics
@@ -247,7 +253,7 @@ class XMLProcessor:
 
 
 if __name__ == "__main__":
-    root_dir = "/path/to/your/xml/files"
+    root_dir = "/media/data1/ravram/CLSA/2401002_MontrealHeartInstitute_ECG_RAW_BL"
     output_folder = "test_results"
     
     os.makedirs(output_folder, exist_ok=True)
@@ -258,7 +264,7 @@ if __name__ == "__main__":
     # Process all XML files in a directory
     processed_files = xml_processor.process_batch(
         directory_path=root_dir,
-        num_workers=4
+        num_workers=32
     )
     print(f"Processed {len(processed_files)} files.")
     
