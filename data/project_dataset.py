@@ -1,27 +1,27 @@
+import os
 import torch
-import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader
+from utils.files_handler import ECGFileHandler
 
 class ProjectDataset:
     def __init__(self, df: pd.DataFrame):
         self.diagnosis = df['diagnosis']
-        self.npy_path = df['npy_path']
+        self.xml_path = df['XML_path']
         self.df = df
     def __len__(self):
         return len(self.diagnosis)
     
     def __getitem__(self, idx):
-        ecg_signal = np.load(self.npy_path.iloc[idx]).squeeze(-1)
+        file_name = os.path.basename(self.xml_path.iloc[idx]).replace('.xml', '.base64')
+        ecg_signal = ECGFileHandler.load_ecg_signal(os.path.join('./tmp', file_name))
         ecg_signal = ecg_signal.transpose(1, 0)
-        labels = self.df.iloc[idx][2:].astype(float).values
-        return self.diagnosis.iloc[idx], torch.from_numpy(ecg_signal).float(), labels
+        return self.diagnosis.iloc[idx], torch.from_numpy(ecg_signal).float()
 
-def create_dataloader(df: pd.DataFrame, batch_size: int = 1):
+def create_dataloader(df: pd.DataFrame, batch_size: int = 1, shuffle: bool = False):
     dataset = ProjectDataset(df)
 
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-    return dataloader
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
 
 
