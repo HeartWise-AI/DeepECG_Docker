@@ -5,3 +5,5 @@ pandas
 scikit-learn
 pyarrow
 fastparquet
+tqdm
+statsmodels
