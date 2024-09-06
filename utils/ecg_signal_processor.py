@@ -6,7 +6,6 @@ from scipy.signal import medfilt
 from concurrent.futures import ThreadPoolExecutor
 from statsmodels.nonparametric.smoothers_lowess import lowess
 
-
 class ECGSignalProcessor:
     def __init__(self, fs=250):
         self.fs = fs
@@ -17,8 +16,9 @@ class ECGSignalProcessor:
         magnitude_spectrum = np.abs(fft_result)
         return fft_freq, magnitude_spectrum
 
-    def mean_spectrum(self, signals):
+    def plot_mean_spectrum(self, signals):
         all_magnitude_spectra = []
+        signals = signals.astype(np.float32)
         for signal in signals:
             fft_freq, magnitude_spectrum = self.compute_magnitude_spectrum(signal)
             all_magnitude_spectra.append(magnitude_spectrum)
@@ -26,8 +26,7 @@ class ECGSignalProcessor:
         return fft_freq, mean_magnitude_spectrum
 
     def detect_peaks_with_sliding_window(self, signals, window_size=3, std_threshold=2, min_freq=20, merge_threshold=1):
-        fft_freq, mean_magnitude_spectrum = self.mean_spectrum(signals)
-        
+        fft_freq, mean_magnitude_spectrum = self.plot_mean_spectrum(signals)
         valid_indices = fft_freq >= min_freq
         valid_freqs = fft_freq[valid_indices]
         valid_magnitude_spectrum = mean_magnitude_spectrum[valid_indices]
@@ -105,7 +104,7 @@ class ECGSignalProcessor:
 
         fft_phase = np.angle(fft_result)
         fft_magnitude = np.abs(fft_result)
-        
+        flatten_ranges = set(flatten_ranges)
         for flatten_range in flatten_ranges:
             if flatten_range[0] >= flatten_range[1]:
                 continue
@@ -196,23 +195,35 @@ class ECGSignalProcessor:
         return [(start - widen_by, end + widen_by) for start, end in ranges_list]
 
     def clean_and_process_ecg_leads(self, input_data, window_size=5, std_threshold=5):
+        print("Step 1: Detecting peaks")
         peak_ranges = self.detect_peaks_with_sliding_window(
             np.squeeze(input_data[:, :, 0]),
             window_size=window_size,
             std_threshold=std_threshold
         )
-
+        
         processed_leads = []
-
-        for lead in tqdm(range(12)):
-            crossings = self.find_crossings_for_peaks(np.squeeze(input_data[:, :, lead]), peak_ranges=peak_ranges)
+        print("Step 2: Processing leads")
+        for lead_index in tqdm(range(12)):
+            print(f"Processing lead {lead_index}")
+            crossings = self.find_crossings_for_peaks(input_data[:, :, lead_index], peak_ranges=peak_ranges)
             widened_crossings = self.widen_ranges(crossings)
             print(widened_crossings)
 
-            cleaned_lead = self.process_signals_parallel(input_data[:, :, lead].astype(np.float32), flatten_ranges=widened_crossings)
+            cleaned_lead = self.process_signals_parallel(input_data[:, :, lead_index].astype(np.float32), flatten_ranges=widened_crossings)
             processed_leads.append(cleaned_lead.astype(np.float32))
 
         cleaned_data = np.array(processed_leads).astype(np.float32)
         cleaned_data = np.swapaxes(cleaned_data, 0, -2)
         cleaned_data = np.swapaxes(cleaned_data, -1, -2)
         return cleaned_data
+
+if __name__ == "__main__":
+    root_dir = "./tmp/"
+    
+    ecg_signal_processor = ECGSignalProcessor()
+    ecg_signal_processor.process_batch(root_dir, num_workers=4)        
+
+        
+
+        
