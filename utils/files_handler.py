@@ -253,7 +253,7 @@ class XMLProcessor:
 
 
 if __name__ == "__main__":
-    root_dir = "/media/data1/ravram/CLSA/2401002_MontrealHeartInstitute_ECG_RAW_BL"
+    root_dir = "/path/to/your/xml/files"
     output_folder = "test_results"
     
     os.makedirs(output_folder, exist_ok=True)
@@ -264,7 +264,7 @@ if __name__ == "__main__":
     # Process all XML files in a directory
     processed_files = xml_processor.process_batch(
         directory_path=root_dir,
-        num_workers=32
+        num_workers=4
     )
     print(f"Processed {len(processed_files)} files.")
     
