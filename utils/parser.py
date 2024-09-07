@@ -12,7 +12,7 @@ class HearWiseArgs:
         parser.add_argument('--batch_size', type=int, required=True)
         parser.add_argument('--output_file', type=str, required=True)
         parser.add_argument('--output_folder', type=str, required=True)
-        parser.add_argument('--huggingface_api_key_path', type=str, required=True)
+        parser.add_argument('--hugging_face_api_key_path', type=str, required=True)
         parser.add_argument('--signal_processing_model_name', type=str, required=True)
         parser.add_argument('--diagnosis_classifier_model_name', type=str, required=True)
         return parser.parse_args()
