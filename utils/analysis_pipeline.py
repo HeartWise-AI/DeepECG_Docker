@@ -82,23 +82,23 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
         if class_sum == 0:
             continue
         metrics[col] = {
-            "auc": roc_auc_score(df_gt[col], df_pred[col]),
-            "auprc": average_precision_score(df_gt[col], df_pred[col]),
-            "f1": f1_score(df_gt[col], df_pred[col] > 0.5),
-            "prevalence_gt": class_prevalence_gt[col],
-            # "prevalence_pred": class_prevalence_pred[col]
+            "auc": roc_auc_score(df_gt[col], df_pred[col]).astype(float),
+            "auprc": average_precision_score(df_gt[col], df_pred[col]).astype(float),
+            "f1": f1_score(df_gt[col], df_pred[col] > 0.5).astype(float),
+            "prevalence_gt": class_prevalence_gt[col].astype(float),
+            "prevalence_pred": class_prevalence_pred[col].astype(float)
         }
-        auc_scores.append(metrics[col]['auc'])
-        auprc_scores.append(metrics[col]['auprc'])
-        f1_scores.append(metrics[col]['f1'])
+        auc_scores.append(metrics[col]['auc'].astype(float))
+        auprc_scores.append(metrics[col]['auprc'].astype(float))
+        f1_scores.append(metrics[col]['f1'].astype(float))
 
     metrics['dataset'] = {
-        'macro_auc': np.mean(auc_scores),
-        'macro_auprc': np.mean(auprc_scores),
-        'macro_f1': np.mean(f1_scores),
-        'micro_auc': roc_auc_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro'),
-        'micro_auprc': average_precision_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro'),
-        'micro_f1': f1_score(df_gt.iloc[:, 1:].values.ravel(), (df_pred.iloc[:, 1:].values.ravel() > 0.5).astype(int), average='micro')
+        'macro_auc': np.mean(auc_scores).astype(float),
+        'macro_auprc': np.mean(auprc_scores).astype(float),
+        'macro_f1': np.mean(f1_scores).astype(float),
+        'micro_auc': roc_auc_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro').astype(float),
+        'micro_auprc': average_precision_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro').astype(float),
+        'micro_f1': f1_score(df_gt.iloc[:, 1:].values.ravel(), (df_pred.iloc[:, 1:].values.ravel() > 0.5).astype(int), average='micro').astype(float)
     }
         
     return metrics
