@@ -15,7 +15,7 @@ class EfficientNetWrapper(HeartWiseModelFactory):
         self, 
         model_name: str, 
         map_location: torch.device,
-        huggingface_api_key: str
+        hugging_face_api_key: str
     ):
         self.device = map_location
         self._load_model(
@@ -23,7 +23,7 @@ class EfficientNetWrapper(HeartWiseModelFactory):
                 model_name=model_name, 
                 repo_id="heartwise/DeepECG_EfficientNetV2", 
                 local_dir=os.path.join("weights", model_name),
-                huggingface_api_key=huggingface_api_key
+                hugging_face_api_key=hugging_face_api_key
             ),
             map_location=map_location
         )

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from tqdm import tqdm
-from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.metrics import roc_auc_score, average_precision_score, f1_score
 
 from utils.files_handler import XMLProcessor, ECGFileHandler
 from data.project_dataset import create_dataloader
@@ -14,18 +14,17 @@ from models import HeartWiseModelFactory, BertClassifier
 from utils.constants import ECG_CATEGORIES, ECG_PATTERNS
 from utils.ecg_signal_processor import ECGSignalProcessor
 
-from sklearn.metrics import roc_auc_score, average_precision_score, f1_score
 
 def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
     categories_gt = {category: [] for category in ECG_CATEGORIES}
     categories_pred = {category: [] for category in ECG_CATEGORIES}
-    class_percentages_gt = {}
-    class_percentages_pred = {}
+    class_prevalence_gt = {}
+    class_prevalence_pred = {}
     total_samples = len(df_gt)
     
-    for col in df_gt.columns[1:]:
-        class_percentages_gt[col] = (df_gt[col].sum() / total_samples) * 100        
-        class_percentages_pred[col] = (df_pred[col].sum() / total_samples) * 100        
+    for col in df_gt.columns:
+        class_prevalence_gt[col] = (df_gt[col].sum() / total_samples) * 100        
+        class_prevalence_pred[col] = (df_pred[col].sum() / total_samples) * 100        
         for category in ECG_CATEGORIES:
             if col in ECG_CATEGORIES[category]:
                 if df_gt[col].sum() == 0:
@@ -86,8 +85,8 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
             "auc": roc_auc_score(df_gt[col], df_pred[col]),
             "auprc": average_precision_score(df_gt[col], df_pred[col]),
             "f1": f1_score(df_gt[col], df_pred[col] > 0.5),
-            "percentage_gt": class_percentages_gt[col],
-            "percentage_pred": class_percentages_pred[col]
+            "prevalence_gt": class_prevalence_gt[col],
+            # "prevalence_pred": class_prevalence_pred[col]
         }
         auc_scores.append(metrics[col]['auc'])
         auprc_scores.append(metrics[col]['auprc'])
@@ -135,9 +134,29 @@ class AnalysisPipeline:
     def run_analysis(
         df: pd.DataFrame, 
         batch_size: int,
-        signal_processing_model: HeartWiseModelFactory, 
-        diagnosis_classifier_model: BertClassifier
+        diagnosis_classifier_device: int,
+        signal_processing_device: int,
+        signal_processing_model_name: str, 
+        diagnosis_classifier_model_name: str,
+        hugging_face_api_key: str
     ) -> dict:
+        # Load models
+        diagnosis_classifier_model = HeartWiseModelFactory.create_model(
+            {
+                'model_name': diagnosis_classifier_model_name,
+                'map_location': torch.device(diagnosis_classifier_device),
+                'hugging_face_api_key': hugging_face_api_key
+            }
+        )
+        
+        signal_processing_model = HeartWiseModelFactory.create_model(
+            {
+                'model_name': signal_processing_model_name,
+                'map_location': torch.device(signal_processing_device),
+                'hugging_face_api_key': hugging_face_api_key
+            }
+        )        
+        
         # Compute bert diagnoses predictions
         predictions = []
         ground_truth = []
