@@ -18,19 +18,23 @@ from utils.ecg_signal_processor import ECGSignalProcessor
 def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
     categories_gt = {category: [] for category in ECG_CATEGORIES}
     categories_pred = {category: [] for category in ECG_CATEGORIES}
-    class_prevalence_gt = {}
-    class_prevalence_pred = {}
+    prevalence_gt = {}
+    prevalence_pred = {}
     total_samples = len(df_gt)
     
     for col in df_gt.columns:
-        class_prevalence_gt[col] = (df_gt[col].sum() / total_samples) * 100        
-        class_prevalence_pred[col] = (df_pred[col].sum() / total_samples) * 100        
+        sum_gt = df_gt[col].sum()
+        sum_pred = df_pred[col].sum()
+        prevalence_gt[col] = (sum_gt / total_samples) * 100        
+        prevalence_pred[col] = (sum_pred / total_samples) * 100        
         for category in ECG_CATEGORIES:
             if col in ECG_CATEGORIES[category]:
-                if df_gt[col].sum() == 0:
+                if sum_gt == 0:
                     continue
                 categories_gt[category].append(df_gt[col])
                 categories_pred[category].append(df_pred[col])
+                prevalence_gt[category] = prevalence_gt.get(category, 0) + sum_gt
+                prevalence_pred[category] = prevalence_pred.get(category, 0) + sum_pred
 
     metrics = {}
     for category in ECG_CATEGORIES:
@@ -41,17 +45,26 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
                 "micro_auc": np.nan,
                 "micro_auprc": np.nan,
                 "macro_f1": np.nan,
-                "micro_f1": np.nan
+                "micro_f1": np.nan,
+                "prevalence_gt": np.nan,
+                "prevalence_pred": np.nan
             }
             continue
         cat_auc_scores = []
         cat_auprc_scores = []
         cat_f1_scores = []
+        sum_gt = 0
+        sum_pred = 0
         for col_gt, col_pred in zip(categories_gt[category], categories_pred[category]):
+            sum_gt += col_gt.sum()
+            sum_pred += col_pred.sum()
             cat_auc_scores.append(roc_auc_score(col_gt, col_pred))
             cat_auprc_scores.append(average_precision_score(col_gt, col_pred))
-            cat_f1_scores.append(f1_score(col_gt, col_pred > 0.5))  # Using 0.5 as threshold
+            cat_f1_scores.append(f1_score(col_gt, col_pred > 0.5))
 
+        prevalence_gt[category] = sum_gt / len(categories_gt[category])
+        prevalence_pred[category] = sum_pred / len(categories_pred[category])
+        
         metrics[category] = {
             "macro_auc": np.mean(cat_auc_scores),
             "macro_auprc": np.mean(cat_auprc_scores),
@@ -68,9 +81,11 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
             ),
             "micro_f1": f1_score(
                 np.array(categories_gt[category]).ravel(), 
-                (np.array(categories_pred[category]).ravel() > 0.5).astype(int), 
+                int(np.array(categories_pred[category]).ravel() > 0.5), 
                 average='micro'
-            )
+            ),
+            "prevalence_gt": float(prevalence_gt[category]),
+            "prevalence_pred": float(prevalence_pred[category])
         }
 
     # Compute per-class metrics and collect data for each pattern
@@ -78,27 +93,34 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
     auprc_scores = []
     f1_scores = []
     for col in ECG_PATTERNS:
-        class_sum = df_gt[col].sum()
-        if class_sum == 0:
+        sum_gt = df_gt[col].sum()
+        if sum_gt == 0:
+            metrics[col] = {
+                "auc": np.nan,
+                "auprc": np.nan,
+                "f1": np.nan,
+                "prevalence_gt": np.nan,
+                "prevalence_pred": np.nan
+            }
             continue
         metrics[col] = {
-            "auc": roc_auc_score(df_gt[col], df_pred[col]).astype(float),
-            "auprc": average_precision_score(df_gt[col], df_pred[col]).astype(float),
-            "f1": f1_score(df_gt[col], df_pred[col] > 0.5).astype(float),
-            "prevalence_gt": class_prevalence_gt[col].astype(float),
-            "prevalence_pred": class_prevalence_pred[col].astype(float)
+            "auc": roc_auc_score(df_gt[col], df_pred[col]),
+            "auprc": average_precision_score(df_gt[col], df_pred[col]),
+            "f1": f1_score(df_gt[col], df_pred[col] > 0.5),
+            "prevalence_gt": float(prevalence_gt[col]),
+            "prevalence_pred": float(prevalence_pred[col])
         }
-        auc_scores.append(metrics[col]['auc'].astype(float))
-        auprc_scores.append(metrics[col]['auprc'].astype(float))
-        f1_scores.append(metrics[col]['f1'].astype(float))
+        auc_scores.append(metrics[col]['auc'])
+        auprc_scores.append(metrics[col]['auprc'])
+        f1_scores.append(metrics[col]['f1'])
 
     metrics['dataset'] = {
-        'macro_auc': np.mean(auc_scores).astype(float),
-        'macro_auprc': np.mean(auprc_scores).astype(float),
-        'macro_f1': np.mean(f1_scores).astype(float),
-        'micro_auc': roc_auc_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro').astype(float),
-        'micro_auprc': average_precision_score(df_gt.iloc[:, 1:].values.ravel(), df_pred.iloc[:, 1:].values.ravel(), average='micro').astype(float),
-        'micro_f1': f1_score(df_gt.iloc[:, 1:].values.ravel(), (df_pred.iloc[:, 1:].values.ravel() > 0.5).astype(int), average='micro').astype(float)
+        'macro_auc': np.mean(auc_scores),
+        'macro_auprc': np.mean(auprc_scores),
+        'macro_f1': np.mean(f1_scores),
+        'micro_auc': roc_auc_score(df_gt[:, 1:].values.ravel(), df_pred[:, 1:].values.ravel(), average='micro'),
+        'micro_auprc': average_precision_score(df_gt[:, 1:].values.ravel(), df_pred[:, 1:].values.ravel(), average='micro'),
+        'micro_f1': f1_score(df_gt[:, 1:].values.ravel(), int(df_pred[:, 1:].values.ravel() > 0.5), average='micro')
     }
         
     return metrics
