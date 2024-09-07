@@ -10,7 +10,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score, f1_score
 
 from utils.files_handler import XMLProcessor, ECGFileHandler
 from data.project_dataset import create_dataloader
-from models import HeartWiseModelFactory, BertClassifier
+from models import HeartWiseModelFactory
 from utils.constants import ECG_CATEGORIES, ECG_PATTERNS
 from utils.ecg_signal_processor import ECGSignalProcessor
 
