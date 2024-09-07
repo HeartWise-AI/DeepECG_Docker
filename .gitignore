@@ -1,7 +1,10 @@
+tmp
+logs
 weights
 results
 deploy-venv
 playground.py
+heartwise.config
 playground.ipynb
 data/__pycache__
 utils/__pycache__
