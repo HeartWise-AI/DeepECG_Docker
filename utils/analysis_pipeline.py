@@ -109,9 +109,9 @@ class AnalysisPipeline:
     def preprocess_data(df: pd.DataFrame, output_folder: str):
         # Generate XML
         xml_processor = XMLProcessor() 
-        processed_files, ecgs = xml_processor.process_batch(
+        processed_files, ecg_signals = xml_processor.process_batch(
             df=df,
-            num_workers=1
+            num_workers=16
         )        
         print(f"Processed {len(processed_files)} files.")
         
@@ -120,13 +120,13 @@ class AnalysisPipeline:
         
         # Process ECG signals
         ecg_signal_processor = ECGSignalProcessor()
-        cleaned_ecgs = ecg_signal_processor.clean_and_process_ecg_leads(ecgs)
+        cleaned_ecg_signals = ecg_signal_processor.clean_and_process_ecg_leads(input_data=ecg_signals, max_workers=16)
         
-        np.save(os.path.join(output_folder, 'cleaned_ecgs.npy'), cleaned_ecgs)
+        np.save(os.path.join(output_folder, 'cleaned_ecgs.npy'), cleaned_ecg_signals)
         os.makedirs("./tmp", exist_ok=True)
         for i, file in tqdm(enumerate(processed_files), total=len(processed_files)):
             ECGFileHandler.save_ecg_signal(
-                ecg_signal=cleaned_ecgs[i],
+                ecg_signal=cleaned_ecg_signals[i],
                 filename=f"{file}"
             )
         

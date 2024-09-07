@@ -133,7 +133,7 @@ class ECGSignalProcessor:
         modified_signal = np.fft.ifft(fft_result)
         return modified_signal.real
 
-    def process_signals_parallel(self, signals, flatten_ranges=[(59.5, 60.5), (69.5, 70.5)], max_workers=9):
+    def process_signals_parallel(self, signals, flatten_ranges=[(59.5, 60.5), (69.5, 70.5)], max_workers=4):
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [executor.submit(self.flatten_fft_peak, signal, flatten_ranges) for signal in signals]
             results = [future.result() for future in futures]
@@ -194,7 +194,7 @@ class ECGSignalProcessor:
     def widen_ranges(self, ranges_list, widen_by=1):
         return [(start - widen_by, end + widen_by) for start, end in ranges_list]
 
-    def clean_and_process_ecg_leads(self, input_data, window_size=5, std_threshold=5):
+    def clean_and_process_ecg_leads(self, input_data, window_size=5, std_threshold=5, max_workers=16):
         print("Step 1: Detecting peaks")
         peak_ranges = self.detect_peaks_with_sliding_window(
             np.squeeze(input_data[:, :, 0]),
@@ -210,7 +210,7 @@ class ECGSignalProcessor:
             widened_crossings = self.widen_ranges(crossings)
             print(widened_crossings)
 
-            cleaned_lead = self.process_signals_parallel(input_data[:, :, lead_index].astype(np.float32), flatten_ranges=widened_crossings)
+            cleaned_lead = self.process_signals_parallel(input_data[:, :, lead_index].astype(np.float32), flatten_ranges=widened_crossings, max_workers=max_workers)
             processed_leads.append(cleaned_lead.astype(np.float32))
 
         cleaned_data = np.array(processed_leads).astype(np.float32)
