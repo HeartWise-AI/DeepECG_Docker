@@ -90,7 +90,7 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
                 average='micro'
             ),
             "prevalence_gt": float(prevalence_categories_gt[category]),
-            "prevalence_pred": float(prevalence_categories_gt[category])
+            "prevalence_pred": float(prevalence_categories_pred[category])
         }
 
     # Compute per-class metrics and collect data for each pattern
