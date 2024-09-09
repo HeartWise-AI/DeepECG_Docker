@@ -36,17 +36,23 @@ def read_api_key(path: str) -> dict[str, str]:
 
 class ECGFileHandler:
     @staticmethod
-    def save_ecg_signal(ecg_signal, filename) -> None:
-        ecg_signal = ecg_signal.astype(np.float32)
-        base64_str = base64.b64encode(ecg_signal.tobytes()).decode('utf-8')
-        with open(filename, 'w') as f:
-            f.write(base64_str)
+    def save_ecg_signal(ecg_signal, filename) -> None:  
+        if filename.endswith('.base64'):
+            ecg_signal = ecg_signal.astype(np.float32)
+            base64_str = base64.b64encode(ecg_signal.tobytes()).decode('utf-8')
+            with open(filename, 'w') as f:
+                f.write(base64_str)
+        else:
+            np.save(filename, ecg_signal)
     
     @staticmethod
     def load_ecg_signal(filename) -> np.ndarray:
-        with open(filename, 'r') as f:
-            base64_str = f.read()
-        np_array = np.frombuffer(base64.b64decode(base64_str), dtype=np.float32)
+        if filename.endswith('.base64'):
+            with open(filename, 'r') as f:
+                base64_str = f.read()
+            np_array = np.frombuffer(base64.b64decode(base64_str), dtype=np.float32)
+        else:
+            np_array = np.load(filename)
         writable_array = np.copy(np_array)
         return writable_array.reshape(-1, 12)
     

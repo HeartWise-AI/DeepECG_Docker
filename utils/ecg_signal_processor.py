@@ -208,7 +208,6 @@ class ECGSignalProcessor:
             print(f"Processing lead {lead_index}")
             crossings = self.find_crossings_for_peaks(input_data[:, :, lead_index], peak_ranges=peak_ranges)
             widened_crossings = self.widen_ranges(crossings)
-            print(widened_crossings)
 
             cleaned_lead = self.process_signals_parallel(input_data[:, :, lead_index].astype(np.float32), flatten_ranges=widened_crossings, max_workers=max_workers)
             processed_leads.append(cleaned_lead.astype(np.float32))

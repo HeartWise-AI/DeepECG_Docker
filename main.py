@@ -1,5 +1,4 @@
 import os
-import torch
 import pandas as pd
 
 from utils.parser import HearWiseArgs
