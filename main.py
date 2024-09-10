@@ -14,9 +14,11 @@ def main(args: HearWiseArgs):
         output_folder=args.output_folder,
     )
 
+    # Read API key
     hugging_face_api_key = read_api_key(args.hugging_face_api_key_path)['HUGGING_FACE_API_KEY']
         
-    metrics = AnalysisPipeline.run_analysis(
+    # Run analysis
+    metrics, df_probabilities = AnalysisPipeline.run_analysis(
         df=df,
         batch_size=args.batch_size,
         diagnosis_classifier_device=args.diagnosis_classifier_device,
@@ -26,9 +28,12 @@ def main(args: HearWiseArgs):
         hugging_face_api_key=hugging_face_api_key
     )
 
+    # Save metrics and probabilities
+    output_file = args.output_file
     output_folder = args.output_folder
-    save_to_json(metrics, os.path.join(output_folder, f'{args.output_file}.json'))        
-    save_to_csv(metrics, os.path.join(output_folder, f'{args.output_file}.csv'))
+    df_probabilities.to_csv(os.path.join(output_folder, f'{output_file}_probabilities.csv'), index=False)
+    save_to_json(metrics, os.path.join(output_folder, f'{output_file}.json'))        
+    save_to_csv(metrics, os.path.join(output_folder, f'{output_file}.csv'))
 
         
 if __name__ == '__main__':

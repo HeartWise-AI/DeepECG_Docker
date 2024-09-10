@@ -206,8 +206,9 @@ class AnalysisPipeline:
         # Compute bert diagnoses predictions
         predictions = []
         ground_truth = []
+        probabities_rows = []
         dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
-        for diagnosis, ecg_tensor in tqdm(dataloader, total=len(dataloader)):
+        for diagnosis, ecg_tensor, file_name in tqdm(dataloader, total=len(dataloader)):
             # Create thresholds tensor
             current_batch_size = len(diagnosis)
             bert_thresholds_tensor = torch.zeros((current_batch_size, 77)).to(diagnosis_classifier_device)
@@ -217,16 +218,22 @@ class AnalysisPipeline:
 
             # Compute and create diagnosis gt tensor
             diag_prob = diagnosis_classifier_model(diagnosis)
-            diag_prob = torch.where(diag_prob >= bert_thresholds_tensor, 1, 0)
+            diag_binary = torch.where(diag_prob >= bert_thresholds_tensor, 1, 0)
             
             # Append batch data 
-            sig_prob = signal_processing_model(ecg_tensor)            
+            sig_prob = signal_processing_model(ecg_tensor)     
             for i in range(len(diag_prob)):
-                ground_truth.append(diag_prob[i].detach().cpu().numpy())
+                ground_truth.append(diag_binary[i].detach().cpu().numpy())
                 predictions.append(sig_prob[i].detach().cpu().numpy())
+                probabities_rows.append([file_name[i]] + list(diag_prob[i].detach().cpu().numpy()) + list(sig_prob[i].detach().cpu().numpy()))
+                        
+        bert_columns = [f"{pattern}_bert_model" for pattern in ECG_PATTERNS]
+        sig_columns = [f"{pattern}_sig_model" for pattern in ECG_PATTERNS]
+        columns = ['file_name'] + bert_columns + sig_columns
+        df_probabilities = pd.DataFrame(probabities_rows, columns=columns)
 
         # Compute and return metrics
         return compute_metrics(
             df_gt=pd.DataFrame(ground_truth, columns=ECG_PATTERNS), 
             df_pred=pd.DataFrame(predictions, columns=ECG_PATTERNS)
-        )
+        ), df_probabilities

@@ -15,12 +15,29 @@ def save_to_csv(metrics: dict, path: str) -> None:
     if not os.path.exists('/'.join(path.split('/')[:-1])):
         os.makedirs('/'.join(path.split('/')[:-1]))
 
-    # Open the file and create a CSV writer
+    # Collect all unique subkeys
+    all_subkeys = set()
+    for key, value in metrics.items():
+        if isinstance(value, dict):
+            all_subkeys.update(value.keys())
+
+    # Sort the subkeys for consistent column order
+    sorted_subkeys = sorted(all_subkeys)
+
+    # Prepare the rows
+    rows = []
+    for key, value in metrics.items():
+        if isinstance(value, dict):
+            row = {'Key': key}
+            for subkey in sorted_subkeys:
+                row[subkey] = value.get(subkey, '')
+            rows.append(row)
+
+    # Write to CSV
     with open(path, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        for metric in metrics:
-            for value in metrics[metric]:
-                writer.writerow([metric, value, metrics[metric][value]])
+        writer = csv.DictWriter(csvfile, fieldnames=['Key'] + sorted_subkeys)
+        writer.writeheader()
+        writer.writerows(rows)
 
 def save_to_json(data: dict, path: str) -> None:
     if not os.path.exists('/'.join(path.split('/')[:-1])):
