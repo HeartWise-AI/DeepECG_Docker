@@ -170,3 +170,261 @@ ECG_PATTERNS = [
     "Ventricular Rhythm",
     "no_qrs"
 ]
+
+BERT_THRESHOLDS = {
+    "Rhythm Disorders": {
+        "micro_threshold": 0.45,
+        "macro_threshold": 0.34
+    },
+    "Conduction Disorder": {
+        "micro_threshold": 0.41000000000000003,
+        "macro_threshold": 0.43
+    },
+    "Enlargement of the heart chambers": {
+        "micro_threshold": 0.38,
+        "macro_threshold": 0.38
+    },
+    "Pericarditis": {
+        "micro_threshold": 0.38,
+        "macro_threshold": 0.38
+    },
+    "Infarction or ischemia": {
+        "micro_threshold": 0.5,
+        "macro_threshold": 0.45
+    },
+    "Other diagnoses": {
+        "micro_threshold": 0.56,
+        "macro_threshold": 0.52
+    },
+    "Sinusal": {
+        "threshold": 0.43
+    },
+    "Regular": {
+        "threshold": 0.48
+    },
+    "Monomorph": {
+        "threshold": 0.51
+    },
+    "QS complex in V1-V2-V3": {
+        "threshold": 0.5700000000000001
+    },
+    "R complex in V5-V6": {
+        "threshold": 0.4
+    },
+    "T wave inversion (inferior - II, III, aVF)": {
+        "threshold": 0.6
+    },
+    "Left bundle branch block": {
+        "threshold": 0.31
+    },
+    "RaVL > 11 mm": {
+        "threshold": 0.65
+    },
+    "SV1 + RV5 or RV6 > 35 mm": {
+        "threshold": 0.48
+    },
+    "T wave inversion (lateral -I, aVL, V5-V6)": {
+        "threshold": 0.59
+    },
+    "T wave inversion (anterior - V3-V4)": {
+        "threshold": 0.58
+    },
+    "Left axis deviation": {
+        "threshold": 0.46
+    },
+    "Left ventricular hypertrophy": {
+        "threshold": 0.38
+    },
+    "Bradycardia": {
+        "threshold": 0.5700000000000001
+    },
+    "Q wave (inferior - II, III, aVF)": {
+        "threshold": 0.42
+    },
+    "Afib": {
+        "threshold": 0.46
+    },
+    "Irregularly irregular": {
+        "threshold": 0.58
+    },
+    "Atrial tachycardia (>= 100 BPM)": {
+        "threshold": 0.38
+    },
+    "Nonspecific intraventricular conduction delay": {
+        "threshold": 0.38
+    },
+    "Premature ventricular complex": {
+        "threshold": 0.34
+    },
+    "Polymorph": {
+        "threshold": 0.61
+    },
+    "T wave inversion (septal- V1-V2)": {
+        "threshold": 0.65
+    },
+    "Right bundle branch block": {
+        "threshold": 0.38
+    },
+    "Ventricular paced": {
+        "threshold": 0.34
+    },
+    "ST elevation (anterior - V3-V4)": {
+        "threshold": 0.46
+    },
+    "ST elevation (septal - V1-V2)": {
+        "threshold": 0.58
+    },
+    "1st degree AV block": {
+        "threshold": 0.31
+    },
+    "Premature atrial complex": {
+        "threshold": 0.33
+    },
+    "Atrial flutter": {
+        "threshold": 0.44
+    },
+    "rSR' in V1-V2": {
+        "threshold": 0.56
+    },
+    "qRS in V5-V6-I, aVL": {
+        "threshold": 0.63
+    },
+    "Left anterior fascicular block": {
+        "threshold": 0.53
+    },
+    "Right axis deviation": {
+        "threshold": 0.49
+    },
+    "2nd degree AV block - mobitz 1": {
+        "threshold": 0.51
+    },
+    "ST depression (inferior - II, III, aVF)": {
+        "threshold": 0.51
+    },
+    "Acute pericarditis": {
+        "threshold": 0.38
+    },
+    "ST elevation (inferior - II, III, aVF)": {
+        "threshold": 0.47000000000000003
+    },
+    "Low voltage": {
+        "threshold": 0.47000000000000003
+    },
+    "Regularly irregular": {
+        "threshold": 0.58
+    },
+    "Junctional rhythm": {
+        "threshold": 0.29
+    },
+    "Left atrial enlargement": {
+        "threshold": 0.52
+    },
+    "ST elevation (lateral - I, aVL, V5-V6)": {
+        "threshold": 0.46
+    },
+    "Atrial paced": {
+        "threshold": 0.42
+    },
+    "Right ventricular hypertrophy": {
+        "threshold": 0.38
+    },
+    "Delta wave": {
+        "threshold": 0.3
+    },
+    "Wolff-Parkinson-White (Pre-excitation syndrome)": {
+        "threshold": 0.28
+    },
+    "Prolonged QT": {
+        "threshold": 0.4
+    },
+    "ST depression (anterior - V3-V4)": {
+        "threshold": 0.48
+    },
+    "QRS complex negative in III": {
+        "threshold": 0.56
+    },
+    "Q wave (lateral- I, aVL, V5-V6)": {
+        "threshold": 0.51
+    },
+    "Supraventricular tachycardia": {
+        "threshold": 0.33
+    },
+    "ST downslopping": {
+        "threshold": 0.37
+    },
+    "ST depression (lateral - I, avL, V5-V6)": {
+        "threshold": 0.51
+    },
+    "2nd degree AV block - mobitz 2": {
+        "threshold": 0.42
+    },
+    "U wave": {
+        "threshold": 0.26
+    },
+    "R/S ratio in V1-V2 >1": {
+        "threshold": 0.52
+    },
+    "RV1 + SV6 > 11 mm": {
+        "threshold": 0.53
+    },
+    "Left posterior fascicular block": {
+        "threshold": 0.34
+    },
+    "Right atrial enlargement": {
+        "threshold": 0.23
+    },
+    "ST depression (septal- V1-V2)": {
+        "threshold": 0.3
+    },
+    "Q wave (septal- V1-V2)": {
+        "threshold": 0.51
+    },
+    "Q wave (anterior - V3-V4)": {
+        "threshold": 0.39
+    },
+    "ST upslopping": {
+        "threshold": 0.39
+    },
+    "Right superior axis": {
+        "threshold": 0.43
+    },
+    "Ventricular tachycardia": {
+        "threshold": 0.35000000000000003
+    },
+    "ST elevation (posterior - V7-V8-V9)": {
+        "threshold": 0.4
+    },
+    "Ectopic atrial rhythm (< 100 BPM)": {
+        "threshold": 0.49
+    },
+    "Lead misplacement": {
+        "threshold": 0.32
+    },
+    "Third Degree AV Block": {
+        "threshold": 0.39
+    },
+    "Acute MI": {
+        "threshold": 0.38
+    },
+    "Early repolarization": {
+        "threshold": 0.38
+    },
+    "Q wave (posterior - V7-V9)": {
+        "threshold": 0.31
+    },
+    "Bi-atrial enlargement": {
+        "threshold": 0.29
+    },
+    "LV pacing": {
+        "threshold": 0.28
+    },
+    "Brugada": {
+        "threshold": 0.22
+    },
+    "Ventricular Rhythm": {
+        "threshold": 0.33
+    },
+    "no_qrs": {
+        "threshold": 0.27
+    }
+}
