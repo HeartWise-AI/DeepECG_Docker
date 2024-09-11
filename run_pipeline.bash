@@ -16,6 +16,7 @@ output_folder=$(get_param "output_folder")
 hugging_face_api_key_path=$(get_param "hugging_face_api_key_path")
 signal_processing_model_name=$(get_param "signal_processing_model_name")
 diagnosis_classifier_model_name=$(get_param "diagnosis_classifier_model_name")
+ecg_signals_path=$(get_param "ecg_signals_path")
 
 # Run the pipeline with the parameters
 python main.py \
@@ -27,5 +28,6 @@ python main.py \
     --output_folder $output_folder \
     --hugging_face_api_key_path $hugging_face_api_key_path \
     --signal_processing_model_name $signal_processing_model_name \
-    --diagnosis_classifier_model_name $diagnosis_classifier_model_name
+    --diagnosis_classifier_model_name $diagnosis_classifier_model_name \
+    --ecg_signals_path $ecg_signals_path
     

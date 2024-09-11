@@ -81,7 +81,7 @@ class XMLProcessor:
     def __init__(self):
         self.report = []
         self.tmp_folder = "./tmp"
-        # os.makedirs(self.tmp_folder, exist_ok=True)
+        self.expected_shape = (2500, 12)
 
     @staticmethod
     def parse_xml_to_dict(element):
@@ -178,7 +178,7 @@ class XMLProcessor:
             return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
 
     def process_batch(self, df: pd.DataFrame, num_workers: int = 32) -> tuple[list[str], np.ndarray]:
-        xml_files = df['XML_path'].tolist()
+        xml_files = df['ecg_path'].tolist()
         processed_files = []
         ecgs = []
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
@@ -189,12 +189,16 @@ class XMLProcessor:
                     report_entry, file_id, lead_array = future.result()
                     self.report.append(report_entry)
                     if lead_array is not None:
+                        print(f"Lead array shape: {lead_array.shape}")
+                        if lead_array.shape[0] != self.expected_shape[0]:
+                            if lead_array.shape[0] < self.expected_shape[0]:
+                                print(f"Warning: Lead array length is less than 2500 for file {file_id}.")
+                                continue
+                            else:
+                                step = lead_array.shape[0] // self.expected_shape[0]
+                                lead_array = lead_array[::step, :]
                         ecgs.append(lead_array.transpose(1, 0))
                         out_file = os.path.join(self.tmp_folder, f"{file_id}.base64")
-                        # ECGFileHandler.save_ecg_signal(
-                        #     data=lead_array.transpose(1, 0), 
-                        #     filename=out_file
-                        # )
                         processed_files.append(out_file)
                 except Exception as e:
                     print(f"Error processing file: {str(e)}")
@@ -202,7 +206,6 @@ class XMLProcessor:
                     self.report.append((file_id, 'Unknown', 'Failed', str(e)))
 
         ecgs = np.array(ecgs)
-        ecgs = ecgs[:, 1::2, :]
         return processed_files, ecgs
 
     def _process_clsa_xml(self, data_dict: dict, file_id: str) -> None:

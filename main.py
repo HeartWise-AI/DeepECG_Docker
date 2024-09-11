@@ -7,8 +7,14 @@ from utils.files_handler import save_to_csv, save_to_json, read_api_key
 
 
 def main(args: HearWiseArgs):
+    # Create tmp folder
+    if not os.path.exists('./tmp'):
+        os.makedirs('./tmp')
+    
+    # Read data
     df = pd.read_csv(args.data_path)
 
+    # Preprocess data
     AnalysisPipeline.preprocess_data(
         df=df, 
         output_folder=args.output_folder,
@@ -34,8 +40,11 @@ def main(args: HearWiseArgs):
     df_probabilities.to_csv(os.path.join(output_folder, f'{output_file}_probabilities.csv'), index=False)
     save_to_json(metrics, os.path.join(output_folder, f'{output_file}.json'))        
     save_to_csv(metrics, os.path.join(output_folder, f'{output_file}.csv'))
+    
+    # Remove tmp folder
+    if os.path.exists('./tmp'):
+        os.remove('./tmp')
 
-        
 if __name__ == '__main__':
     args = HearWiseArgs.parse_arguments()
     main(args)

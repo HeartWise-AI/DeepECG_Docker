@@ -1,6 +1,6 @@
 # DeepECG_Deploy
 
-DeepECG_Deploy is a repository designed for deploying deep learning models for ECG signal analysis. This repository includes implementations of various models, such as BERT for sequence classification and EfficientNet for signal processing.
+DeepECG_Deploy is a repository designed for deploying deep learning models for ECG signal analysis and comparing their performance over a Bert Classifier model. The pipeline can be run locally or in a docker container.
 
 ## Table of Contents
 - [Features](#features)
@@ -29,18 +29,7 @@ DeepECG_Deploy is a repository designed for deploying deep learning models for E
    cd DeepECG_Deploy
    ```
 
-2. Optionally, create a new virtual environment (recommended):
-   ```
-   python -m venv venv
-   source venv/bin/activate
-   ```
-
-3. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-4. Set up your HuggingFace API key:
+2. Set up your HuggingFace API key:
    - Create a file named `api_key.json` in the root directory
    - Add your API key in the following format:
      ```json
@@ -48,6 +37,17 @@ DeepECG_Deploy is a repository designed for deploying deep learning models for E
        "huggingface_api_key": "your_api_key_here"
      }
      ```
+
+3. If running locally, optionally, create a new virtual environment (recommended):
+   ```
+   python -m venv venv
+   source venv/bin/activate
+   ```
+
+4. If running locally, install the required dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
 
 ## Project Structure
 
@@ -59,7 +59,7 @@ DeepECG_Deploy/
 │   └── efficientnet_wrapper.py
 │
 ├── inputs/
-│   └── (place input files here)
+│   └── data_rows.csv
 │
 ├── outputs/
 │   └── (output files will be generated here)
@@ -105,6 +105,7 @@ DeepECG_Deploy/
    signal_processing_model_name: efficientnetv2
    diagnosis_classifier_model_name: bert_diagnosis2classification
    data_path: /inputs/data_rows_template.csv
+   ecg_signals_path: /inputs/ecg_signals_template.csv
    ```
    - Edit `heartwise.config` file contains the configuration settings for the pipeline. Below is a description of each configuration parameter:
 
@@ -117,14 +118,20 @@ DeepECG_Deploy/
      - `signal_processing_model_name`: The name of the signal processing model to be used. Example: `efficientnetv2`.
      - `diagnosis_classifier_model_name`: The name of the diagnosis classifier model to be used. Example: `bert_diagnosis2classification`.
      - `data_path`: The path to the input CSV file containing the data. Example: `/inputs/data_rows_template.csv`.
+     - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/ecg_signals_folder`.
 
    - Ensure that the paths and model names in the `heartwise.config` file are correctly set according to your setup and requirements.
 
 3. Run the pipeline:
    - If using Docker, follow the Docker instructions below
-   - If running locally, execute the main script (replace `main.py` with your actual entry point):
+   - If running locally:
+     Option 1: execute the main script with the correct arguments:
      ```
-     python main.py
+     python main.py --diagnosis_classifier_device cuda:1 --signal_processing_device cuda:1 --batch_size 32 --output_folder /outputs --hugging_face_api_key_path /app/api_key.json --output_file_name results --signal_processing_model_name efficientnetv2 --diagnosis_classifier_model_name bert_diagnosis2classification --data_path /inputs/data_rows_template.csv --ecg_signals_path /ecg_signals_folder
+     ```
+     Option 2: execute the bash script:
+     ```
+     bash run_pipeline.sh
      ```
 
 4. Retrieve results:
@@ -146,15 +153,15 @@ To run the Docker container, use one of the following commands based on your har
 
 **With GPU:**
 ```
-docker run --gpus "device=0" -v $(pwd)/inputs:/inputs -v $(pwd)/outputs:/outputs -i deepecg-deploy
+docker run --gpus "device=0" -v $(pwd)/outputs:/outputs -v $(pwd)/ecg_signals:/ecg_signals_path -i deepecg-deploy
 ```
 
 **Without GPU (CPU only):**
 ```
-docker run -v $(pwd)/inputs:/inputs -v $(pwd)/outputs:/outputs deepecg-deploy
+docker run -v $(pwd)/outputs:/outputs -v $(pwd)/ecg_signals:/ecg_signals -i deepecg-deploy
 ```
 
-These commands mount the `inputs/` and `outputs/` directories from your local machine to the container, allowing you to easily provide input data and retrieve results.
+These commands mount the `outputs/` and `ecg_signals/` directories from your local machine to the container, allowing you to easily provide input data and retrieve results.
 
 ## Contributing
 

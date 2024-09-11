@@ -1,6 +1,3 @@
-import os
-import csv
-import json
 import torch
 import numpy as np
 import pandas as pd
@@ -167,8 +164,8 @@ class AnalysisPipeline:
         ecg_signal_processor = ECGSignalProcessor()
         cleaned_ecg_signals = ecg_signal_processor.clean_and_process_ecg_leads(input_data=ecg_signals, max_workers=16)
         
-        np.save(os.path.join(output_folder, 'cleaned_ecgs.npy'), cleaned_ecg_signals)
-        os.makedirs("./tmp", exist_ok=True)
+        print(f"Cleaned {len(cleaned_ecg_signals)} ecg signals.")
+        
         for i, file in tqdm(enumerate(processed_files), total=len(processed_files)):
             ECGFileHandler.save_ecg_signal(
                 ecg_signal=cleaned_ecg_signals[i],
