@@ -15,13 +15,12 @@ from utils.ecg_signal_processor import ECGSignalProcessor
 def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
     metrics = {}
     for category in ECG_CATEGORIES:
-        category_gt, category_pred = zip(*[
-            (df_gt[col], df_pred[col])
-            for col in ECG_CATEGORIES[category]
+        category_columns = [
+            col for col in ECG_CATEGORIES[category]
             if df_gt[col].sum() > 0
-        ])
+        ]
         
-        if not category_gt:
+        if not category_columns:
             metrics[category] = {
                 metric: np.nan for metric in [
                     "macro_auc", "macro_auprc", "micro_auc", "micro_auprc",
@@ -29,6 +28,12 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
                 ]
             }
             continue
+
+        category_gt, category_pred = zip(*[
+            (df_gt[col], df_pred[col])
+            for col in ECG_CATEGORIES[category]
+            if df_gt[col].sum() > 0
+        ])
         
         # Compute macro auc and auprc metrics
         cat_auc_scores = []
