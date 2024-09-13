@@ -44,7 +44,7 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
         ravel_categories_pred = np.array(category_pred).ravel()
         best_macro_f1, best_micro_f1 = 0, 0
         macro_threshold, micro_threshold = 0.5, 0.5
-        for threshold in np.arange(0, 1.1, 0.01):
+        for threshold in np.arange(0, 1.01, 0.01):
             # Macro F1
             cat_f1_scores = [
                 f1_score(col_gt, col_pred >= threshold) 
@@ -122,7 +122,7 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
         
         best_threshold = 0.5
         best_f1 = 0
-        for threshold in np.arange(0, 1.1, 0.01):
+        for threshold in np.arange(0, 1.01, 0.01):
             f1 = f1_score(df_gt[col], df_pred[col] >= threshold)
             if f1 > best_f1:
                 best_f1 = f1
@@ -148,14 +148,14 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
 
 class AnalysisPipeline:
     @staticmethod
-    def preprocess_data(df: pd.DataFrame, output_folder: str):
+    def preprocess_data(df: pd.DataFrame, output_folder: str) -> pd.DataFrame:
         # Generate XML
         xml_processor = XMLProcessor() 
-        processed_files, ecg_signals = xml_processor.process_batch(
+        df, ecg_signals = xml_processor.process_batch(
             df=df,
             num_workers=16
         )        
-        print(f"Processed {len(processed_files)} files.")
+        print(f"Processed {len(df)} files.")
         
         # Save report
         xml_processor.save_report(output_folder=output_folder)
@@ -166,11 +166,13 @@ class AnalysisPipeline:
         
         print(f"Cleaned {len(cleaned_ecg_signals)} ecg signals.")
         
-        for i, file in tqdm(enumerate(processed_files), total=len(processed_files)):
+        for i, file in tqdm(enumerate(df['ecg_path']), total=len(df)):
             ECGFileHandler.save_ecg_signal(
                 ecg_signal=cleaned_ecg_signals[i],
                 filename=f"{file}"
             )
+            
+        return df
         
         
     @staticmethod

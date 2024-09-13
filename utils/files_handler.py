@@ -10,6 +10,13 @@ import xml.etree.ElementTree as ET
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+def load_csv_df(path: str) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    return df
+
+def set_path(df: pd.DataFrame, path: str) -> pd.DataFrame:
+    df['ecg_path'] = df['ecg_file_name'].apply(lambda x: os.path.join(path, x))
+    return df
 
 def save_to_csv(metrics: dict, path: str) -> None:
     if not os.path.exists('/'.join(path.split('/')[:-1])):
@@ -159,10 +166,10 @@ class XMLProcessor:
         return XMLProcessor.flatten_dict(XMLProcessor.parse_xml_to_dict(root))
 
     def process_single_file(self, file_path: str) -> tuple[tuple[str, str, str, str], str, np.ndarray]:
+        file_id = os.path.splitext(os.path.basename(file_path))[0]
         try:
             data_dict = self.xml_to_dict(file_path)
-            file_id = os.path.splitext(os.path.basename(file_path))[0]
-
+            
             if 'RestingECGMeasurements.MeasurementTable.LeadOrder' in data_dict and any(f'RestingECGMeasurements.MedianSamples.WaveformData.{i}' in data_dict for i in range(12)):
                 xml_type = 'CLSA'
                 self._process_clsa_xml(data_dict, file_id)
@@ -175,11 +182,11 @@ class XMLProcessor:
 
             return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array
         except Exception as e:
+            print(f"Error processing file: {str(e)}")
             return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
 
     def process_batch(self, df: pd.DataFrame, num_workers: int = 32) -> tuple[list[str], np.ndarray]:
         xml_files = df['ecg_path'].tolist()
-        processed_files = []
         ecgs = []
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             future_to_file = {executor.submit(self.process_single_file, file): file for file in xml_files}
@@ -188,25 +195,30 @@ class XMLProcessor:
                 try:
                     report_entry, file_id, lead_array = future.result()
                     self.report.append(report_entry)
+                    
                     if lead_array is not None:
-                        print(f"Lead array shape: {lead_array.shape}")
-                        if lead_array.shape[0] != self.expected_shape[0]:
-                            if lead_array.shape[0] < self.expected_shape[0]:
+                        if lead_array.shape[0] == self.expected_shape[1]: # if is (12, X) then transpose it to (X, 12)
+                            lead_array = lead_array.transpose(1, 0)
+                        if lead_array.shape[0] != self.expected_shape[0]: # if X != 2500 then resize it
+                            if lead_array.shape[0] < self.expected_shape[0]: # if X < 2500 then skip it
                                 print(f"Warning: Lead array length is less than 2500 for file {file_id}.")
                                 continue
-                            else:
+                            else: # if X > 2500 then resize it
                                 step = lead_array.shape[0] // self.expected_shape[0]
                                 lead_array = lead_array[::step, :]
-                        ecgs.append(lead_array.transpose(1, 0))
-                        out_file = os.path.join(self.tmp_folder, f"{file_id}.base64")
-                        processed_files.append(out_file)
+                        
+                        # store the lead array
+                        ecgs.append(lead_array)
+                        
+                        # store the file path
+                        df['ecg_path'] = os.path.join(self.tmp_folder, f"{file_id}.base64")
                 except Exception as e:
                     print(f"Error processing file: {str(e)}")
                     file_id = os.path.splitext(os.path.basename(file))[0]
                     self.report.append((file_id, 'Unknown', 'Failed', str(e)))
 
         ecgs = np.array(ecgs)
-        return processed_files, ecgs
+        return df, ecgs
 
     def _process_clsa_xml(self, data_dict: dict, file_id: str) -> None:
         try:
