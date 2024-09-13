@@ -173,28 +173,28 @@ ECG_PATTERNS = [
 
 BERT_THRESHOLDS = {
     "Rhythm Disorders": {
-        "micro_threshold": 0.45,
-        "macro_threshold": 0.34
+        "macro_threshold": 0.34,
+        "micro_threshold": 0.45
     },
     "Conduction Disorder": {
-        "micro_threshold": 0.41000000000000003,
-        "macro_threshold": 0.43
+        "macro_threshold": 0.43,
+        "micro_threshold": 0.41
     },
     "Enlargement of the heart chambers": {
-        "micro_threshold": 0.38,
-        "macro_threshold": 0.38
+        "macro_threshold": 0.38,
+        "micro_threshold": 0.38
     },
     "Pericarditis": {
-        "micro_threshold": 0.38,
-        "macro_threshold": 0.38
+        "macro_threshold": 0.38,
+        "micro_threshold": 0.38
     },
     "Infarction or ischemia": {
-        "micro_threshold": 0.5,
-        "macro_threshold": 0.45
+        "macro_threshold": 0.4,
+        "micro_threshold": 0.4
     },
     "Other diagnoses": {
-        "micro_threshold": 0.56,
-        "macro_threshold": 0.52
+        "macro_threshold": 0.52,
+        "micro_threshold": 0.56
     },
     "Sinusal": {
         "threshold": 0.43
@@ -206,7 +206,7 @@ BERT_THRESHOLDS = {
         "threshold": 0.51
     },
     "QS complex in V1-V2-V3": {
-        "threshold": 0.5700000000000001
+        "threshold": 0.57
     },
     "R complex in V5-V6": {
         "threshold": 0.4
@@ -236,10 +236,10 @@ BERT_THRESHOLDS = {
         "threshold": 0.38
     },
     "Bradycardia": {
-        "threshold": 0.5700000000000001
+        "threshold": 0.57
     },
     "Q wave (inferior - II, III, aVF)": {
-        "threshold": 0.42
+        "threshold": 0.46
     },
     "Afib": {
         "threshold": 0.46
@@ -248,10 +248,10 @@ BERT_THRESHOLDS = {
         "threshold": 0.58
     },
     "Atrial tachycardia (>= 100 BPM)": {
-        "threshold": 0.38
+        "threshold": 0.39
     },
     "Nonspecific intraventricular conduction delay": {
-        "threshold": 0.38
+        "threshold": 0.34
     },
     "Premature ventricular complex": {
         "threshold": 0.34
@@ -272,7 +272,7 @@ BERT_THRESHOLDS = {
         "threshold": 0.46
     },
     "ST elevation (septal - V1-V2)": {
-        "threshold": 0.58
+        "threshold": 0.48
     },
     "1st degree AV block": {
         "threshold": 0.31
@@ -290,7 +290,7 @@ BERT_THRESHOLDS = {
         "threshold": 0.63
     },
     "Left anterior fascicular block": {
-        "threshold": 0.53
+        "threshold": 0.45
     },
     "Right axis deviation": {
         "threshold": 0.49
@@ -305,16 +305,16 @@ BERT_THRESHOLDS = {
         "threshold": 0.38
     },
     "ST elevation (inferior - II, III, aVF)": {
-        "threshold": 0.47000000000000003
+        "threshold": 0.36
     },
     "Low voltage": {
-        "threshold": 0.47000000000000003
+        "threshold": 0.5
     },
     "Regularly irregular": {
         "threshold": 0.58
     },
     "Junctional rhythm": {
-        "threshold": 0.29
+        "threshold": 0.43
     },
     "Left atrial enlargement": {
         "threshold": 0.52
@@ -347,7 +347,7 @@ BERT_THRESHOLDS = {
         "threshold": 0.51
     },
     "Supraventricular tachycardia": {
-        "threshold": 0.33
+        "threshold": 0.42
     },
     "ST downslopping": {
         "threshold": 0.37
@@ -356,7 +356,7 @@ BERT_THRESHOLDS = {
         "threshold": 0.51
     },
     "2nd degree AV block - mobitz 2": {
-        "threshold": 0.42
+        "threshold": 0.37
     },
     "U wave": {
         "threshold": 0.26
@@ -368,19 +368,19 @@ BERT_THRESHOLDS = {
         "threshold": 0.53
     },
     "Left posterior fascicular block": {
-        "threshold": 0.34
+        "threshold": 0.35
     },
     "Right atrial enlargement": {
-        "threshold": 0.23
+        "threshold": 0.26
     },
     "ST depression (septal- V1-V2)": {
-        "threshold": 0.3
+        "threshold": 0.41
     },
     "Q wave (septal- V1-V2)": {
         "threshold": 0.51
     },
     "Q wave (anterior - V3-V4)": {
-        "threshold": 0.39
+        "threshold": 0.37
     },
     "ST upslopping": {
         "threshold": 0.39
@@ -389,28 +389,28 @@ BERT_THRESHOLDS = {
         "threshold": 0.43
     },
     "Ventricular tachycardia": {
-        "threshold": 0.35000000000000003
+        "threshold": 0.35
     },
     "ST elevation (posterior - V7-V8-V9)": {
         "threshold": 0.4
     },
     "Ectopic atrial rhythm (< 100 BPM)": {
-        "threshold": 0.49
+        "threshold": 0.4
     },
     "Lead misplacement": {
         "threshold": 0.32
     },
     "Third Degree AV Block": {
-        "threshold": 0.39
+        "threshold": 0.37
     },
     "Acute MI": {
         "threshold": 0.38
     },
     "Early repolarization": {
-        "threshold": 0.38
+        "threshold": 0.4
     },
     "Q wave (posterior - V7-V9)": {
-        "threshold": 0.31
+        "threshold": 0.34
     },
     "Bi-atrial enlargement": {
         "threshold": 0.29

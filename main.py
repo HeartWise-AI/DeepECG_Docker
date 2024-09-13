@@ -1,5 +1,5 @@
 import os
-import pandas as pd
+import shutil
 
 from utils.parser import HearWiseArgs
 from utils.analysis_pipeline import AnalysisPipeline
@@ -45,7 +45,7 @@ def main(args: HearWiseArgs):
     
     # Remove tmp folder
     if os.path.exists('./tmp'):
-        os.remove('./tmp')
+        shutil.rmtree('./tmp')
 
 if __name__ == '__main__':
     args = HearWiseArgs.parse_arguments()
