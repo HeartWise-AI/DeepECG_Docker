@@ -8,7 +8,7 @@ import pandas as pd
 import xml.etree.ElementTree as ET
 
 from tqdm import tqdm
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def load_csv_df(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
@@ -185,17 +185,16 @@ class XMLProcessor:
             print(f"Error processing file: {str(e)}")
             return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
 
-    def process_batch(self, df: pd.DataFrame, num_workers: int = 32) -> tuple[list[str], np.ndarray]:
+    def process_batch(self, df: pd.DataFrame, num_workers: int = 32) -> tuple[pd.DataFrame, pd.DataFrame]:
         xml_files = df['ecg_path'].tolist()
         ecgs = []
-        with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            future_to_file = {executor.submit(self.process_single_file, file): file for file in xml_files}
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            future_to_file = {executor.submit(self.process_single_file, file): (file, index) for index, file in enumerate(xml_files)}
             for future in tqdm(as_completed(future_to_file), total=len(xml_files), desc="Processing files"):
-                file = future_to_file[future]
+                file, index = future_to_file[future]
                 try:
                     report_entry, file_id, lead_array = future.result()
                     self.report.append(report_entry)
-                    
                     if lead_array is not None:
                         if lead_array.shape[0] == self.expected_shape[1]: # if is (12, X) then transpose it to (X, 12)
                             lead_array = lead_array.transpose(1, 0)
@@ -208,17 +207,16 @@ class XMLProcessor:
                                 lead_array = lead_array[::step, :]
                         
                         # store the lead array
-                        ecgs.append(lead_array)
-                        
-                        # store the file path
-                        df['ecg_path'] = os.path.join(self.tmp_folder, f"{file_id}.base64")
+                        new_path = os.path.join(self.tmp_folder, f"{file_id}.base64")
+                        df.at[index, 'ecg_path'] = new_path
+                        ecgs.append([new_path, lead_array])
+                    
                 except Exception as e:
                     print(f"Error processing file: {str(e)}")
                     file_id = os.path.splitext(os.path.basename(file))[0]
                     self.report.append((file_id, 'Unknown', 'Failed', str(e)))
-
-        ecgs = np.array(ecgs)
-        return df, ecgs
+        
+        return df, pd.DataFrame(ecgs, columns=['ecg_path', 'ecg_signal'])
 
     def _process_clsa_xml(self, data_dict: dict, file_id: str) -> None:
         try:

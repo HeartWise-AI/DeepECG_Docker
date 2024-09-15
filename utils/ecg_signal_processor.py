@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 from tqdm import tqdm
 from scipy.interpolate import interp1d
@@ -194,8 +195,9 @@ class ECGSignalProcessor:
     def widen_ranges(self, ranges_list, widen_by=1):
         return [(start - widen_by, end + widen_by) for start, end in ranges_list]
 
-    def clean_and_process_ecg_leads(self, input_data, window_size=5, std_threshold=5, max_workers=16):
+    def clean_and_process_ecg_leads(self, df: pd.DataFrame, window_size: int = 5, std_threshold: int = 5, max_workers: int = 16) -> pd.DataFrame:
         print("Step 1: Detecting peaks")
+        input_data = np.array(df['ecg_signal'].tolist())
         peak_ranges = self.detect_peaks_with_sliding_window(
             np.squeeze(input_data[:, :, 0]),
             window_size=window_size,
@@ -215,7 +217,11 @@ class ECGSignalProcessor:
         cleaned_data = np.array(processed_leads).astype(np.float32)
         cleaned_data = np.swapaxes(cleaned_data, 0, -2)
         cleaned_data = np.swapaxes(cleaned_data, -1, -2)
-        return cleaned_data
+
+        return pd.DataFrame({
+            'ecg_path': df['ecg_path'].tolist(),
+            'ecg_signal': list(cleaned_data)
+        })
 
 if __name__ == "__main__":
     root_dir = "./tmp/"

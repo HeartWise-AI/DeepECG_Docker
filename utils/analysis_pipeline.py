@@ -156,25 +156,25 @@ class AnalysisPipeline:
     def preprocess_data(df: pd.DataFrame, output_folder: str) -> pd.DataFrame:
         # Generate XML
         xml_processor = XMLProcessor() 
-        df, ecg_signals = xml_processor.process_batch(
+        df, ecg_signals_df = xml_processor.process_batch(
             df=df,
             num_workers=16
         )        
         print(f"Processed {len(df)} files.")
-        
+
         # Save report
         xml_processor.save_report(output_folder=output_folder)
         
         # Process ECG signals
         ecg_signal_processor = ECGSignalProcessor()
-        cleaned_ecg_signals = ecg_signal_processor.clean_and_process_ecg_leads(input_data=ecg_signals, max_workers=16)
+        cleaned_ecg_signals_df = ecg_signal_processor.clean_and_process_ecg_leads(df=ecg_signals_df, max_workers=16)
         
-        print(f"Cleaned {len(cleaned_ecg_signals)} ecg signals.")
-        
-        for i, file in tqdm(enumerate(df['ecg_path']), total=len(df)):
+        print(f"Cleaned {len(cleaned_ecg_signals_df)} ecg signals.")
+
+        for _, row in tqdm(cleaned_ecg_signals_df.iterrows(), total=len(cleaned_ecg_signals_df), desc="Saving cleaned ecg signals"):
             ECGFileHandler.save_ecg_signal(
-                ecg_signal=cleaned_ecg_signals[i],
-                filename=f"{file}"
+                ecg_signal=row['ecg_signal'],
+                filename=f"{row['ecg_path']}"
             )
             
         return df

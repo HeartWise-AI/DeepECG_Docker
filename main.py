@@ -8,10 +8,10 @@ from utils.files_handler import save_to_csv, save_to_json, read_api_key, load_cs
 def main(args: HearWiseArgs):
     # Create tmp folder
     os.makedirs('./tmp', exist_ok=True)
-    
+        
     # Create output folder
     os.makedirs(args.output_folder, exist_ok=True)
-    
+
     # Read data
     df = load_csv_df(args.data_path)
     df = set_path(df, args.ecg_signals_path)
