@@ -1,2 +1,2 @@
-diagnosis,XML_file_name
+diagnosis,ecg_file_name
 Sinus bradycardia Otherwise normal ECG,ecg_file_name.xml
