@@ -25,7 +25,7 @@ DeepECG_Deploy is a repository designed for deploying deep learning models for E
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/DeepECG_Deploy.git
+   git clone https://github.com/HeartWise-AI/DeepECG_Deploy.git
    cd DeepECG_Deploy
    ```
 
