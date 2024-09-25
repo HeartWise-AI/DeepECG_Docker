@@ -10,9 +10,22 @@ import xml.etree.ElementTree as ET
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-def load_csv_df(path: str) -> pd.DataFrame:
-    df = pd.read_csv(path)
+def load_df(path: str) -> pd.DataFrame:
+    if path.endswith('.csv'):
+        df = pd.read_csv(path)
+    elif path.endswith('.parquet'):
+        df = pd.read_parquet(path)
+    else:
+        raise ValueError("Unsupported file extension. Only .csv and .parquet are supported.")
     return df
+
+def save_df(df: pd.DataFrame, path: str) -> None:
+    if path.endswith('.csv'):
+        df.to_csv(path, index=False)
+    elif path.endswith('.parquet'):
+        df.to_parquet(path, index=False)
+    else:
+        raise ValueError("Unsupported file extension. Only .csv and .parquet are supported.")
 
 def set_path(df: pd.DataFrame, path: str) -> pd.DataFrame:
     df['ecg_path'] = df['ecg_file_name'].apply(lambda x: os.path.join(path, x))
@@ -46,7 +59,7 @@ def save_to_csv(metrics: dict, path: str) -> None:
         writer.writeheader()
         writer.writerows(rows)
 
-def save_to_json(data: dict, path: str) -> None:
+def save_json(data: dict, path: str) -> None:
     if not os.path.exists('/'.join(path.split('/')[:-1])):
         os.makedirs('/'.join(path.split('/')[:-1]))
     with open(path, 'w') as f:
@@ -87,7 +100,6 @@ class ECGFileHandler:
 class XMLProcessor:
     def __init__(self):
         self.report = []
-        self.tmp_folder = "./tmp"
         self.expected_shape = (2500, 12)
 
     @staticmethod
@@ -185,7 +197,7 @@ class XMLProcessor:
             print(f"Error processing file: {str(e)}")
             return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
 
-    def process_batch(self, df: pd.DataFrame, num_workers: int = 32) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def process_batch(self, df: pd.DataFrame, num_workers: int = 32, preprocessing_folder: str = './tmp') -> tuple[pd.DataFrame, pd.DataFrame]:
         xml_files = df['ecg_path'].tolist()
         ecgs = []
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
@@ -207,7 +219,7 @@ class XMLProcessor:
                                 lead_array = lead_array[::step, :]
                         
                         # store the lead array
-                        new_path = os.path.join(self.tmp_folder, f"{file_id}.base64")
+                        new_path = os.path.join(preprocessing_folder, f"{file_id}.base64")
                         df.at[index, 'ecg_path'] = new_path
                         ecgs.append([new_path, lead_array])
                     

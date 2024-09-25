@@ -13,15 +13,22 @@ DeepECG_Deploy is a repository designed for deploying deep learning models for E
 - [Contributing](#contributing)
 - [Citation](#citation)
 
-## Features
+## 🚀 Features
 
-- BERT-based classification for ECG diagnosis
-- EfficientNet-based signal processing for ECG data
+- BERT-based multilabel classification for ECG diagnosis (77 classes)
+- EfficientNet-based multilabel classification for ECG signals (77 classes)
+- WCR-based multilabel classification for ECG signals (77 classes)
+- WCR-based binary classification for ECG signals (LVEF <= 40%)
+- WCR-based binary classification for ECG signals (LVEF < 50%)
+- WCR-based binary classification for ECG signals (Incident AFIB at 5 years)
+- EfficientNet-based binary classification for ECG signals (LVEF <= 40%)
+- EfficientNet-based binary classification for ECG signals (LVEF < 50%)
+- EfficientNet-based binary classification for ECG signals (Incident AFIB at 5 years)
 - Dockerized deployment for easy setup and execution
 - Configurable pipeline for flexible usage
 - GPU support for accelerated processing
 
-## Installation
+## 🛠️ Installation
 
 1. Clone the repository:
    ```
@@ -55,6 +62,8 @@ DeepECG_Deploy is a repository designed for deploying deep learning models for E
 DeepECG_Deploy/
 │
 ├── models/
+|   ├── modules
+|   |   ├── EfficientNetv2.py
 │   ├── bert_classifier.py
 │   └── efficientnet_wrapper.py
 │
@@ -63,6 +72,9 @@ DeepECG_Deploy/
 │
 ├── outputs/
 │   └── (output files will be generated here)
+│
+├── preprocessing/
+│   └── (preprocessed files will be saved here)
 │
 ├── Dockerfile
 ├── heartwise.config
@@ -85,7 +97,7 @@ DeepECG_Deploy/
    - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
    - The model takes an input signal tensor and outputs the processed result.
 
-## Usage
+## 📄 Usage
 
 1. Prepare your input data:
    - Create a CSV file with the following template in inputs/data_rows_template.csv:
@@ -96,8 +108,8 @@ DeepECG_Deploy/
 2. Configure the pipeline:
    - Edit the `heartwise.config` file to set the desired configuration
    ```yaml
-   diagnosis_classifier_device: cuda:1
-   signal_processing_device: cuda:1
+   diagnosis_classifier_device: cuda:0
+   signal_processing_device: cuda:0
    batch_size: 32
    output_folder: /outputs
    hugging_face_api_key_path: /app/api_key.json
@@ -119,6 +131,9 @@ DeepECG_Deploy/
      - `diagnosis_classifier_model_name`: The name of the diagnosis classifier model to be used. Example: `bert_diagnosis2classification`.
      - `data_path`: The path to the input CSV file containing the data. Example: `/inputs/data_rows_template.csv`.
      - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/ecg_signals_folder`.
+     - `mode`: The mode of the pipeline. Example: `analysis` | `preprocessing` | `full_run`.
+     - `preprocessing_folder`: The path to the folder where the preprocessed files will be saved. Example: `/preprocessing`.
+     - `preprocessing_n_workers`: The number of workers to be used for the preprocessing. Example: `16`.
 
    - Ensure that the paths and model names in the `heartwise.config` file are correctly set according to your setup and requirements.
 
@@ -136,12 +151,14 @@ DeepECG_Deploy/
 
 4. Retrieve results:
    - Check the `outputs/` directory for the generated results file
+   - Check the `preprocessing/` directory for the generated preprocessed files
 
-## Docker
+## 🐳 Docker
 
 ### Building the Docker Image
 
 To build the Docker image, run the following command in the root directory of the project:
+Note that heartwise.config should be changed based on the mode (preprocessing, analysis or full run)
 
 ```
 docker build -t deepecg-deploy .
@@ -151,19 +168,30 @@ docker build -t deepecg-deploy .
 
 To run the Docker container, use one of the following commands based on your hardware:
 
-**With GPU:**
+**For preprocessing:**
 ```
-docker run --gpus "device=0" -v $(pwd)/outputs:/outputs -v $(pwd)/ecg_signals:/ecg_signals_path -i deepecg-deploy
+docker run -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals_path -v local_path_to_preprocessing:/preprocessing -i deepecg-deploy preprocessing
+```
+
+**For analysis:**
+```
+docker run --gpus "device=0" -v local_path_to_outputs:/outputs -v local_path_to_preprocessing:/preprocessing -i deepecg-deploy analysis
+```
+
+**For full run:**
+```
+docker run --gpus "device=0" -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals_path -v local_path_to_preprocessing:/preprocessing -i deepecg-deploy full_run
 ```
 
 **Without GPU (CPU only):**
+Note that models device in heartwise.config should be set to "cpu"
 ```
-docker run -v $(pwd)/outputs:/outputs -v $(pwd)/ecg_signals:/ecg_signals -i deepecg-deploy
+docker run -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals -v local_path_to_preprocessing:/preprocessing -i deepecg-deploy full_run
 ```
 
 These commands mount the `outputs/` and `ecg_signals/` directories from your local machine to the container, allowing you to easily provide input data and retrieve results.
 
-## Contributing
+## 🤝 Contributing
 
 Contributions to DeepECG_Deploy are welcome! Please follow these steps to contribute:
 
@@ -173,7 +201,7 @@ Contributions to DeepECG_Deploy are welcome! Please follow these steps to contri
 4. Push your changes to your fork
 5. Submit a pull request to the main repository
 
-## Citation
+## 📚 Citation
 
 If you find this repository useful, please consider citing our work:
 

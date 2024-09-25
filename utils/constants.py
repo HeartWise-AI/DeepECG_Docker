@@ -428,3 +428,9 @@ BERT_THRESHOLDS = {
         "threshold": 0.27
     }
 }
+
+
+class Mode:
+    FULL_RUN = "full_run"
+    ANALYSIS = "analysis"
+    PREPROCESSING = "preprocessing"

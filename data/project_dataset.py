@@ -13,10 +13,15 @@ class ProjectDataset:
         return len(self.diagnosis)
     
     def __getitem__(self, idx):
+        diagnosis = self.diagnosis.loc[idx]
         file_name = os.path.basename(self.ecg_path.loc[idx])
-        ecg_signal = ECGFileHandler.load_ecg_signal(os.path.join('./tmp', file_name))
+        ecg_signal = ECGFileHandler.load_ecg_signal(self.ecg_path.loc[idx])
         ecg_signal = ecg_signal.transpose(1, 0)
-        return self.diagnosis.loc[idx], torch.from_numpy(ecg_signal).float(), file_name
+        return {
+            'diagnosis': diagnosis, 
+            'ecg_signal': torch.from_numpy(ecg_signal).float(), 
+            'file_name': file_name
+        }
 
 def create_dataloader(df: pd.DataFrame, batch_size: int = 1, shuffle: bool = False):
     dataset = ProjectDataset(df)
