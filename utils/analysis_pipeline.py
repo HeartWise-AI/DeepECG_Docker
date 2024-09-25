@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 from tqdm import tqdm
-from sklearn.metrics import roc_auc_score, average_precision_score, f1_score
+from sklearn.metrics import roc_auc_score, average_precision_score, f1_score, roc_curve
 
 from utils.files_handler import XMLProcessor, ECGFileHandler
 from data.project_dataset import create_dataloader
@@ -11,6 +11,24 @@ from models import HeartWiseModelFactory
 from utils.constants import ECG_CATEGORIES, ECG_PATTERNS, BERT_THRESHOLDS
 from utils.ecg_signal_processor import ECGSignalProcessor
 
+def compute_best_threshold(df_gt_col: pd.Series, df_pred_col: pd.Series) -> float:
+    """
+    Compute the best threshold using the Youden Index.
+
+    Args:
+        df_gt_col (pd.Series): Ground truth values for a specific column.
+        df_pred_col (pd.Series): Predicted values for a specific column.
+
+    Returns:
+        float: The best threshold value.
+    """
+    fpr, tpr, roc_thresholds = roc_curve(df_gt_col, df_pred_col)
+    
+    # Compute Youden Index
+    youden_index = tpr - fpr
+    best_threshold = roc_thresholds[np.argmax(youden_index)]
+    
+    return float(best_threshold) # convert to float instead of numpy.float32
 
 def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
     metrics = {}
@@ -125,14 +143,11 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
             }
             continue
         
-        best_threshold = 0.5
-        best_f1 = 0
-        for threshold in np.arange(0, 1.01, 0.01):
-            f1 = f1_score(df_gt[col], df_pred[col] >= threshold)
-            if f1 > best_f1:
-                best_f1 = f1
-                best_threshold = threshold
         
+        best_threshold = compute_best_threshold(df_gt[col], df_pred[col])
+
+        best_f1 = f1_score(df_gt[col], df_pred[col] >= best_threshold)
+                
         prevalence_gt = float(
             (sum_gt / len(df_gt)) * 100
         )
@@ -153,12 +168,13 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
 
 class AnalysisPipeline:
     @staticmethod
-    def preprocess_data(df: pd.DataFrame, output_folder: str) -> pd.DataFrame:
+    def preprocess_data(df: pd.DataFrame, output_folder: str, preprocessing_folder: str, preprocessing_n_workers: int) -> pd.DataFrame:
         # Generate XML
         xml_processor = XMLProcessor() 
         df, ecg_signals_df = xml_processor.process_batch(
             df=df,
-            num_workers=16
+            num_workers=preprocessing_n_workers,
+            preprocessing_folder=preprocessing_folder
         )        
         print(f"Processed {len(df)} files.")
 
@@ -167,8 +183,8 @@ class AnalysisPipeline:
         
         # Process ECG signals
         ecg_signal_processor = ECGSignalProcessor()
-        cleaned_ecg_signals_df = ecg_signal_processor.clean_and_process_ecg_leads(df=ecg_signals_df, max_workers=16)
-        
+        cleaned_ecg_signals_df = ecg_signal_processor.clean_and_process_ecg_leads(df=ecg_signals_df, max_workers=preprocessing_n_workers)
+                
         print(f"Cleaned {len(cleaned_ecg_signals_df)} ecg signals.")
 
         for _, row in tqdm(cleaned_ecg_signals_df.iterrows(), total=len(cleaned_ecg_signals_df), desc="Saving cleaned ecg signals"):
@@ -176,7 +192,7 @@ class AnalysisPipeline:
                 ecg_signal=row['ecg_signal'],
                 filename=f"{row['ecg_path']}"
             )
-            
+                    
         return df
         
         
@@ -212,7 +228,10 @@ class AnalysisPipeline:
         ground_truth = []
         probabities_rows = []
         dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
-        for diagnosis, ecg_tensor, file_name in tqdm(dataloader, total=len(dataloader)):
+        for batch in tqdm(dataloader, total=len(dataloader)):
+            diagnosis = batch['diagnosis']
+            ecg_tensor = batch['ecg_signal']
+            file_name = batch['file_name']
             # Create thresholds tensor
             current_batch_size = len(diagnosis)
             bert_thresholds_tensor = torch.zeros((current_batch_size, 77)).to(diagnosis_classifier_device)

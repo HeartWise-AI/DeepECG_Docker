@@ -16,4 +16,7 @@ class HearWiseArgs:
         parser.add_argument('--signal_processing_model_name', help='Name of the signal processing model', type=str, required=True)
         parser.add_argument('--diagnosis_classifier_model_name', help='Name of the diagnosis classifier model', type=str, required=True)
         parser.add_argument('--ecg_signals_path', help='Path to the ECG signals files', type=str, required=True)
+        parser.add_argument('--mode', help='Mode of the script', type=str, required=True)
+        parser.add_argument('--preprocessing_folder', help='Path to the preprocessing folder', type=str, required=True)
+        parser.add_argument('--preprocessing_n_workers', help='Number of workers for the preprocessing', type=int, default=16)
         return parser.parse_args()

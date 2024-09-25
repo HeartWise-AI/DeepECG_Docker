@@ -13,5 +13,8 @@ RUN pip install --upgrade pip && \
 # Make the bash script executable
 RUN chmod +x run_pipeline.bash
 
-# Run the bash script
-CMD ["./run_pipeline.bash"]
+# Set entrypoint
+ENTRYPOINT ["./run_pipeline.bash"]
+
+# Use CMD to set the defualt mode 
+CMD ["full_run"]
