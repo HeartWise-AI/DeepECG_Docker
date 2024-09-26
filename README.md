@@ -170,17 +170,17 @@ To run the Docker container, use one of the following commands based on your har
 
 **For preprocessing:**
 ```
-docker run -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals_path -v local_path_to_preprocessing:/preprocessing -i deepecg-deploy preprocessing
+docker run -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-deploy preprocessing
 ```
 
 **For analysis:**
 ```
-docker run --gpus "device=0" -v local_path_to_outputs:/outputs -v local_path_to_preprocessing:/preprocessing -i deepecg-deploy analysis
+docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_preprocessing:/app/preprocessing -i deepecg-deploy analysis
 ```
 
 **For full run:**
 ```
-docker run --gpus "device=0" -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals_path -v local_path_to_preprocessing:/preprocessing -i deepecg-deploy full_run
+docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-deploy full_run
 ```
 
 **Without GPU (CPU only):**

@@ -31,137 +31,116 @@ def compute_best_threshold(df_gt_col: pd.Series, df_pred_col: pd.Series) -> floa
     return float(best_threshold) # convert to float instead of numpy.float32
 
 def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
+    """
+    Compute evaluation metrics for ECG classification.
+
+    Args:
+        df_gt (pd.DataFrame): Ground truth DataFrame.
+        df_pred (pd.DataFrame): Predicted probabilities DataFrame.
+
+    Returns:
+        dict: A dictionary containing evaluation metrics for each category and column.
+    """    
+    # initialize metrics dictionary
     metrics = {}
+    for cat in ECG_CATEGORIES:
+        metrics[cat] = {
+            "macro_auc": None,
+            "macro_auprc": None,
+            "macro_f1": None,
+            "micro_auc": None,
+            "micro_auprc": None,
+            "micro_f1": None,
+            "threshold": None,
+            "prevalence_gt %": None,
+            "prevalence_pred %": None
+        }
+    for col in df_gt.columns:
+        metrics[col] = {
+            "auc": None,
+            "auprc": None,
+            "f1": None,
+            "threshold": None,
+            "prevalence_gt %": None,
+            "prevalence_pred %": None
+        }
+        
+    # Compute category metrics
     for category in ECG_CATEGORIES:
+        # Get category columns
         category_columns = [
             col for col in ECG_CATEGORIES[category]
-            if df_gt[col].sum() > 0
+            if df_gt[col].sum() > 0 # filter out columns with no ground truth
         ]
-        
+                        
+        # Skip category if no columns have ground truth
         if not category_columns:
-            metrics[category] = {
-                metric: np.nan for metric in [
-                    "macro_auc", "macro_auprc", "micro_auc", "micro_auprc",
-                    "macro_f1", "micro_f1", "prevalence_gt %", "prevalence_pred %"
-                ]
-            }
             continue
+            
+        # Aggregate ground truth and predictions for the category
+        category_gt = df_gt[category_columns]
+        category_pred = df_pred[category_columns]
 
-        category_gt, category_pred = zip(*[
-            (df_gt[col], df_pred[col])
-            for col in ECG_CATEGORIES[category]
-            if df_gt[col].sum() > 0
-        ])
-        
         # Compute macro auc and auprc metrics
         cat_auc_scores = []
         cat_auprc_scores = []
-        for col_gt, col_pred in zip(category_gt, category_pred):
-            cat_auc_scores.append(roc_auc_score(col_gt, col_pred))
-            cat_auprc_scores.append(average_precision_score(col_gt, col_pred))
+        macro_f1_scores = []
+        for col in category_columns:
+            # Compute metrics for each column
+            col_auc = roc_auc_score(category_gt[col], category_pred[col])
+            col_auprc = average_precision_score(category_gt[col], category_pred[col])
+            col_threshold = compute_best_threshold(category_gt[col], category_pred[col])
+            col_f1 = f1_score(category_gt[col], category_pred[col] >= col_threshold)
+            metrics[col] = {
+                "auc": col_auc,
+                "auprc": col_auprc,
+                "threshold": col_threshold,
+                "f1": col_f1,
+                "prevalence_gt %": category_gt[col].sum() / len(df_gt) * 100,
+                "prevalence_pred %": (category_pred[col] >= col_threshold).sum() / len(df_pred) * 100,
+            }
+            
+            # Append metrics to category metrics
+            cat_auc_scores.append(col_auc)
+            cat_auprc_scores.append(col_auprc)
+            macro_f1_scores.append(col_f1)
+            
+        # Compute macro metrics
         cat_macro_auc = np.mean(cat_auc_scores)
         cat_macro_auprc = np.mean(cat_auprc_scores)
-                
-        # Find best macro and micro f1 metrics
-        ravel_categories_gt = np.array(category_gt).ravel()
-        ravel_categories_pred = np.array(category_pred).ravel()
-        best_macro_f1, best_micro_f1 = 0, 0
-        macro_threshold, micro_threshold = 0.5, 0.5
-        for threshold in np.arange(0, 1.01, 0.01):
-            # Macro F1
-            cat_f1_scores = [
-                f1_score(col_gt, col_pred >= threshold) 
-                for col_gt, col_pred in zip(category_gt, category_pred)
-            ]
-            macro_f1 = np.mean(cat_f1_scores)
-            if macro_f1 > best_macro_f1:
-                best_macro_f1 = macro_f1
-                macro_threshold = threshold
-            
-            # Micro F1
-            micro_f1 = f1_score(
-                ravel_categories_gt, 
-                ravel_categories_pred >= threshold, 
-                average='micro'
-            )
-            if micro_f1 > best_micro_f1:
-                best_micro_f1 = micro_f1
-                micro_threshold = threshold
-                        
-        # Compute Category Prevalence                
-        df_cat = pd.DataFrame(0, index=range(len(df_gt)), columns=[category]) 
-        df_cat_macro = pd.DataFrame(0, index=range(len(df_gt)), columns=[category]) 
-        df_cat_micro = pd.DataFrame(0, index=range(len(df_gt)), columns=[category]) 
-        for col in ECG_CATEGORIES[category]:
-            df_cat.loc[df_gt[col] == 1, category] = 1
-            df_cat_macro.loc[(df_pred[col] >= macro_threshold).astype(int) == 1, category] = 1
-            df_cat_micro.loc[(df_pred[col] >= micro_threshold).astype(int) == 1, category] = 1
-                
-        cat_prevalence_gt = float(
-            (df_cat[category].sum() / len(df_cat)) * 100
+        cat_macro_f1 = np.mean(macro_f1_scores)
+                    
+        # Compute micro metrics
+        ravel_categories_gt = category_gt.values.ravel()
+        ravel_categories_pred = category_pred.values.ravel()
+        micro_auc = roc_auc_score(
+            ravel_categories_gt, 
+            ravel_categories_pred, 
+            average='micro'
         )
-        cat_prevalence_macro = float(
-            (df_cat_macro[category].sum() / len(df_cat_macro)) * 100
+        micro_auprc = average_precision_score(
+            ravel_categories_gt, 
+            ravel_categories_pred, 
+            average='micro'
         )
-        cat_prevalence_micro = float(
-            (df_cat_micro[category].sum() / len(df_cat_micro)) * 100
-        )
+        best_micro_threshold = compute_best_threshold(ravel_categories_gt, ravel_categories_pred)
+        cat_micro_f1 = f1_score(ravel_categories_gt, ravel_categories_pred >= best_micro_threshold, average='micro')                    
         
+        # Compute Category Prevalence
+        cat_prevalence_gt = ravel_categories_gt.sum() / len(df_gt) * 100
+        cat_prevalence_micro = (ravel_categories_pred >= best_micro_threshold).sum() / len(df_pred) * 100
+                        
         # Store Category Metrics
         metrics[category] = {
             "macro_auc":  cat_macro_auc,
             "macro_auprc": cat_macro_auprc,
-            "macro_f1": best_macro_f1,
-            "macro_threshold": macro_threshold,
-            "micro_auc": roc_auc_score(
-                ravel_categories_gt, 
-                ravel_categories_pred, 
-                average='micro'
-            ),
-            "micro_auprc": average_precision_score(
-                ravel_categories_gt, 
-                ravel_categories_pred, 
-                average='micro'
-            ),
-            "micro_f1": best_micro_f1,
-            "micro_threshold": micro_threshold,
+            "macro_f1": cat_macro_f1,
+            "micro_auc": micro_auc,
+            "micro_auprc": micro_auprc,
+            "micro_f1": cat_micro_f1,
+            "threshold": best_micro_threshold,
             "prevalence_gt %": cat_prevalence_gt,
-            "prevalence_macro %": cat_prevalence_macro,
-            "prevalence_micro %": cat_prevalence_micro
-        }
-
-    # Compute per-class metrics and collect data for each pattern
-    for col in ECG_PATTERNS:
-        sum_gt = df_gt[col].sum()
-        if sum_gt == 0:
-            metrics[col] = {
-                "auc": np.nan,
-                "auprc": np.nan,
-                "f1": np.nan,
-                "prevalence_gt %": np.nan,
-                "prevalence_pred %": np.nan
-            }
-            continue
-        
-        
-        best_threshold = compute_best_threshold(df_gt[col], df_pred[col])
-
-        best_f1 = f1_score(df_gt[col], df_pred[col] >= best_threshold)
-                
-        prevalence_gt = float(
-            (sum_gt / len(df_gt)) * 100
-        )
-        prevalence_pred = float(
-            ((df_pred[col] >= best_threshold).astype(int).sum() / len(df_pred)) * 100
-        )
-            
-        metrics[col] = {
-            "auc": roc_auc_score(df_gt[col], df_pred[col]),
-            "auprc": average_precision_score(df_gt[col], df_pred[col]),
-            "f1": best_f1,
-            "threshold": best_threshold,
-            "prevalence_gt": prevalence_gt,
-            "prevalence_pred": prevalence_pred
+            "prevalence_pred %": cat_prevalence_micro
         }
         
     return metrics
