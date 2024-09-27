@@ -34,6 +34,7 @@ class WCREcgTransformer(nn.Module):
         num_shards=1,
         state=None,
     ):
+        super().__init__()
         model, saved_cfg, task = checkpoint_utils.load_model_and_task(
             model_path,
             arg_overrides=arg_overrides,
