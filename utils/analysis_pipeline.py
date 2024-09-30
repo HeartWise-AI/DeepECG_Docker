@@ -4,7 +4,6 @@ import pandas as pd
 
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score, average_precision_score, f1_score, roc_curve
-
 from utils.files_handler import XMLProcessor, ECGFileHandler
 from data.project_dataset import create_dataloader
 from models import HeartWiseModelFactory
@@ -30,6 +29,65 @@ def compute_best_threshold(df_gt_col: pd.Series, df_pred_col: pd.Series) -> floa
     
     return float(best_threshold) # convert to float instead of numpy.float32
 
+def compute_metrics_binary(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
+    """
+    Compute evaluation metrics for binary ECG classification.
+
+    Args:
+        df_gt (pd.DataFrame): Ground truth DataFrame with one column.
+        df_pred (pd.DataFrame): Predicted probabilities DataFrame with one column.
+
+    Returns:
+        dict: A dictionary containing evaluation metrics.
+    """    
+    if df_gt.shape[1] != 1 or df_pred.shape[1] != 1:
+        raise ValueError("Both df_gt and df_pred must have exactly one column each for binary classification.")
+
+    # Extract the single column
+    gt = df_gt.iloc[:, 0]
+    pred = df_pred.iloc[:, 0]
+
+    # Initialize metrics dictionary
+    metrics = {
+        "auc": np.nan,
+        "auprc": np.nan,
+        "f1": np.nan,
+        "threshold": np.nan,
+        "prevalence_gt %": np.nan,
+        "prevalence_pred %": np.nan
+    }
+
+    # Check if there are positive samples in ground truth
+    if gt.sum() == 0:
+        print(f"Warning: No positive samples in ground truth. Metrics may not be meaningful.")
+        return metrics
+
+    try:
+        # Compute ROC AUC
+        metrics["auc"] = roc_auc_score(gt, pred)
+
+        # Compute Average Precision (AUPRC)
+        metrics["auprc"] = average_precision_score(gt, pred)
+
+        # Compute Best Threshold
+        best_threshold = compute_best_threshold(gt, pred)
+        metrics["threshold"] = best_threshold
+
+        # Compute F1 Score
+        predictions_binary = (pred >= best_threshold).astype(int)
+        metrics["f1"] = f1_score(gt, predictions_binary)
+
+        # Compute Prevalence in Ground Truth
+        metrics["prevalence_gt %"] = (gt.sum() / len(gt)) * 100
+
+        # Compute Prevalence in Predictions
+        metrics["prevalence_pred %"] = (predictions_binary.sum() / len(pred)) * 100
+
+    except Exception as e:
+        print(f"An error occurred while computing metrics for column '{col}': {e}")
+
+    return metrics
+
 def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
     """
     Compute evaluation metrics for ECG classification.
@@ -45,24 +103,24 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
     metrics = {}
     for cat in ECG_CATEGORIES:
         metrics[cat] = {
-            "macro_auc": None,
-            "macro_auprc": None,
-            "macro_f1": None,
-            "micro_auc": None,
-            "micro_auprc": None,
-            "micro_f1": None,
-            "threshold": None,
-            "prevalence_gt %": None,
-            "prevalence_pred %": None
+            "macro_auc": np.nan,
+            "macro_auprc": np.nan,
+            "macro_f1": np.nan,
+            "micro_auc": np.nan,
+            "micro_auprc": np.nan,
+            "micro_f1": np.nan,
+            "threshold": np.nan,
+            "prevalence_gt %": np.nan,
+            "prevalence_pred %": np.nan
         }
     for col in df_gt.columns:
         metrics[col] = {
-            "auc": None,
-            "auprc": None,
-            "f1": None,
-            "threshold": None,
-            "prevalence_gt %": None,
-            "prevalence_pred %": None
+            "auc": np.nan,
+            "auprc": np.nan,
+            "f1": np.nan,
+            "threshold": np.nan,
+            "prevalence_gt %": np.nan,
+            "prevalence_pred %": np.nan
         }
         
     # Compute category metrics
@@ -127,8 +185,8 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
         cat_micro_f1 = f1_score(ravel_categories_gt, ravel_categories_pred >= best_micro_threshold, average='micro')                    
         
         # Compute Category Prevalence
-        cat_prevalence_gt = ravel_categories_gt.sum() / len(df_gt) * 100
-        cat_prevalence_micro = (ravel_categories_pred >= best_micro_threshold).sum() / len(df_pred) * 100
+        cat_prevalence_gt = ravel_categories_gt.sum() / len(ravel_categories_gt) * 100
+        cat_prevalence_micro = (ravel_categories_pred >= best_micro_threshold).sum() / len(ravel_categories_pred) * 100
                         
         # Store Category Metrics
         metrics[category] = {
@@ -144,22 +202,48 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
         }
         
     return metrics
-
+ 
 class AnalysisPipeline:
     @staticmethod
     def preprocess_data(df: pd.DataFrame, output_folder: str, preprocessing_folder: str, preprocessing_n_workers: int) -> pd.DataFrame:
         # Generate XML
-        xml_processor = XMLProcessor() 
-        df, ecg_signals_df = xml_processor.process_batch(
-            df=df,
-            num_workers=preprocessing_n_workers,
-            preprocessing_folder=preprocessing_folder
-        )        
+        if df['ecg_file_name'].iloc[0].endswith('.npy'):
+            ecgs = []
+            # store the lead array
+            import os
+            for index, row in tqdm(df.iterrows(), total=len(df), desc="Processing files"):
+                lead_array = np.load(row['ecg_path'])
+                file_id = os.path.basename(row['ecg_path']).replace(".npy", "")
+                if lead_array.shape[-1] == 1:
+                    lead_array = lead_array.squeeze(-1)
+                if lead_array.shape[0] == 12: # if is (12, X) then transpose it to (X, 12)
+                    lead_array = lead_array.transpose(1, 0)
+                if lead_array.shape[0] != 2500: # if X != 2500 then resize it
+                    if lead_array.shape[0] < 2500: # if X < 2500 then skip it
+                        print(f"Warning: Lead array length is less than 2500 for file {file_id}.")
+                        continue
+                    else: # if X > 2500 then resize it
+                        step = lead_array.shape[0] // 2500
+                        lead_array = lead_array[::step, :]
+                new_path = os.path.join(preprocessing_folder, f"{file_id}.base64")
+                df.at[index, 'ecg_path'] = new_path
+                ecgs.append([new_path, lead_array])
+
+            ecg_signals_df = pd.DataFrame(ecgs, columns=['ecg_path', 'ecg_signal'])
+            print(ecg_signals_df.shape)
+        else:
+            xml_processor = XMLProcessor() 
+            df, ecg_signals_df = xml_processor.process_batch(
+                df=df,
+                num_workers=preprocessing_n_workers,
+                preprocessing_folder=preprocessing_folder
+            )     
+            # Save report
+            xml_processor.save_report(output_folder=output_folder)               
+        
         print(f"Processed {len(df)} files.")
 
-        # Save report
-        xml_processor.save_report(output_folder=output_folder)
-        
+
         # Process ECG signals
         ecg_signal_processor = ECGSignalProcessor()
         cleaned_ecg_signals_df = ecg_signal_processor.clean_and_process_ecg_leads(df=ecg_signals_df, max_workers=preprocessing_n_workers)
@@ -173,8 +257,7 @@ class AnalysisPipeline:
             )
                     
         return df
-        
-        
+              
     @staticmethod
     def run_analysis(
         df: pd.DataFrame, 
@@ -185,14 +268,6 @@ class AnalysisPipeline:
         diagnosis_classifier_model_name: str,
         hugging_face_api_key: str
     ) -> dict:
-        # Load models
-        diagnosis_classifier_model = HeartWiseModelFactory.create_model(
-            {
-                'model_name': diagnosis_classifier_model_name,
-                'map_location': torch.device(diagnosis_classifier_device),
-                'hugging_face_api_key': hugging_face_api_key
-            }
-        )
         
         signal_processing_model = HeartWiseModelFactory.create_model(
             {
@@ -200,42 +275,74 @@ class AnalysisPipeline:
                 'map_location': torch.device(signal_processing_device),
                 'hugging_face_api_key': hugging_face_api_key
             }
-        )        
+        )
         
-        # Compute bert diagnoses predictions
-        predictions = []
-        ground_truth = []
-        probabities_rows = []
-        dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
-        for batch in tqdm(dataloader, total=len(dataloader)):
-            diagnosis = batch['diagnosis']
-            ecg_tensor = batch['ecg_signal']
-            file_name = batch['file_name']
-            # Create thresholds tensor
-            current_batch_size = len(diagnosis)
-            bert_thresholds_tensor = torch.zeros((current_batch_size, 77)).to(diagnosis_classifier_device)
-            # Fill thresholds tensor
-            for i, pattern in enumerate(ECG_PATTERNS):
-                bert_thresholds_tensor[:, i] = BERT_THRESHOLDS[pattern]['threshold']
-
-            # Compute and create diagnosis gt tensor
-            diag_prob = diagnosis_classifier_model(diagnosis)
-            diag_binary = torch.where(diag_prob >= bert_thresholds_tensor, 1, 0)
+        if "77" in signal_processing_model_name:
+            # Load models
+            diagnosis_classifier_model = HeartWiseModelFactory.create_model(
+                {
+                    'model_name': diagnosis_classifier_model_name,
+                    'map_location': torch.device(diagnosis_classifier_device),
+                    'hugging_face_api_key': hugging_face_api_key
+                }
+            )
             
-            # Append batch data 
-            sig_prob = signal_processing_model(ecg_tensor)     
-            for i in range(len(diag_prob)):
-                ground_truth.append(diag_binary[i].detach().cpu().numpy())
-                predictions.append(sig_prob[i].detach().cpu().numpy())
-                probabities_rows.append([file_name[i]] + list(diag_prob[i].detach().cpu().numpy()) + list(sig_prob[i].detach().cpu().numpy()))
-                        
-        bert_columns = [f"{pattern}_bert_model" for pattern in ECG_PATTERNS]
-        sig_columns = [f"{pattern}_sig_model" for pattern in ECG_PATTERNS]
-        columns = ['file_name'] + bert_columns + sig_columns
-        df_probabilities = pd.DataFrame(probabities_rows, columns=columns)
+            # Compute bert diagnoses predictions
+            predictions = []
+            ground_truth = []
+            probabities_rows = []
+            dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
+            for batch in tqdm(dataloader, total=len(dataloader)):
+                diagnosis = batch['diagnosis']
+                ecg_tensor = batch['ecg_signal']
+                file_name = batch['file_name']
+                # Create thresholds tensor
+                current_batch_size = len(diagnosis)
+                bert_thresholds_tensor = torch.zeros((current_batch_size, 77)).to(diagnosis_classifier_device)
+                # Fill thresholds tensor
+                for i, pattern in enumerate(ECG_PATTERNS):
+                    bert_thresholds_tensor[:, i] = BERT_THRESHOLDS[pattern]['threshold']
 
-        # Compute and return metrics
-        return compute_metrics(
-            df_gt=pd.DataFrame(ground_truth, columns=ECG_PATTERNS), 
-            df_pred=pd.DataFrame(predictions, columns=ECG_PATTERNS)
-        ), df_probabilities
+                # Compute and create diagnosis gt tensor
+                diag_prob = diagnosis_classifier_model(diagnosis)
+                diag_binary = torch.where(diag_prob >= bert_thresholds_tensor, 1, 0)
+
+                # Append batch data 
+                sig_prob = signal_processing_model(ecg_tensor)     
+                for i in range(len(diag_binary)):
+                    ground_truth.append(diag_binary[i].detach().cpu().numpy())
+                    predictions.append(sig_prob[i].detach().cpu().numpy())
+                    probabities_rows.append([file_name[i]] + list(diag_prob[i].detach().cpu().numpy()) + list(sig_prob[i].detach().cpu().numpy()))
+                            
+            bert_columns = [f"{pattern}_bert_model" for pattern in ECG_PATTERNS]
+            sig_columns = [f"{pattern}_sig_model" for pattern in ECG_PATTERNS]
+            columns = ['file_name'] + bert_columns + sig_columns
+            df_probabilities = pd.DataFrame(probabities_rows, columns=columns)
+
+            # Compute and return metrics
+            return compute_metrics(
+                df_gt=pd.DataFrame(ground_truth, columns=ECG_PATTERNS), 
+                df_pred=pd.DataFrame(predictions, columns=ECG_PATTERNS)
+            ), df_probabilities
+        
+        else:
+            dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
+            predictions = []
+            ground_truth = []
+            probabilities_rows = []
+            with torch.no_grad():
+                for batch in tqdm(dataloader, total=len(dataloader)):
+                    diagnosis = batch['diagnosis'].unsqueeze(-1)
+                    ecg_tensor = batch['ecg_signal']
+                    file_name = batch['file_name']             
+                    sig_prob = signal_processing_model(ecg_tensor)
+
+                    for i in range(len(sig_prob)):
+                        predictions.append(sig_prob[i].detach().cpu().numpy())
+                        ground_truth.append(diagnosis[i].detach().cpu().numpy())
+                        probabilities_rows.append([file_name[i]] + list(diagnosis[i].detach().cpu().numpy()) + list(sig_prob[i].detach().cpu().numpy()))
+                        
+            return compute_metrics_binary(
+                df_gt=pd.DataFrame(ground_truth, columns=["ground_truth"]), 
+                df_pred=pd.DataFrame(predictions, columns=["predictions"])
+            ), pd.DataFrame(probabilities_rows, columns=['file_name', 'ground_truth', 'predictions'])

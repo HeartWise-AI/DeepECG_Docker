@@ -1,10 +1,10 @@
 import os
 import torch
 import pandas as pd
-from torch.utils.data import DataLoader
 from utils.files_handler import ECGFileHandler
-
-class ProjectDataset:
+from torch.utils.data import DataLoader, Dataset
+    
+class ProjectDataset(Dataset):
     def __init__(self, df: pd.DataFrame):
         self.diagnosis = df['diagnosis']
         self.ecg_path = df['ecg_path']

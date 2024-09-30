@@ -21,8 +21,7 @@ class BertClassifier(HeartWiseModelFactory):
         self.device = map_location
         self._load_model(
             model_path=HuggingFaceWrapper.get_model(
-                model_name=model_name, 
-                repo_id="heartwise/Bert_diagnosis2classification", 
+                repo_id=f"heartwise/{model_name}", 
                 local_dir=os.path.join("weights", model_name),
                 hugging_face_api_key=hugging_face_api_key
             ), 
