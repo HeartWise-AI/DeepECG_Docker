@@ -42,7 +42,7 @@ class ECGSignalProcessor:
             window_magnitudes = valid_magnitude_spectrum[i:i+window_size_points]
             mean_magnitude = np.mean(window_magnitudes)
             std_magnitude = np.std(window_magnitudes)
-            
+
             for j in range(window_size_points):
                 current_freq = valid_freqs[i + j]
                 current_threshold = std_threshold
@@ -57,6 +57,9 @@ class ECGSignalProcessor:
                 if window_magnitudes[j] > mean_magnitude + current_threshold * std_magnitude:
                     peaks.append(i + j)
                     harmonics.append(current_freq)
+        
+        if not peaks:
+            return []
         
         peak_freqs = valid_freqs[peaks]
         
@@ -198,11 +201,16 @@ class ECGSignalProcessor:
     def clean_and_process_ecg_leads(self, df: pd.DataFrame, window_size: int = 5, std_threshold: int = 5, max_workers: int = 16) -> pd.DataFrame:
         print("Step 1: Detecting peaks")
         input_data = np.array(df['ecg_signal'].tolist())
+        print(input_data.shape)
         peak_ranges = self.detect_peaks_with_sliding_window(
             np.squeeze(input_data[:, :, 0]),
             window_size=window_size,
             std_threshold=std_threshold
         )
+        
+        if len(peak_ranges) == 0:
+            print("No peaks detected - Signal similar to MHI")
+            return df
         
         processed_leads = []
         print("Step 2: Processing leads")
