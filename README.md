@@ -91,11 +91,30 @@ DeepECG_Deploy/
    - Pre-trained model is loaded from HuggingFace, and the model is fine-tuned for diagnosing and classifying ECG signals.
    - The model processes input text and outputs classification logits.
 
-2. **EfficientNetWrapper**:
-   - model_name: `efficientnetv2`
+2. **EfficientV2_77_classes**:
+   - model_name: `efficientnetv2_77_classes`
    - Utilizes the EfficientNetV2 architecture for processing ECG signals.
    - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
-   - The model takes an input signal tensor and outputs the processed result.
+   - The model takes an input signal tensor and outputs the logits for the 77 diagnosis classes.
+
+3. **EfficientV2_LVEF_Equal_Under_40**:
+   - model_name: `efficientnetv2_lvef_equal_under_40`
+   - Utilizes the EfficientNetV2 architecture for processing ECG signals.
+   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
+   - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF <= 40%.
+
+4. **EfficientV2_LVEF_Less_Than_50**:
+   - model_name: `efficientnetv2_lvef_less_than_50`
+   - Utilizes the EfficientNetV2 architecture for processing ECG signals.
+   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
+   - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF < 50%.
+
+5. **EfficientV2_Incident_AFIB_At_5_Years**:
+   - model_name: `efficientnetv2_incident_afib_at_5_years`
+   - Utilizes the EfficientNetV2 architecture for processing ECG signals.
+   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
+   - The model takes an input signal tensor and outputs the logits for the binary classification of incident AFIB at 5 years.
+
 
 ## 📄 Usage
 
