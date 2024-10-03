@@ -1,6 +1,6 @@
-# DeepECG_Deploy
+# DeepECG_Docker
 
-DeepECG_Deploy is a repository designed for deploying deep learning models for ECG signal analysis and comparing their performance over a Bert Classifier model. The pipeline can be run locally or in a docker container.
+DeepECG_Docker is a repository designed for deploying deep learning models for ECG signal analysis and comparing their performance over a Bert Classifier model or a specified ground truth. The pipeline can be run locally or in a docker container.
 
 ## Table of Contents
 - [Features](#features)
@@ -15,18 +15,18 @@ DeepECG_Deploy is a repository designed for deploying deep learning models for E
 
 ## 🚀 Features
 
-- BERT-based multilabel classification for ECG diagnosis (77 classes)
-- EfficientNet-based multilabel classification for ECG signals (77 classes)
-- WCR-based multilabel classification for ECG signals (77 classes)
-- WCR-based binary classification for ECG signals (LVEF <= 40%)
-- WCR-based binary classification for ECG signals (LVEF < 50%)
-- WCR-based binary classification for ECG signals (Incident AFIB at 5 years)
-- EfficientNet-based binary classification for ECG signals (LVEF <= 40%)
-- EfficientNet-based binary classification for ECG signals (LVEF < 50%)
-- EfficientNet-based binary classification for ECG signals (Incident AFIB at 5 years)
+- BERT-based multilabel classification model for ECG diagnosis (77 classes)
+- EfficientNet-based multilabel classification model for ECG signals (77 classes)
+- WCR-based multilabel classification model for ECG signals (77 classes)
+- WCR-based binary classification model for ECG signals (LVEF <= 40%)
+- WCR-based binary classification model for ECG signals (LVEF < 50%)
+- WCR-based binary classification model for ECG signals (Incident AFIB at 5 years)
+- EfficientNet-based binary classification model for ECG signals (LVEF <= 40%)
+- EfficientNet-based binary classification model for ECG signals (LVEF < 50%)
+- EfficientNet-based binary classification model for ECG signals (Incident AFIB at 5 years)
 - Dockerized deployment for easy setup and execution
 - Configurable pipeline for flexible usage
-- GPU support for accelerated processing
+- CPU & GPU support for accelerated processing
 
 ## 🛠️ Installation
 
@@ -62,10 +62,10 @@ DeepECG_Deploy is a repository designed for deploying deep learning models for E
 DeepECG_Deploy/
 │
 ├── models/
-|   ├── modules
-|   |   ├── EfficientNetv2.py
 │   ├── bert_classifier.py
-│   └── efficientnet_wrapper.py
+│   ├── efficientnet_wrapper.py
+│   ├── heartwise_models_factory.py
+│   └── resnet_wrapper.py
 │
 ├── inputs/
 │   └── data_rows.csv
@@ -76,11 +76,16 @@ DeepECG_Deploy/
 ├── preprocessing/
 │   └── (preprocessed files will be saved here)
 │
-├── Dockerfile
+├── utils/
+│   └── ...
+│
+├── dockerfile
 ├── heartwise.config
 ├── api_key.json
+├── main.py
+├── README.md
 ├── requirements.txt
-└── README.md
+├── run_pipeline.sh
 ```
 
 ## Models
@@ -88,7 +93,7 @@ DeepECG_Deploy/
 1. **BertClassifier**: 
    - model_name: `bert_diagnosis2classification`
    - Utilizes the BERT architecture for sequence classification tasks.
-   - Pre-trained model is loaded from HuggingFace, and the model is fine-tuned for diagnosing and classifying ECG signals.
+   - Pre-trained model is loaded from HuggingFace, and the model is fine-tuned for diagnosing and classifying ECG diagnosis.
    - The model processes input text and outputs classification logits.
 
 2. **EfficientV2_77_classes**:
