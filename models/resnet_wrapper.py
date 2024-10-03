@@ -1,15 +1,12 @@
-
 import os
-import sys
 import torch
-
 from utils.huggingface_wrapper import HuggingFaceWrapper
 from models.heartwise_model_factory import HeartWiseModelFactory
 
 
-class EfficientNetWrapper(HeartWiseModelFactory):
+class ResNetWrapper(HeartWiseModelFactory):
     
-    name = 'efficientnetv2'
+    name = 'resnet'
     
     def __init__(
         self, 
@@ -38,10 +35,9 @@ class EfficientNetWrapper(HeartWiseModelFactory):
     def __call__(self, signal):
         signal = signal.to(self.device)
         return torch.sigmoid(self.model(signal))
-
-
-class EfficientV2_77_classes(EfficientNetWrapper, HeartWiseModelFactory):
-    name = 'efficientnetv2_77_classes'
+    
+class ResNet_77_classes(ResNetWrapper, HeartWiseModelFactory):
+    name = 'resnet_77_classes'
     
     def __init__(
         self, 
@@ -54,47 +50,3 @@ class EfficientV2_77_classes(EfficientNetWrapper, HeartWiseModelFactory):
             map_location=map_location, 
             hugging_face_api_key=hugging_face_api_key
         )
-
-class EfficientNetV2_LVEF_Equal_Under_40(EfficientNetWrapper, HeartWiseModelFactory):
-    name = 'efficientnetv2_lvef_equal_under_40'
-    
-    def __init__(
-        self, 
-        model_name: str,
-        map_location: torch.device,
-        hugging_face_api_key: str
-    ):
-        super().__init__(
-            model_name=model_name, 
-            map_location=map_location, 
-            hugging_face_api_key=hugging_face_api_key
-        )
-
-class EfficientNetV2_LVEF_Under_50(EfficientNetWrapper, HeartWiseModelFactory):
-    name = 'efficientnetv2_lvef_under_50'
-    
-    def __init__(
-        self, 
-        model_name: str,
-        map_location: torch.device,
-        hugging_face_api_key: str
-    ):
-        super().__init__(
-            model_name=model_name, 
-            map_location=map_location, 
-            hugging_face_api_key=hugging_face_api_key
-        )
-
-class EfficientNetV2_AFIB_at_5Y(EfficientNetWrapper, HeartWiseModelFactory):
-    name = 'efficientnetv2_afib_at_5y'
-    
-    def __init__(
-        self, 
-        map_location: torch.device,
-        hugging_face_api_key: str
-    ):
-        super().__init__(
-            map_location=map_location, 
-            hugging_face_api_key=hugging_face_api_key
-        )
-
