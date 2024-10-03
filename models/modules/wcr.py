@@ -27,7 +27,8 @@ class WCREcgTransformer(nn.Module):
     def __init__(
         self, 
         model_path: str,
-        arg_overrides: Optional[Dict[str, Any]] = None,
+        pretrained_path: str = None,
+        overrides: Optional[Dict[str, Any]] = None,
         task=None,
         strict=True,
         suffix="",
@@ -35,11 +36,15 @@ class WCREcgTransformer(nn.Module):
         state=None,
     ):
         super().__init__()
+        overrides = {} if overrides is None else vars(overrides)
+        if pretrained_path is not None:
+            overrides.update({"model_path": pretrained_path})
         model, saved_cfg, task = checkpoint_utils.load_model_and_task(
             model_path,
-            arg_overrides=arg_overrides,
+            arg_overrides=overrides,
             suffix=suffix
         )
+
         self.model = model
         
     def forward(self, x, padding_mask=None):
