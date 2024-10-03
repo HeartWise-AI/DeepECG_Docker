@@ -213,7 +213,7 @@ Note that models device in heartwise.config should be set to "cpu"
 docker run -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals -v local_path_to_preprocessing:/preprocessing -i deepecg-deploy full_run
 ```
 
-These commands mount the `outputs/` and `ecg_signals/` directories from your local machine to the container, allowing you to easily provide input data and retrieve results.
+These commands mount the `outputs/`, `ecg_signals/` and `preprocessing/` directories from your local machine to the container, allowing you to easily provide input data and retrieve results.
 
 ## 🤝 Contributing
 
@@ -227,7 +227,7 @@ Contributions to DeepECG_Deploy are welcome! Please follow these steps to contri
 
 ## 📚 Citation
 
-If you find this repository useful, please consider citing our work:
+If you find this repository useful, please cite our work:
 
 ```
 @article{,
