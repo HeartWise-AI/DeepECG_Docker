@@ -50,4 +50,4 @@ class WCREcgTransformer(nn.Module):
     def forward(self, x, padding_mask=None):
         net_input = { "source": x, "padding_mask": padding_mask}
         net_output = self.model(**net_input)
-        return self.model.get_logits(net_output), net_output
+        return self.model.get_logits(net_output)
