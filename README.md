@@ -1,6 +1,10 @@
 # DeepECG_Docker
 
 DeepECG_Docker is a repository designed for deploying deep learning models for ECG signal analysis and comparing their performance over a Bert Classifier model or a specified ground truth. The pipeline can be run locally or in a docker container.
+This pipeline offers 3 modes of processing:
+- **Preprocessing**: Preprocess the ecg signals and save them in the `preprocessing/` folder
+- **Analysis**: Analyze the ecg signals and save the results in the `outputs/` folder (using the preprocessed data)
+- **Full run**: Preprocess the ecg signals and analyze them, saving both the preprocessed and analyzed data in the `preprocessing/` and `outputs/` folders respectively
 
 ## Table of Contents
 - [Features](#features)
@@ -151,18 +155,19 @@ DeepECG_Deploy/
      - `output_folder`: The directory where the output files will be saved. Example: `/outputs`.
      - `hugging_face_api_key_path`: The path to the file containing the HuggingFace API key. Example: `/app/api_key.json`.
      - `output_file_name`: The name of the output file (without extension) where results will be saved. Example: `results`.
-     - `signal_processing_model_name`: The name of the signal processing model to be used. Example: `efficientnetv2`.
+     - `signal_processing_model_name`: The name of the signal processing model to be used. Example: `efficientnetv2_77_classes`.
      - `diagnosis_classifier_model_name`: The name of the diagnosis classifier model to be used. Example: `bert_diagnosis2classification`.
      - `data_path`: The path to the input CSV file containing the data. Example: `/inputs/data_rows_template.csv`.
      - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/ecg_signals_folder`.
-     - `mode`: The mode of the pipeline. Example: `analysis` | `preprocessing` | `full_run`.
+     - `mode`: The mode of the pipeline (overwriten by docker command line). Example: `analysis` | `preprocessing` | `full_run`.
      - `preprocessing_folder`: The path to the folder where the preprocessed files will be saved. Example: `/preprocessing`.
      - `preprocessing_n_workers`: The number of workers to be used for the preprocessing. Example: `16`.
 
    - Ensure that the paths and model names in the `heartwise.config` file are correctly set according to your setup and requirements.
 
 3. Run the pipeline:
-   - If using Docker, follow the Docker instructions below
+   - If using Docker, follow the [Docker](#docker) instructions below
+
    - If running locally:
      Option 1: execute the main script with the correct arguments:
      ```
@@ -182,7 +187,7 @@ DeepECG_Deploy/
 ### Building the Docker Image
 
 To build the Docker image, run the following command in the root directory of the project:
-Note that heartwise.config should be changed based on the mode (preprocessing, analysis or full run)
+Processing Mode (preprocessing, analysis or full run) should be specified in the docker command line (see examples below)
 
 ```
 docker build -t deepecg-deploy .
