@@ -175,7 +175,7 @@ DeepECG_Deploy/
      ```
      Option 2: execute the bash script:
      ```
-     bash run_pipeline.sh
+     bash run_pipeline.bash
      ```
 
 4. Retrieve results:
