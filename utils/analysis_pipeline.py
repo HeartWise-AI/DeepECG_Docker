@@ -64,6 +64,7 @@ def compute_metrics_binary(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
 
     try:
         # Compute ROC AUC
+
         metrics["auc"] = roc_auc_score(gt, pred)
 
         # Compute Average Precision (AUPRC)
@@ -85,7 +86,7 @@ def compute_metrics_binary(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
 
     except Exception as e:
         print(f"An error occurred while computing metrics for column '{col}': {e}")
-
+    print(metrics)
     return metrics
 
 def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
@@ -122,7 +123,7 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
             "prevalence_gt %": np.nan,
             "prevalence_pred %": np.nan
         }
-        
+
     # Compute category metrics
     for category in ECG_CATEGORIES:
         # Get category columns
@@ -296,6 +297,7 @@ class AnalysisPipeline:
                 diagnosis = batch['diagnosis']
                 ecg_tensor = batch['ecg_signal']
                 file_name = batch['file_name']
+
                 # Create thresholds tensor
                 current_batch_size = len(diagnosis)
                 bert_thresholds_tensor = torch.zeros((current_batch_size, 77)).to(diagnosis_classifier_device)

@@ -10,3 +10,8 @@ data/__pycache__
 utils/__pycache__
 models/__pycache__
 preprocessing
+venv
+*ipynb
+api_key.json
+ecg_signals_analysis_cleaned_ecg_signals.csv
+*.csv
