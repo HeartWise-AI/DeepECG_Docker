@@ -49,12 +49,14 @@ def compute_metrics_binary(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
 
     # Initialize metrics dictionary
     metrics = {
-        "auc": np.nan,
-        "auprc": np.nan,
-        "f1": np.nan,
-        "threshold": np.nan,
-        "prevalence_gt %": np.nan,
-        "prevalence_pred %": np.nan
+        "results": {
+            "auc": np.nan,
+            "auprc": np.nan,
+            "f1": np.nan,
+            "threshold": np.nan,
+            "prevalence_gt %": np.nan,
+            "prevalence_pred %": np.nan
+        }
     }
 
     # Check if there are positive samples in ground truth
@@ -64,7 +66,6 @@ def compute_metrics_binary(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
 
     try:
         # Compute ROC AUC
-
         metrics["auc"] = roc_auc_score(gt, pred)
 
         # Compute Average Precision (AUPRC)
