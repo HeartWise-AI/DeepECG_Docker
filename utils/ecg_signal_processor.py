@@ -213,7 +213,7 @@ class ECGSignalProcessor:
             return df
         
         processed_leads = []
-        print("Step 2: Processing leads")
+        print("Step 2: Processing leads **WARNING this step takes a lot of time**")
         for lead_index in tqdm(range(12)):
             print(f"Processing lead {lead_index}")
             crossings = self.find_crossings_for_peaks(input_data[:, :, lead_index], peak_ranges=peak_ranges)

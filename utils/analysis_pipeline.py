@@ -296,6 +296,7 @@ class AnalysisPipeline:
                 diagnosis = batch['diagnosis']
                 ecg_tensor = batch['ecg_signal']
                 file_name = batch['file_name']
+
                 # Create thresholds tensor
                 current_batch_size = len(diagnosis)
                 bert_thresholds_tensor = torch.zeros((current_batch_size, 77)).to(diagnosis_classifier_device)

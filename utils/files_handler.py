@@ -9,7 +9,6 @@ import xml.etree.ElementTree as ET
 
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
 def load_df(path: str) -> pd.DataFrame:
     if path.endswith('.csv'):
         df = pd.read_csv(path)
@@ -17,6 +16,12 @@ def load_df(path: str) -> pd.DataFrame:
         df = pd.read_parquet(path)
     else:
         raise ValueError("Unsupported file extension. Only .csv and .parquet are supported.")
+    
+    # Remove rows with empty 'diagnosis' column and count them
+    missing_diagnosis_count = df['diagnosis'].isna().sum()
+    df = df.dropna(subset=['diagnosis']).reset_index(drop=True)
+    print(f"Removed {missing_diagnosis_count} rows with empty 'diagnosis' column.")
+    
     return df
 
 def save_df(df: pd.DataFrame, path: str) -> None:
@@ -28,6 +33,19 @@ def save_df(df: pd.DataFrame, path: str) -> None:
         raise ValueError("Unsupported file extension. Only .csv and .parquet are supported.")
 
 def set_path(df: pd.DataFrame, path: str) -> pd.DataFrame:
+    """Set the ECG file paths in the DataFrame.
+
+    This function adds a new column to the DataFrame that contains the full paths to the ECG files by combining 
+    a specified directory path with the file names from an existing column. This allows for easy access to the 
+    files based on their names.
+
+    Args:
+        df (pd.DataFrame): The DataFrame containing the ECG file names.
+        path (str): The directory path to prepend to each ECG file name.
+
+    Returns:
+        pd.DataFrame: The updated DataFrame with a new column 'ecg_path' containing the full file paths.
+    """
     df['ecg_path'] = df['ecg_file_name'].apply(lambda x: os.path.join(path, x))
     return df
 

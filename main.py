@@ -16,7 +16,28 @@ def set_up_directories(args: HearWiseArgs):
 def load_and_prepare_data(args: HearWiseArgs) -> pd.DataFrame:
     # Read data
     df = load_df(args.data_path)
+    
+    # Remove rows with empty 'diagnosis' column and count them
+    missing_diagnosis_count = df['diagnosis'].isna().sum()
+    df = df.dropna(subset=['diagnosis']).reset_index(drop=True)
+    print(f"Removed {missing_diagnosis_count} rows with empty 'diagnosis' column.")
+    
     df = set_path(df, args.ecg_signals_path)
+    # Check if DataFrame is empty
+    if df.empty:
+        raise ValueError("The DataFrame is empty. Please provide a valid data file.")
+
+    # Check if 'ecg_path' column exists and if the files exist
+    if 'ecg_path' not in df.columns:
+        # Show 5 examples of the DataFrame columns
+        example_columns = df.columns[:5].tolist()
+        raise ValueError(f"'ecg_path' column is missing in the DataFrame. Here are 5 example columns: {example_columns}")
+    
+    # Check if the files in 'ecg_path' column exist
+    missing_files = df[~df['ecg_path'].apply(os.path.exists)]
+    if not missing_files.empty:
+        raise FileNotFoundError(f"The following files are missing: {missing_files['ecg_path'].tolist()[:5]}")
+
     return df
 
 def perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame):
@@ -47,9 +68,9 @@ def main(args: HearWiseArgs):
     set_up_directories(args)
 
     # Read data
-    df = load_and_prepare_data(args)
 
     if args.mode in {Mode.PREPROCESSING, Mode.FULL_RUN}:
+        df = load_and_prepare_data(args)
         # Preprocess data
         df_cleaned_ecg_signals = perform_preprocessing(args, df)
         save_df(df_cleaned_ecg_signals, os.path.join(args.preprocessing_folder, f"{args.output_file}_cleaned_ecg_signals.csv"))
