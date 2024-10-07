@@ -82,9 +82,13 @@ def main(args: HearWiseArgs):
         metrics, df_probabilities = perform_analysis(args, df)
 
         # Save metrics and probabilities
-        save_df(df_probabilities, os.path.join(args.output_folder, f'{args.output_file}_probabilities.csv'))
-        save_json(metrics, os.path.join(args.output_folder, f'{args.output_file}.json'))
-        save_to_csv(metrics, os.path.join(args.output_folder, f'{args.output_file}.csv'))
+        from datetime import datetime
+        current_date = datetime.now().strftime('%Y%m%d')
+        model_name = args.signal_processing_model_name
+
+        save_df(df_probabilities, os.path.join(args.output_folder, f'{args.output_file}_{current_date}_{model_name}_probabilities.csv'))
+        save_json(metrics, os.path.join(args.output_folder, f'{args.output_file}_{current_date}_{model_name}.json'))
+        save_to_csv(metrics, os.path.join(args.output_folder, f'{args.output_file}_{current_date}_{model_name}.csv'))
 
 if __name__ == '__main__':
     args = HearWiseArgs.parse_arguments()
