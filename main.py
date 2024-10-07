@@ -8,12 +8,51 @@ from utils.files_handler import save_to_csv, save_json, read_api_key, load_df, s
 
 
 def set_up_directories(args: HearWiseArgs):
+    """
+    Set up necessary directories for output and preprocessing.
+
+    This function creates the required output and preprocessing directories 
+    based on the paths provided in the `args` object. If the directories 
+    already exist, it will not raise an error.
+
+    Args:
+        args (HearWiseArgs): An instance containing configuration arguments, 
+                             including `output_folder` and `preprocessing_folder`.
+
+    Raises:
+        OSError: If there is an error creating the directories due to permission issues 
+                 or invalid paths.
+    """    
     # Create output folder
     os.makedirs(args.output_folder, exist_ok=True)
     # Create preprocessing folder
     os.makedirs(args.preprocessing_folder, exist_ok=True)
 
-def load_and_prepare_data(args: HearWiseArgs) -> pd.DataFrame:
+def load_and_prepare_data(args: HearWiseArgs, new_path: str, new_ext: str = None) -> pd.DataFrame:
+    """
+    Load data from a specified path, preprocess it, and prepare it for analysis.
+
+    This function performs several data loading and preprocessing steps:
+    - Loads the DataFrame from the provided `data_path`.
+    - Removes rows where the 'diagnosis' column is empty, reporting the number of removed rows.
+    - Sets the path for ECG signals using the `new_path`.
+    - Optionally changes the file extension of ECG paths if `new_ext` is provided.
+    - Validates that the DataFrame is not empty after preprocessing.
+    - Ensures that the 'ecg_path' column exists and that all referenced files exist.
+
+    Args:
+        args (HearWiseArgs): Configuration arguments containing `data_path` and other settings.
+        new_path (str): The new directory path to set for ECG signal files.
+        new_ext (str, optional): New file extension for ECG paths. If provided, updates the 
+                                 'ecg_path' column with this new extension. Defaults to None.
+
+    Returns:
+        pd.DataFrame: A preprocessed DataFrame ready for further analysis.
+
+    Raises:
+        ValueError: If the resulting DataFrame is empty or if the 'ecg_path' column is missing.
+        FileNotFoundError: If any of the files specified in 'ecg_path' do not exist.
+    """
     # Read data
     df = load_df(args.data_path)
     
@@ -22,7 +61,13 @@ def load_and_prepare_data(args: HearWiseArgs) -> pd.DataFrame:
     df = df.dropna(subset=['diagnosis']).reset_index(drop=True)
     print(f"Removed {missing_diagnosis_count} rows with empty 'diagnosis' column.")
     
-    df = set_path(df, args.ecg_signals_path)
+    # Set path to ecg signals
+    df = set_path(df, new_path)
+
+    # Change extension of ecg_path if ext is not None
+    if new_ext is not None:
+        df['ecg_path'] = df['ecg_path'].apply(lambda x: os.path.splitext(x)[0] + new_ext)    
+    
     # Check if DataFrame is empty
     if df.empty:
         raise ValueError("The DataFrame is empty. Please provide a valid data file.")
@@ -40,8 +85,24 @@ def load_and_prepare_data(args: HearWiseArgs) -> pd.DataFrame:
 
     return df
 
-def perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame):
-    return AnalysisPipeline.preprocess_data(
+def save_and_perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame):
+    """
+    Save the DataFrame and perform preprocessing using the AnalysisPipeline.
+
+    This function delegates the task of saving and preprocessing data to the 
+    `AnalysisPipeline`. It utilizes the provided arguments to determine the 
+    output and preprocessing directories, as well as the number of worker threads 
+    for preprocessing.
+
+    Args:
+        args (HearWiseArgs): Configuration arguments containing paths for output and 
+                             preprocessing folders, and the number of preprocessing workers.
+        df (pd.DataFrame): The DataFrame containing the data to preprocess.
+
+    Raises:
+        Any exceptions raised by `AnalysisPipeline.save_and_preprocess_data`.
+    """     
+    AnalysisPipeline.save_and_preprocess_data(
         df=df, 
         output_folder=args.output_folder,
         preprocessing_folder=args.preprocessing_folder,
@@ -49,6 +110,23 @@ def perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame):
     )
 
 def perform_analysis(args: HearWiseArgs, df: pd.DataFrame):
+    """
+    Perform analysis on the prepared DataFrame using the AnalysisPipeline.
+
+    This function reads the Hugging Face API key and runs the analysis pipeline 
+    with the specified configurations such as batch size, devices, and model names.
+
+    Args:
+        args (HearWiseArgs): Configuration arguments containing paths for API keys, 
+                             batch size, device specifications, and model names.
+        df (pd.DataFrame): The DataFrame containing the data to analyze.
+
+    Returns:
+        tuple: A tuple containing `metrics` and `df_probabilities` resulting from the analysis.
+
+    Raises:
+        Any exceptions raised by `read_api_key` or `AnalysisPipeline.run_analysis`.
+    """    
     hugging_face_api_key = read_api_key(args.hugging_face_api_key_path)['HUGGING_FACE_API_KEY']
     return AnalysisPipeline.run_analysis(
         df=df,
@@ -67,18 +145,16 @@ def main(args: HearWiseArgs):
     # Set up directories
     set_up_directories(args)
 
-    # Read data
-
     if args.mode in {Mode.PREPROCESSING, Mode.FULL_RUN}:
-        df = load_and_prepare_data(args)
-        # Preprocess data
-        df_cleaned_ecg_signals = perform_preprocessing(args, df)
-        save_df(df_cleaned_ecg_signals, os.path.join(args.preprocessing_folder, f"{args.output_file}_cleaned_ecg_signals.csv"))
+        # Load and prepare data
+        df = load_and_prepare_data(args, new_path=args.ecg_signals_path)
         
-    if args.mode in {Mode.ANALYSIS, Mode.FULL_RUN}:
-        if args.mode == Mode.ANALYSIS:
-            df = load_df(os.path.join(args.preprocessing_folder, f"{args.output_file}_cleaned_ecg_signals.csv"))
-            
+        # Preprocess data
+        save_and_perform_preprocessing(args, df)
+        
+    if args.mode in {Mode.ANALYSIS, Mode.FULL_RUN}:        
+        df = load_and_prepare_data(args, new_path=args.preprocessing_folder, new_ext=".base64")
+        
         metrics, df_probabilities = perform_analysis(args, df)
 
         # Save metrics and probabilities
