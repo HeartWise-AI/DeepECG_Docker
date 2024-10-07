@@ -16,12 +16,7 @@ def load_df(path: str) -> pd.DataFrame:
         df = pd.read_parquet(path)
     else:
         raise ValueError("Unsupported file extension. Only .csv and .parquet are supported.")
-    
-    # Remove rows with empty 'diagnosis' column and count them
-    missing_diagnosis_count = df['diagnosis'].isna().sum()
-    df = df.dropna(subset=['diagnosis']).reset_index(drop=True)
-    print(f"Removed {missing_diagnosis_count} rows with empty 'diagnosis' column.")
-    
+        
     return df
 
 def save_df(df: pd.DataFrame, path: str) -> None:
