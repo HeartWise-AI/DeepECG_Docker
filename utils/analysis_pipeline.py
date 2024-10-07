@@ -49,12 +49,14 @@ def compute_metrics_binary(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
 
     # Initialize metrics dictionary
     metrics = {
-        "auc": np.nan,
-        "auprc": np.nan,
-        "f1": np.nan,
-        "threshold": np.nan,
-        "prevalence_gt %": np.nan,
-        "prevalence_pred %": np.nan
+        "results": {
+            "auc": np.nan,
+            "auprc": np.nan,
+            "f1": np.nan,
+            "threshold": np.nan,
+            "prevalence_gt %": np.nan,
+            "prevalence_pred %": np.nan
+        }
     }
 
     # Check if there are positive samples in ground truth
@@ -64,28 +66,27 @@ def compute_metrics_binary(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
 
     try:
         # Compute ROC AUC
-
-        metrics["auc"] = roc_auc_score(gt, pred)
+        metrics["results"]["auc"] = roc_auc_score(gt, pred)
 
         # Compute Average Precision (AUPRC)
-        metrics["auprc"] = average_precision_score(gt, pred)
+        metrics["results"]["auprc"] = average_precision_score(gt, pred)
 
         # Compute Best Threshold
         best_threshold = compute_best_threshold(gt, pred)
-        metrics["threshold"] = best_threshold
+        metrics["results"]["threshold"] = best_threshold
 
         # Compute F1 Score
         predictions_binary = (pred >= best_threshold).astype(int)
-        metrics["f1"] = f1_score(gt, predictions_binary)
+        metrics["results"]["f1"] = f1_score(gt, predictions_binary)
 
         # Compute Prevalence in Ground Truth
-        metrics["prevalence_gt %"] = (gt.sum() / len(gt)) * 100
+        metrics["results"]["prevalence_gt %"] = (gt.sum() / len(gt)) * 100
 
         # Compute Prevalence in Predictions
-        metrics["prevalence_pred %"] = (predictions_binary.sum() / len(pred)) * 100
+        metrics["results"]["prevalence_pred %"] = (predictions_binary.sum() / len(pred)) * 100
 
     except Exception as e:
-        print(f"An error occurred while computing metrics for column '{col}': {e}")
+        print(f"An error occurred while computing metrics for binary classification: {e}")
     print(metrics)
     return metrics
 
@@ -206,7 +207,7 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
  
 class AnalysisPipeline:
     @staticmethod
-    def preprocess_data(df: pd.DataFrame, output_folder: str, preprocessing_folder: str, preprocessing_n_workers: int) -> pd.DataFrame:
+    def save_and_preprocess_data(df: pd.DataFrame, output_folder: str, preprocessing_folder: str, preprocessing_n_workers: int) -> pd.DataFrame:
         # Generate XML
         if df['ecg_file_name'].iloc[0].endswith('.npy'):
             ecgs = []

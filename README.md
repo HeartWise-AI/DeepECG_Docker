@@ -89,7 +89,7 @@ DeepECG_Deploy/
 ├── main.py
 ├── README.md
 ├── requirements.txt
-├── run_pipeline.sh
+└── run_pipeline.sh
 ```
 
 ## Models

@@ -33,12 +33,6 @@ def create_dataloader(df: pd.DataFrame, batch_size: int = 1, shuffle: bool = Fal
     if 'diagnosis' not in df.columns:
         raise ValueError("'diagnosis' column is missing in the DataFrame.")
         
-    # Check if 'diagnosis' column is empty and remove such rows
-    initial_count = len(df)
-    df = df[df['diagnosis'].notna()]
-    removed_count = initial_count - len(df)
-    print(f"Removed {removed_count} rows with empty 'diagnosis' field.")
-
     # Check if 'ecg_path' column exists
     if 'ecg_path' not in df.columns:
         raise ValueError("'ecg_path' column is missing in the DataFrame.")
