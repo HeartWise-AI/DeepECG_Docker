@@ -194,9 +194,8 @@ class XMLProcessor:
         file_id = os.path.splitext(os.path.basename(file_path))[0]
         try:
             data_dict = self.xml_to_dict(file_path)
-            
             if 'RestingECGMeasurements.MeasurementTable.LeadOrder' in data_dict and any(f'RestingECGMeasurements.MedianSamples.WaveformData.{i}' in data_dict for i in range(12)):
-                xml_type = 'CLSA'
+                xml_type = 'CLSA'                
                 self._process_clsa_xml(data_dict, file_id)
             elif any(f'Waveform.1.LeadData.{j}.LeadID' in data_dict for j in range(12)):
                 xml_type = 'MHI'
@@ -204,8 +203,12 @@ class XMLProcessor:
             else:
                 xml_type = 'Unknown'
                 return (file_id, xml_type, 'Failed', 'Unknown XML format'), None, None
+            
+            resolution = 1.0
+            if 'StripData.Resolution' in data_dict:
+                resolution = float(data_dict['StripData.Resolution'])               
 
-            return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array
+            return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array * resolution
         except Exception as e:
             print(f"Error processing file: {str(e)}")
             return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
