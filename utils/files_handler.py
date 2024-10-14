@@ -205,10 +205,6 @@ class XMLProcessor:
                 xml_type = 'Unknown'
                 return (file_id, xml_type, 'Failed', 'Unknown XML format'), None, None
             
-            resolution = 1.0
-            if 'StripData.Resolution' in data_dict:
-                resolution = float(data_dict['StripData.Resolution'])               
-
             return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array * resolution
         except Exception as e:
             print(f"Error processing file: {str(e)}")
