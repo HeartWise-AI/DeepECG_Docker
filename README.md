@@ -145,7 +145,7 @@ DeepECG_Deploy/
    signal_processing_model_name: efficientnetv2
    diagnosis_classifier_model_name: bert_diagnosis2classification
    data_path: /inputs/data_rows_template.csv
-   ecg_signals_path: /inputs/ecg_signals_template.csv
+   ecg_signals_path: /ecg_signals_path
    ```
    - Edit `heartwise.config` file contains the configuration settings for the pipeline. Below is a description of each configuration parameter:
 
