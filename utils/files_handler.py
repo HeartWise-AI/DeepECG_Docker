@@ -192,10 +192,11 @@ class XMLProcessor:
 
     def process_single_file(self, file_path: str) -> tuple[tuple[str, str, str, str], str, np.ndarray]:
         file_id = os.path.splitext(os.path.basename(file_path))[0]
+        
         try:
             data_dict = self.xml_to_dict(file_path)
             if 'RestingECGMeasurements.MeasurementTable.LeadOrder' in data_dict and any(f'RestingECGMeasurements.MedianSamples.WaveformData.{i}' in data_dict for i in range(12)):
-                xml_type = 'CLSA'                
+                xml_type = 'CLSA'
                 self._process_clsa_xml(data_dict, file_id)
             elif any(f'Waveform.1.LeadData.{j}.LeadID' in data_dict for j in range(12)):
                 xml_type = 'MHI'
