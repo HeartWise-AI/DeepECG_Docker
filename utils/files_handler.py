@@ -150,39 +150,6 @@ class XMLProcessor:
         unpack_symbols = "".join([char * (len(arr) // 2) for char in "h"])
         byte_array = struct.unpack(unpack_symbols, arr)
         return np.array(byte_array, dtype=np.float32)
-
-    def process_waveform_data(self, data_dict, waveform_keys, expected_shape, decode_base64=False):
-        waveforms = {}
-        correct_lead_order = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
-
-        for key in waveform_keys:
-            if key in data_dict:
-                data = data_dict[key]
-                if decode_base64 and isinstance(data, str):
-                    data = self.decode_as_base64(data)
-                else:
-                    data = np.array(data.split(','), dtype=float)
-                lead_name = correct_lead_order[waveform_keys.index(key)]
-                waveforms[lead_name] = data
-
-        if "I" in waveforms and "II" in waveforms:
-            if "III" not in waveforms:
-                waveforms["III"] = np.subtract(waveforms["II"], waveforms["I"])
-            if "aVR" not in waveforms:
-                waveforms["aVR"] = np.add(waveforms["I"], waveforms["II"]) * (-0.5)
-            if "aVL" not in waveforms:
-                waveforms["aVL"] = np.subtract(waveforms["I"], 0.5 * waveforms["II"])
-            if "aVF" not in waveforms:
-                waveforms["aVF"] = np.subtract(waveforms["II"], 0.5 * waveforms["I"])
-
-        leads = []
-        for lead in correct_lead_order:
-            if lead in waveforms:
-                leads.append(waveforms[lead])
-            else:
-                leads.append(np.full(expected_shape[1], np.nan))
-
-        return np.vstack(leads)
     
     @staticmethod
     def xml_to_dict(xml_file: str) -> dict:
@@ -205,7 +172,7 @@ class XMLProcessor:
                 xml_type = 'Unknown'
                 return (file_id, xml_type, 'Failed', 'Unknown XML format'), None, None
             
-            return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array * resolution
+            return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array
         except Exception as e:
             print(f"Error processing file: {str(e)}")
             return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
@@ -244,46 +211,67 @@ class XMLProcessor:
         return df, pd.DataFrame(ecgs, columns=['ecg_path', 'ecg_signal'])
 
     def _process_clsa_xml(self, data_dict: dict, file_id: str) -> None:
-        try:
-            strip_data_keys = [f'StripData.WaveformData.{i}' for i in range(12)]
-            leads = []
-            for key in strip_data_keys:
-                if key in data_dict:
-                    lead_data = data_dict[key].lstrip('\t').split(',')
-                    lead_data = np.array(lead_data, dtype=float)
-                    leads.append(lead_data)
+        try:            
+            correct_lead_order = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
+            leads = {lead: None for lead in correct_lead_order}
+            
+            for i, lead in enumerate(data_dict['RestingECGMeasurements.MeasurementTable.LeadOrder'].replace(' ', '').split(',')):
+                lead_data = data_dict[f'StripData.WaveformData.{i}'].lstrip('\t').split(',')
+                lead_data = np.array(lead_data, dtype=float)
+                leads[lead] = lead_data
+            
+            if leads["III"] is None:
+                leads["III"] = np.subtract(leads["II"], leads["I"])
+            if leads["aVR"] is None:
+                leads["aVR"] = np.add(leads["I"], leads["II"]) * (-0.5)
+            if leads["aVL"] is None:
+                leads["aVL"] = np.subtract(leads["I"], 0.5 * leads["II"])
+            if leads["aVF"] is None:
+                leads["aVF"] = np.subtract(leads["II"], 0.5 * leads["I"])            
 
-            if len(leads) == 12:
-                self.full_leads_array = np.vstack(leads)
-            else:
-                self.full_leads_array = self.process_waveform_data(
-                    data_dict=data_dict, 
-                    waveform_keys=strip_data_keys, 
-                    expected_shape=(12, 2500), 
-                    decode_base64=False
-                )
+            non_empty_lead_dim = next(lead.shape[0] for lead in leads.values() if lead is not None)
+
+            for lead in leads:
+                if leads[lead] is None:
+                    print(f"Lead {lead} is None")
+                    leads[lead] = np.full(non_empty_lead_dim, np.nan)
+
+            self.full_leads_array = np.vstack([leads[lead] for lead in correct_lead_order])
+                
         except Exception as e:
             raise ValueError(f"Error processing CLSA XML for file {file_id}: {str(e)}") from e
 
     def _process_mhi_xml(self, data_dict: dict, file_id: str) -> None:
         try:
-            strip_data_keys = [f'Waveform.1.LeadData.{i}.WaveFormData' for i in range(12)]
-            leads = []
-
-            for key in strip_data_keys:
-                if key in data_dict:
-                    lead_data = self.decode_as_base64(data_dict[key])
-                    leads.append(lead_data)
+            correct_lead_order = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
+                                    
+            leads = {lead: None for lead in correct_lead_order}
         
-            if len(leads) == 12:
-                self.full_leads_array = np.vstack(leads)
-            else:
-                self.full_leads_array = self.process_waveform_data(
-                    data_dict=data_dict, 
-                    waveform_keys=strip_data_keys, 
-                    expected_shape=(12, 2500), 
-                    decode_base64=True
-                )
+            for i in range(12):
+                lead_id = f'Waveform.1.LeadData.{i}.LeadID'
+                if lead_id in data_dict:
+                    lead_data = f'Waveform.1.LeadData.{i}.WaveFormData'
+                    lead_data = self.decode_as_base64(data_dict[lead_data])
+                    leads[data_dict[lead_id]] = lead_data
+                    
+            if leads["III"] is None:
+                leads["III"] = np.subtract(leads["II"], leads["I"])
+            if leads["aVR"] is None:
+                leads["aVR"] = np.add(leads["I"], leads["II"]) * (-0.5)
+            if leads["aVL"] is None:
+                leads["aVL"] = np.subtract(leads["I"], 0.5 * leads["II"])
+            if leads["aVF"] is None:
+                leads["aVF"] = np.subtract(leads["II"], 0.5 * leads["I"])            
+
+            non_empty_lead_dim = next(lead.shape[0] for lead in leads.values() if lead is not None)
+
+            for lead in leads:
+                if leads[lead] is None:
+                    print(f"Lead {lead} is None")
+                    leads[lead] = np.full(non_empty_lead_dim, np.nan)
+
+            self.full_leads_array = np.vstack([leads[lead] for lead in correct_lead_order])
+
         except Exception as e:
             raise ValueError(f"Error processing MHI XML for file {file_id}: {str(e)}") from e
 
