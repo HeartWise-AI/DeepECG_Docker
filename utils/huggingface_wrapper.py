@@ -10,6 +10,7 @@ class HuggingFaceWrapper:
     def get_model(repo_id, local_dir, hugging_face_api_key):           
         # Download repo from HuggingFace
         os.makedirs(local_dir, exist_ok=True)
+        print(f"Downloading {repo_id} to {local_dir}")
         local_dir = snapshot_download(repo_id=repo_id, local_dir=local_dir, repo_type="model", token=hugging_face_api_key)
         
         print(f"{repo_id} downloaded to {local_dir}")
