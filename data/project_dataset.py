@@ -25,25 +25,7 @@ class ProjectDataset(Dataset):
         }
 
 def create_dataloader(df: pd.DataFrame, batch_size: int = 1, shuffle: bool = False):
-        # Check if DataFrame is empty
-    if df.empty:
-        raise ValueError("The DataFrame is empty. Please provide a valid data file.")
-    
-    # Check if 'diagnosis' column exists
-    if 'diagnosis' not in df.columns:
-        raise ValueError("'diagnosis' column is missing in the DataFrame.")
-        
-    # Check if 'ecg_path' column exists
-    if 'ecg_path' not in df.columns:
-        raise ValueError("'ecg_path' column is missing in the DataFrame.")
-    
-    # Check if the files in 'ecg_path' column exist
-    missing_files = df[~df['ecg_path'].apply(os.path.exists)]
-    if not missing_files.empty:
-        raise FileNotFoundError(f"The following files are missing: {missing_files['ecg_path'].tolist()[:5]}")
-
     dataset = ProjectDataset(df)
-
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
 

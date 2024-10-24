@@ -56,10 +56,23 @@ def load_and_prepare_data(args: HearWiseArgs, new_path: str, new_ext: str = None
     # Read data
     df = load_df(args.data_path)
     
+    # Check if DataFrame is empty
+    if df.empty:
+        raise ValueError("The DataFrame is empty. Please provide a valid data file.")    
+    
+    # Check if 'ecg_file_name' column exists and if the files exist
+    if 'ecg_file_name' not in df.columns:
+        raise ValueError(f"'ecg_file_name' column is missing in the DataFrame.")
+    
+    # Check if 'diagnosis' column exists
+    if 'diagnosis' not in df.columns:
+        raise ValueError("'diagnosis' column is missing in the DataFrame.")    
+    
     # Remove rows with empty 'diagnosis' column and count them
     missing_diagnosis_count = df['diagnosis'].isna().sum()
     df = df.dropna(subset=['diagnosis']).reset_index(drop=True)
-    print(f"Removed {missing_diagnosis_count} rows with empty 'diagnosis' column.")
+    if missing_diagnosis_count > 0:
+        print(f"Removed {missing_diagnosis_count} rows with empty 'diagnosis' column.")
     
     # Set path to ecg signals
     df = set_path(df, new_path)
@@ -67,22 +80,21 @@ def load_and_prepare_data(args: HearWiseArgs, new_path: str, new_ext: str = None
     # Change extension of ecg_path if ext is not None
     if new_ext is not None:
         df['ecg_path'] = df['ecg_path'].apply(lambda x: os.path.splitext(x)[0] + new_ext)    
-    
-    # Check if DataFrame is empty
-    if df.empty:
-        raise ValueError("The DataFrame is empty. Please provide a valid data file.")
 
-    # Check if 'ecg_path' column exists and if the files exist
-    if 'ecg_path' not in df.columns:
-        # Show 5 examples of the DataFrame columns
-        example_columns = df.columns[:5].tolist()
-        raise ValueError(f"'ecg_path' column is missing in the DataFrame. Here are 5 example columns: {example_columns}")
-    
     # Check if the files in 'ecg_path' column exist
     missing_files = df[~df['ecg_path'].apply(os.path.exists)]
     if not missing_files.empty:
-        raise FileNotFoundError(f"The following files are missing: {missing_files['ecg_path'].tolist()[:5]}")
-
+        missing_files_list = missing_files['ecg_path'].tolist()
+        missing_files_df = pd.DataFrame(missing_files_list, columns=['missing_files'])
+        missing_path = os.path.join(args.output_folder, 'missing_files.csv')
+        missing_files_df.to_csv(missing_path, index=False)
+        print(f'Warning: Missing files saved to {missing_path} - List of missing files:')
+        print(missing_files_df)
+        
+        # Discard missing_files from df
+        df = df[df['ecg_path'].apply(os.path.exists)].reset_index(drop=True)
+        print(f'Warning: {len(missing_files)} files were missing and discarded from the DataFrame.')
+        
     return df
 
 def save_and_perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame):
