@@ -85,15 +85,17 @@ class EfficientNetV2_LVEF_Under_50(EfficientNetWrapper, HeartWiseModelFactory):
             hugging_face_api_key=hugging_face_api_key
         )
 
-class EfficientNetV2_AFIB_at_5Y(EfficientNetWrapper, HeartWiseModelFactory):
-    name = 'efficientnetv2_afib_at_5y'
+class EfficientNetV2_AFIB_5Y(EfficientNetWrapper, HeartWiseModelFactory):
+    name = 'efficientnetv2_afib_5y'
     
     def __init__(
         self, 
+        model_name: str,
         map_location: torch.device,
         hugging_face_api_key: str
     ):
         super().__init__(
+            model_name=model_name, 
             map_location=map_location, 
             hugging_face_api_key=hugging_face_api_key
         )
