@@ -296,7 +296,7 @@ class AnalysisPipeline:
             dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
             for batch in tqdm(dataloader, total=len(dataloader)):
                 diagnosis = batch['diagnosis']
-                ecg_tensor = batch['ecg_signal']
+                ecg_tensor = batch['ecg_signal'].to(signal_processing_device)
                 file_name = batch['file_name']
 
                 # Create thresholds tensor
@@ -336,8 +336,9 @@ class AnalysisPipeline:
             with torch.no_grad():
                 for batch in tqdm(dataloader, total=len(dataloader)):
                     diagnosis = batch['diagnosis'].unsqueeze(-1)
-                    ecg_tensor = batch['ecg_signal']
-                    file_name = batch['file_name']             
+                    ecg_tensor = batch['ecg_signal'].to(signal_processing_device)
+                    file_name = batch['file_name']      
+
                     sig_prob = signal_processing_model(ecg_tensor)
 
                     for i in range(len(sig_prob)):
