@@ -1,0 +1,6 @@
+# .dockerignore
+preprocessing/
+weights/
+deploy-venv/
+outputs/
+fairseq-signals/
