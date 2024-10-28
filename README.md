@@ -119,7 +119,7 @@ DeepECG_Deploy/
    - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF < 50%.
 
 5. **EfficientV2_Incident_AFIB_At_5_Years**:
-   - model_name: `efficientnetv2_afib_5_y`
+   - model_name: `efficientnetv2_afib_5y`
    - Utilizes the EfficientNetV2 architecture for processing ECG signals.
    - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
    - The model takes an input signal tensor and outputs the logits for the binary classification of incident AFIB at 5 years.
@@ -143,7 +143,7 @@ DeepECG_Deploy/
    - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF < 50%.
 
 9. **WCR_Incident_AFIB_At_5_Years**:
-   - model_name: `wcr_afib_5_y`
+   - model_name: `wcr_afib_5y`
    - Utilizes the WCR architecture for processing ECG signals.
    - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
    - The model takes an input signal tensor and outputs the logits for the binary classification of incident AFIB at 5 years.
