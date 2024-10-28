@@ -112,18 +112,41 @@ DeepECG_Deploy/
    - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
    - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF <= 40%.
 
-4. **EfficientV2_LVEF_Less_Than_50**:
-   - model_name: `efficientnetv2_lvef_less_than_50`
+4. **EfficientV2_Under_50**:
+   - model_name: `efficientnetv2_lvef_under_50`
    - Utilizes the EfficientNetV2 architecture for processing ECG signals.
    - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
    - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF < 50%.
 
 5. **EfficientV2_Incident_AFIB_At_5_Years**:
-   - model_name: `efficientnetv2_incident_afib_at_5_years`
+   - model_name: `efficientnetv2_afib_5_y`
    - Utilizes the EfficientNetV2 architecture for processing ECG signals.
    - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
    - The model takes an input signal tensor and outputs the logits for the binary classification of incident AFIB at 5 years.
 
+6. **WCR_77_classes**:
+   - model_name: `wcr_77_classes`
+   - Utilizes the WCR architecture for processing ECG signals.
+   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
+   - The model takes an input signal tensor and outputs the logits for the 77 diagnosis classes.
+
+7. **WCR_LVEF_Equal_Under_40**:
+   - model_name: `wcr_lvef_equal_under_40`
+   - Utilizes the WCR architecture for processing ECG signals.
+   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
+   - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF <= 40%.
+
+8. **WCR_LVEF_Under_50**:
+   - model_name: `wcr_lvef_under_50`
+   - Utilizes the WCR architecture for processing ECG signals.
+   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
+   - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF < 50%.
+
+9. **WCR_Incident_AFIB_At_5_Years**:
+   - model_name: `wcr_afib_5_y`
+   - Utilizes the WCR architecture for processing ECG signals.
+   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
+   - The model takes an input signal tensor and outputs the logits for the binary classification of incident AFIB at 5 years.
 
 ## 📄 Usage
 
@@ -190,7 +213,7 @@ To build the Docker image, run the following command in the root directory of th
 Processing Mode (preprocessing, analysis or full run) should be specified in the docker command line (see examples below)
 
 ```
-docker build -t deepecg-deploy .
+docker build -t deepecg-docker .
 ```
 
 ### Running the Docker Container
@@ -199,23 +222,23 @@ To run the Docker container, use one of the following commands based on your har
 
 **For preprocessing:**
 ```
-docker run -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-deploy preprocessing
+docker run -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker preprocessing
 ```
 
 **For analysis:**
 ```
-docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_preprocessing:/app/preprocessing -i deepecg-deploy analysis
+docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker analysis
 ```
 
 **For full run:**
 ```
-docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-deploy full_run
+docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker full_run
 ```
 
 **Without GPU (CPU only):**
 Note that models device in heartwise.config should be set to "cpu"
 ```
-docker run -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals -v local_path_to_preprocessing:/preprocessing -i deepecg-deploy full_run
+docker run -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals -v local_path_to_preprocessing:/preprocessing -i deepecg-docker full_run
 ```
 
 These commands mount the `outputs/`, `ecg_signals/` and `preprocessing/` directories from your local machine to the container, allowing you to easily provide input data and retrieve results.
