@@ -105,15 +105,17 @@ class WCR_LVEF_Under_50(WCREcgTransformer, HeartWiseModelFactory):
             hugging_face_api_key=hugging_face_api_key
         )
 
-class WCR_AFIB_at_5Y(WCREcgTransformer, HeartWiseModelFactory):
-    name = 'wcr_afib_at_5y'
+class WCR_AFIB_5Y(WCREcgTransformer, HeartWiseModelFactory):
+    name = 'wcr_afib_5y'
     
     def __init__(
         self, 
+        model_name: str,
         map_location: torch.device,
         hugging_face_api_key: str
     ):
         super().__init__(
+            model_name=model_name, 
             map_location=map_location, 
             hugging_face_api_key=hugging_face_api_key
         )        
