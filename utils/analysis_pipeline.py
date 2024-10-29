@@ -7,7 +7,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score, f1_score, ro
 from utils.files_handler import XMLProcessor, ECGFileHandler
 from data.project_dataset import create_dataloader
 from models import HeartWiseModelFactory
-from utils.constants import ECG_CATEGORIES, ECG_PATTERNS, BERT_THRESHOLDS
+from utils.constants import ECG_CATEGORIES, ECG_PATTERNS, BERT_THRESHOLDS, WCR_COLUMN_CONVERSION
 from utils.ecg_signal_processor import ECGSignalProcessor
 
 def compute_best_threshold(df_gt_col: pd.Series, df_pred_col: pd.Series) -> float:
@@ -311,7 +311,10 @@ class AnalysisPipeline:
                 diag_binary = torch.where(diag_prob >= bert_thresholds_tensor, 1, 0)
 
                 # Append batch data 
-                sig_prob = signal_processing_model(ecg_tensor)     
+                sig_prob = signal_processing_model(ecg_tensor)   
+                if "wcr" in signal_processing_model_name:
+                    sig_prob = sig_prob[:, WCR_COLUMN_CONVERSION]
+                        
                 for i in range(len(diag_binary)):
                     ground_truth.append(diag_binary[i].detach().cpu().numpy())
                     predictions.append(sig_prob[i].detach().cpu().numpy())
