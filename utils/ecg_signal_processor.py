@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-
+from typing import Tuple, List
 from tqdm import tqdm
 from scipy.interpolate import interp1d
 from scipy.signal import medfilt
@@ -11,13 +11,13 @@ class ECGSignalProcessor:
     def __init__(self, fs=250):
         self.fs = fs
 
-    def compute_magnitude_spectrum(self, signal):
+    def compute_magnitude_spectrum(self, signal: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         fft_result = np.fft.fft(signal)
         fft_freq = np.fft.fftfreq(len(signal), 1/self.fs)
         magnitude_spectrum = np.abs(fft_result)
         return fft_freq, magnitude_spectrum
 
-    def plot_mean_spectrum(self, signals):
+    def plot_mean_spectrum(self, signals: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         all_magnitude_spectra = []
         signals = signals.astype(np.float32)
         for signal in signals:
@@ -25,8 +25,32 @@ class ECGSignalProcessor:
             all_magnitude_spectra.append(magnitude_spectrum)
         mean_magnitude_spectrum = np.mean(all_magnitude_spectra, axis=0)
         return fft_freq, mean_magnitude_spectrum
-
-    def detect_peaks_with_sliding_window(self, signals, window_size=3, std_threshold=2, min_freq=20, merge_threshold=1):
+    
+    def adjust_spectral_power(self, signal: np.ndarray, power_ratio: float) -> np.ndarray:
+        fft_result = np.fft.fft(signal)
+        adjusted_fft = fft_result * power_ratio
+        adjusted_signal = np.fft.ifft(adjusted_fft)
+        return np.real(adjusted_signal)    
+    
+    def compute_average_spectral_power(self, magnitude_spectrum: np.ndarray) -> float:
+        return np.mean(magnitude_spectrum)
+    
+    def scale_ecg_signals(self, df: pd.DataFrame, power_ratio: float) -> pd.DataFrame:
+        _, mean_magnitude_spectrum = self.plot_mean_spectrum(np.array(df['ecg_signal'].tolist())[:, :, 0])
+        new_avg_power = self.compute_average_spectral_power(mean_magnitude_spectrum)
+        factor = power_ratio / new_avg_power
+        
+        df['ecg_signal'] = df['ecg_signal'].apply(lambda x: self.adjust_spectral_power(x, factor))
+        return df
+        
+    def detect_peaks_with_sliding_window(
+        self, 
+        signals: np.ndarray, 
+        window_size: int = 3, 
+        std_threshold: int = 2, 
+        min_freq: int = 20, 
+        merge_threshold: int = 1
+    ) -> List[Tuple[float, float]]:
         fft_freq, mean_magnitude_spectrum = self.plot_mean_spectrum(signals)
         valid_indices = fft_freq >= min_freq
         valid_freqs = fft_freq[valid_indices]
@@ -98,7 +122,7 @@ class ECGSignalProcessor:
         
         return list_real_range
 
-    def flatten_fft_peak(self, signal, flatten_ranges=[(59.5, 60.5), (69.5, 70.5)]):
+    def flatten_fft_peak(self, signal: np.ndarray, flatten_ranges: List[Tuple[float, float]] = [(59.5, 60.5), (69.5, 70.5)]) -> np.ndarray:
         if np.isnan(signal).any():
             signal = np.nan_to_num(signal)
         
@@ -137,13 +161,25 @@ class ECGSignalProcessor:
         modified_signal = np.fft.ifft(fft_result)
         return modified_signal.real
 
-    def process_signals_parallel(self, signals, flatten_ranges=[(59.5, 60.5), (69.5, 70.5)], max_workers=4):
+    def process_signals_parallel(
+        self, 
+        signals: np.ndarray, 
+        flatten_ranges: List[Tuple[float, float]] = [(59.5, 60.5), (69.5, 70.5)], 
+        max_workers: int = 4
+    ) -> np.ndarray:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [executor.submit(self.flatten_fft_peak, signal, flatten_ranges) for signal in signals]
             results = [future.result() for future in futures]
         return np.array(results)
 
-    def plot_mean_spectrum_with_median_loess(self, signals, color='blue', label='MHI', frac=0.10, kernel_size=5):
+    def plot_mean_spectrum_with_median_loess(
+        self, 
+        signals: np.ndarray, 
+        color: str = 'blue', 
+        label: str = 'MHI', 
+        frac: float = 0.10, 
+        kernel_size: int = 5
+    ) -> Tuple[np.ndarray, np.ndarray]:
         fft_freq, mean_magnitude_spectrum = self.plot_mean_spectrum(signals, color=color, label=label)
         
         valid_indices = fft_freq >= 40
@@ -155,7 +191,13 @@ class ECGSignalProcessor:
 
         return valid_freqs, loess_smoothed
 
-    def find_crossings_for_peaks(self, signals, peak_ranges, frac=0.1, kernel_size=5):
+    def find_crossings_for_peaks(
+        self, 
+        signals: np.ndarray, 
+        peak_ranges: List[Tuple[float, float]], 
+        frac: float = 0.1, 
+        kernel_size: int = 5
+    ) -> List[Tuple[float, float]]:
         fft_freq, mean_magnitude_spectrum = self.plot_mean_spectrum(signals)
         
         valid_indices = fft_freq >= 30
@@ -195,10 +237,16 @@ class ECGSignalProcessor:
 
         return crossings
 
-    def widen_ranges(self, ranges_list, widen_by=1):
+    def widen_ranges(self, ranges_list: List[Tuple[float, float]], widen_by: int = 1) -> List[Tuple[float, float]]:
         return [(start - widen_by, end + widen_by) for start, end in ranges_list]
 
-    def clean_and_process_ecg_leads(self, df: pd.DataFrame, window_size: int = 5, std_threshold: int = 5, max_workers: int = 16) -> pd.DataFrame:
+    def clean_and_process_ecg_leads(
+        self, 
+        df: pd.DataFrame, 
+        window_size: int = 5, 
+        std_threshold: int = 5, 
+        max_workers: int = 16
+    ) -> pd.DataFrame:
         print("Step 1: Detecting peaks")
         input_data = np.array(df['ecg_signal'].tolist())
         print(input_data.shape)
