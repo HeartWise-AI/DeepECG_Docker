@@ -27,6 +27,7 @@ class EfficientNetWrapper(HeartWiseModelFactory):
             map_location=map_location
         )
         print(f"Model {model_name} loaded to {map_location}")
+        self.mhi_factor = 1/0.0048
 
     def _load_model(self, model_path: str, map_location: torch.device) -> None:       
         pt_file = next((f for f in os.listdir(model_path) if f.endswith('.pt')), None)
@@ -36,7 +37,7 @@ class EfficientNetWrapper(HeartWiseModelFactory):
         self.model = torch.jit.load(model_path, map_location=map_location)
 
     def __call__(self, signal):
-        signal = signal.to(self.device)
+        signal *= self.mhi_factor
         return torch.sigmoid(self.model(signal))
 
 
