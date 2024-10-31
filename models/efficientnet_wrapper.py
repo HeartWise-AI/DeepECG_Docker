@@ -41,7 +41,7 @@ class EfficientNetWrapper(HeartWiseModelFactory):
         return torch.sigmoid(self.model(signal))
 
 
-class EfficientV2_77_classes(EfficientNetWrapper, HeartWiseModelFactory):
+class EfficientNetV2_77_classes(EfficientNetWrapper, HeartWiseModelFactory):
     name = 'efficientnetv2_77_classes'
     
     def __init__(
