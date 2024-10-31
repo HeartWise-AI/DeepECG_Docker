@@ -9,6 +9,8 @@ import xml.etree.ElementTree as ET
 
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from utils.parser import HearWiseArgs
+
 def load_df(path: str) -> pd.DataFrame:
     if path.endswith('.csv'):
         df = pd.read_csv(path)
@@ -42,6 +44,75 @@ def set_path(df: pd.DataFrame, path: str) -> pd.DataFrame:
         pd.DataFrame: The updated DataFrame with a new column 'ecg_path' containing the full file paths.
     """
     df['ecg_path'] = df['ecg_file_name'].apply(lambda x: os.path.join(path, x))
+    return df
+
+def load_and_prepare_data(args: HearWiseArgs, new_path: str, new_ext: str = None) -> pd.DataFrame:
+    """
+    Load data from a specified path, preprocess it, and prepare it for analysis.
+
+    This function performs several data loading and preprocessing steps:
+    - Loads the DataFrame from the provided `data_path`.
+    - Removes rows where the 'diagnosis' column is empty, reporting the number of removed rows.
+    - Sets the path for ECG signals using the `new_path`.
+    - Optionally changes the file extension of ECG paths if `new_ext` is provided.
+    - Validates that the DataFrame is not empty after preprocessing.
+    - Ensures that the 'ecg_path' column exists and that all referenced files exist.
+
+    Args:
+        args (HearWiseArgs): Configuration arguments containing `data_path` and other settings.
+        new_path (str): The new directory path to set for ECG signal files.
+        new_ext (str, optional): New file extension for ECG paths. If provided, updates the 
+                                 'ecg_path' column with this new extension. Defaults to None.
+
+    Returns:
+        pd.DataFrame: A preprocessed DataFrame ready for further analysis.
+
+    Raises:
+        ValueError: If the resulting DataFrame is empty or if the 'ecg_path' column is missing.
+        FileNotFoundError: If any of the files specified in 'ecg_path' do not exist.
+    """
+    # Read data
+    df = load_df(args.data_path)
+    
+    # Check if DataFrame is empty
+    if df.empty:
+        raise ValueError("The DataFrame is empty. Please provide a valid data file.")    
+    
+    # Check if 'ecg_file_name' column exists and if the files exist
+    if 'ecg_file_name' not in df.columns:
+        raise ValueError(f"'ecg_file_name' column is missing in the DataFrame.")
+    
+    # Check if 'diagnosis' column exists
+    if 'diagnosis' not in df.columns:
+        raise ValueError("'diagnosis' column is missing in the DataFrame.")    
+    
+    # Remove rows with empty 'diagnosis' column and count them
+    missing_diagnosis_count = df['diagnosis'].isna().sum()
+    df = df.dropna(subset=['diagnosis']).reset_index(drop=True)
+    if missing_diagnosis_count > 0:
+        print(f"Removed {missing_diagnosis_count} rows with empty 'diagnosis' column.")
+    
+    # Set path to ecg signals
+    df = set_path(df, new_path)
+
+    # Change extension of ecg_path if ext is not None
+    if new_ext is not None:
+        df['ecg_path'] = df['ecg_path'].apply(lambda x: os.path.splitext(x)[0] + new_ext)    
+
+    # Check if the files in 'ecg_path' column exist
+    missing_files = df[~df['ecg_path'].apply(os.path.exists)]
+    if not missing_files.empty:
+        missing_files_list = missing_files['ecg_path'].tolist()
+        missing_files_df = pd.DataFrame(missing_files_list, columns=['missing_files'])
+        missing_path = os.path.join(args.output_folder, 'missing_files.csv')
+        missing_files_df.to_csv(missing_path, index=False)
+        print(f'Warning: Missing files saved to {missing_path} - List of missing files:')
+        print(missing_files_df)
+        
+        # Discard missing_files from df
+        df = df[df['ecg_path'].apply(os.path.exists)].reset_index(drop=True)
+        print(f'Warning: {len(missing_files)} files were missing and discarded from the DataFrame.')
+        
     return df
 
 def save_to_csv(metrics: dict, path: str) -> None:
@@ -173,6 +244,7 @@ class XMLProcessor:
                 return (file_id, xml_type, 'Failed', 'Unknown XML format'), None, None
             
             return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array
+        
         except Exception as e:
             print(f"Error processing file: {str(e)}")
             return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
