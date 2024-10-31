@@ -3,11 +3,22 @@ import numpy as np
 import pandas as pd
 
 from tqdm import tqdm
-from sklearn.metrics import roc_auc_score, average_precision_score, f1_score, roc_curve
+from sklearn.metrics import (
+    roc_auc_score, 
+    average_precision_score, 
+    f1_score, 
+    roc_curve
+)
 from utils.files_handler import XMLProcessor, ECGFileHandler
 from data.project_dataset import create_dataloader
 from models import HeartWiseModelFactory
-from utils.constants import ECG_CATEGORIES, ECG_PATTERNS, BERT_THRESHOLDS, WCR_COLUMN_CONVERSION
+from utils.constants import (
+    ECG_CATEGORIES, 
+    ECG_PATTERNS, 
+    BERT_THRESHOLDS, 
+    WCR_COLUMN_CONVERSION, 
+    PTBXL_POWER_RATIO
+)
 from utils.ecg_signal_processor import ECGSignalProcessor
 
 def compute_best_threshold(df_gt_col: pd.Series, df_pred_col: pd.Series) -> float:
@@ -245,19 +256,27 @@ class AnalysisPipeline:
         
         print(f"Processed {len(df)} files.")
 
-
-        # Process ECG signals
+        # Initialize ECG signal processor
         ecg_signal_processor = ECGSignalProcessor()
-        cleaned_ecg_signals_df = ecg_signal_processor.clean_and_process_ecg_leads(df=ecg_signals_df, max_workers=preprocessing_n_workers)
-                
-        print(f"Cleaned {len(cleaned_ecg_signals_df)} ecg signals.")
 
+        # Scale data
+        print(f"Scaling ecg signals...")
+        ecg_signals_df = ecg_signal_processor.scale_ecg_signals(df=ecg_signals_df, power_ratio=PTBXL_POWER_RATIO)
+        print(f"Scaled ecg signals.")
+        
+        # Process ECG signals
+        print(f"Processing ecg signals...")
+        cleaned_ecg_signals_df = ecg_signal_processor.clean_and_process_ecg_leads(df=ecg_signals_df, max_workers=preprocessing_n_workers)
+        print(f"Processed {len(cleaned_ecg_signals_df)} ecg signals.")
+
+        # Save cleaned ecg signals
+        print(f"Saving cleaned ecg signals...")
         for _, row in tqdm(cleaned_ecg_signals_df.iterrows(), total=len(cleaned_ecg_signals_df), desc="Saving cleaned ecg signals"):
             ECGFileHandler.save_ecg_signal(
                 ecg_signal=row['ecg_signal'],
                 filename=f"{row['ecg_path']}"
             )
-                    
+        print(f"Saved cleaned ecg signals.")
         return df
               
     @staticmethod
@@ -293,10 +312,14 @@ class AnalysisPipeline:
             predictions = []
             ground_truth = []
             probabities_rows = []
+            print(f"Creating dataloader...")
             dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
+            print(f"Created dataloader.")
+                        
             for batch in tqdm(dataloader, total=len(dataloader)):
                 diagnosis = batch['diagnosis']
                 ecg_tensor = batch['ecg_signal'].to(signal_processing_device)
+
                 file_name = batch['file_name']
 
                 # Create thresholds tensor
