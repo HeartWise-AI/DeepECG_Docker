@@ -32,38 +32,40 @@ This pipeline offers 3 modes of processing:
 - Configurable pipeline for flexible usage
 - CPU & GPU support for accelerated processing
 
-## 🛠️ Installation
+## 🛠️ Installation 
 
-1. Clone the repository:
+1. 📥 Clone the repository:
    ```
    git clone https://github.com/HeartWise-AI/DeepECG_Deploy.git
    cd DeepECG_Deploy
    ```
 
-2. Set up your HuggingFace API key:
-   - Create a file named `api_key.json` in the root directory
-   - Add your API key in the following format:
+2. 🔑 Set up your HuggingFace API key:
+   - Create a HuggingFace account if you don't have one yet
+   - Ask for access to the DeepECG models need in the [heartwise-ai/DeepECG](https://huggingface.co/collections/heartwise/deepecg-models-66ce09c7d620749ad819fa0d) repository
+   - Create an API key in the HuggingFace website in `User Settings` -> `API Keys` -> `Create API Key` -> `Read`
+   - Add your API key in the following format in the `api_key.json` file in the root directory:
      ```json
      {
        "huggingface_api_key": "your_api_key_here"
      }
      ```
+3. 📄 Populate a csv file containing the data to be processed, example: inputs/data_rows_template.csv (see [Usage](#usage) for more details)
 
-3. If running locally, optionally, create a new virtual environment (recommended):
+4. 🐳 Build the docker image:
    ```
-   python -m venv venv
-   source venv/bin/activate
+   docker build -t deepecg-docker .
    ```
 
-4. If running locally, install the required dependencies:
+5. 🚀 Run the docker container: (see [Docker](#docker) for more details)
    ```
-   pip install -r requirements.txt
+   docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker full_run
    ```
 
 ## Project Structure
 
 ```
-DeepECG_Deploy/
+DeepECG_Docker/
 │
 ├── models/
 │   ├── bert_classifier.py
@@ -72,7 +74,7 @@ DeepECG_Deploy/
 │   └── resnet_wrapper.py
 │
 ├── inputs/
-│   └── data_rows.csv
+│   └── data_rows_template.csv
 │
 ├── outputs/
 │   └── (output files will be generated here)
@@ -152,37 +154,51 @@ DeepECG_Deploy/
 
 1. Prepare your input data:
    - Create a CSV file with the following template in inputs/data_rows_template.csv:
-     - `diagnosis`: Text Diagnosis of the ECG signal 
-     - `ECG_file`: The ECG signal file name
+   - For each model, add two columns with the following format:
+     ```
+     'ecg_machine_diagnosis': '77_classes_ecg_file_name',
+     'afib_5y': 'afib_ecg_file_name',
+     'lvef_40': 'lvef_40_ecg_file_name',
+     'lvef_50': 'lvef_50_ecg_file_name'
+     ```
+     - `ecg_machine_diagnosis`: Diagnosis from the ECG machine
+     - `77_classes_ecg_file_name`: The ECG signal **file names** machine ecg diagnosis
+     - `afib_5y`: Binary classification of incident AFIB at 5 years
+     - `afib_ecg_file_name`: The ECG signal **file names** incident AFIB at 5 years
+     - `lvef_40`: Binary classification of LVEF <= 40%
+     - `lvef_40_ecg_file_name`: The ECG signal **file names** LVEF <= 40%
+     - `lvef_50`: Binary classification of LVEF < 50%
+     - `lvef_50_ecg_file_name`: The ECG signal **file names** LVEF < 50%
    - Place your input CSV file in the `inputs/` directory
 
 2. Configure the pipeline:
-   - Edit the `heartwise.config` file to set the desired configuration
+   - Edit the `heartwise.config` file to set the desired configuration - Most of the time, you'll need to change only the `data_path`.
    ```yaml
    diagnosis_classifier_device: cuda:0
    signal_processing_device: cuda:0
    batch_size: 32
-   output_folder: /outputs
+   output_folder: /app/outputs
    hugging_face_api_key_path: /app/api_key.json
-   output_file_name: results # Do not add file extension
-   signal_processing_model_name: efficientnetv2
-   diagnosis_classifier_model_name: bert_diagnosis2classification
-   data_path: /inputs/data_rows_template.csv
-   ecg_signals_path: /ecg_signals_path
+   use_efficientnet: True
+   use_wcr: True   
+   data_path: /app/inputs/data_rows_template.csv # Need to be changed for the actual csv filename
+   mode: full_run
+   ecg_signals_path: /app/ecg_signals
+   preprocessing_folder: /app/preprocessing
+   preprocessing_n_workers: 16   
    ```
-   - Edit `heartwise.config` file contains the configuration settings for the pipeline. Below is a description of each configuration parameter:
+   - `heartwise.config` file contains the configuration settings for the pipeline. Below is a description of each configuration parameter:
 
-     - `diagnosis_classifier_device`: Specifies the device to be used for the diagnosis classifier model. Example: `cuda:1` for using the second GPU.
-     - `signal_processing_device`: Specifies the device to be used for the signal processing model. Example: `cuda:1` for using the second GPU.
+     - `diagnosis_classifier_device`: Specifies the device to be used for the diagnosis classifier model. Example: `cuda:0` for using the first GPU.
+     - `signal_processing_device`: Specifies the device to be used for the signal processing model. Example: `cuda:0` for using the first GPU.
      - `batch_size`: Defines the batch size for processing the data. Example: `32`.
-     - `output_folder`: The directory where the output files will be saved. Example: `/outputs`.
+     - `output_folder`: The directory where the output files will be saved. Example: `/app/outputs`.
      - `hugging_face_api_key_path`: The path to the file containing the HuggingFace API key. Example: `/app/api_key.json`.
-     - `output_file_name`: The name of the output file (without extension) where results will be saved. Example: `results`.
-     - `signal_processing_model_name`: The name of the signal processing model to be used. Example: `efficientnetv2_77_classes`.
-     - `diagnosis_classifier_model_name`: The name of the diagnosis classifier model to be used. Example: `bert_diagnosis2classification`.
-     - `data_path`: The path to the input CSV file containing the data. Example: `/inputs/data_rows_template.csv`.
-     - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/ecg_signals_folder`.
+     - `use_efficientnet`: Boolean value to specify if the EfficientNet model should be used. Example: `True`.
+     - `use_wcr`: Boolean value to specify if the WCR model should be used. Example: `True`.
+     - `data_path`: The path to the input CSV file containing the data. Example: `/app/inputs/data_rows_template.csv`.
      - `mode`: The mode of the pipeline (overwriten by docker command line). Example: `analysis` | `preprocessing` | `full_run`.
+     - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/app/ecg_signals`.
      - `preprocessing_folder`: The path to the folder where the preprocessed files will be saved. Example: `/preprocessing`.
      - `preprocessing_n_workers`: The number of workers to be used for the preprocessing. Example: `16`.
 
@@ -191,57 +207,73 @@ DeepECG_Deploy/
 3. Run the pipeline:
    - If using Docker, follow the [Docker](#docker) instructions below
 
-   - If running locally:
-     Option 1: execute the main script with the correct arguments:
-     ```
-     python main.py --diagnosis_classifier_device cuda:1 --signal_processing_device cuda:1 --batch_size 32 --output_folder /outputs --hugging_face_api_key_path /app/api_key.json --output_file_name results --signal_processing_model_name efficientnetv2 --diagnosis_classifier_model_name bert_diagnosis2classification --data_path /inputs/data_rows_template.csv --ecg_signals_path /ecg_signals_folder
-     ```
-     Option 2: execute the bash script:
-     ```
-     bash run_pipeline.bash
-     ```
-
 4. Retrieve results:
    - Check the `outputs/` directory for the generated results file
    - Check the `preprocessing/` directory for the generated preprocessed files
 
 ## 🐳 Docker
 
-### Building the Docker Image
-
-To build the Docker image, run the following command in the root directory of the project:
-Processing Mode (preprocessing, analysis or full run) should be specified in the docker command line (see examples below)
-
-```
-docker build -t deepecg-docker .
-```
-
 ### Running the Docker Container
 
 To run the Docker container, use one of the following commands based on your hardware:
 
+**For full run:**
+Run both preprocessing and analysis:
+```
+docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker full_run
+```
+
 **For preprocessing:**
+Run only preprocessing:
 ```
 docker run -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker preprocessing
 ```
 
 **For analysis:**
+Run only analysis:
 ```
 docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker analysis
 ```
 
-**For full run:**
-```
-docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker full_run
-```
-
 **Without GPU (CPU only):**
-Note that models device in heartwise.config should be set to "cpu"
+Note recommanded for WCR models. Note that models device in heartwise.config should be set to "cpu"
 ```
 docker run -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals -v local_path_to_preprocessing:/preprocessing -i deepecg-docker full_run
 ```
 
 These commands mount the `outputs/`, `ecg_signals/` and `preprocessing/` directories from your local machine to the container, allowing you to easily provide input data and retrieve results.
+
+## 💻 Local run
+
+1. Create a virtual environment:
+   ```
+   python -m venv deploy-venv
+   source deploy-venv/bin/activate
+   ```
+
+2. Install the requirements:
+   ```
+   pip install -r requirements.txt
+   ```
+
+3. Install the following package manually:
+   ```
+   git clone https://github.com/HeartWise-AI/fairseq-signals && \
+   cd fairseq-signals && \
+   pip install --editable ./
+   ```
+
+4. Run the pipeline:
+   Option 1: execute the main script with the correct arguments:
+     ```
+     python main.py --diagnosis_classifier_device cuda:1 --signal_processing_device cuda:1 --batch_size 32 --output_folder /outputs --hugging_face_api_key_path /app/api_key.json --output_file_name results --use_efficientnet True --use_wcr True --data_path /inputs/data_rows_template.csv --ecg_signals_path /ecg_signals_folder --mode full_run --preprocessing_folder /preprocessing --preprocessing_n_workers 16
+     ```
+   Option 2: execute the bash script:
+     ```
+     bash run_pipeline.bash
+     ```
+
+To run the pipeline locally, see [Usage](#usage)
 
 ## 🤝 Contributing
 
