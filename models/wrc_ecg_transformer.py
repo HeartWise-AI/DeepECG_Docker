@@ -47,7 +47,7 @@ class WCREcgTransformer(HeartWiseModelFactory):
             raise ValueError("No .pt file found in the directory") 
         model_path = os.path.join(model_path, pt_file)
         
-        model, saved_cfg, task = checkpoint_utils.load_model_and_task(
+        model, _, _ = checkpoint_utils.load_model_and_task(
             model_path,
             arg_overrides=overrides,
             suffix=""
