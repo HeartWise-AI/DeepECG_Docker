@@ -220,7 +220,7 @@ class AnalysisPipeline:
     @staticmethod
     def save_and_preprocess_data(df: pd.DataFrame, output_folder: str, preprocessing_folder: str, preprocessing_n_workers: int) -> pd.DataFrame:
         # Generate XML
-        if df['ecg_file_name'].iloc[0].endswith('.npy'):
+        if df['ecg_path'].iloc[0].endswith('.npy'):
             ecgs = []
             # store the lead array
             import os
@@ -319,12 +319,12 @@ class AnalysisPipeline:
             for batch in tqdm(dataloader, total=len(dataloader)):
                 diagnosis = batch['diagnosis']
                 ecg_tensor = batch['ecg_signal'].to(signal_processing_device)
-
                 file_name = batch['file_name']
 
                 # Create thresholds tensor
                 current_batch_size = len(diagnosis)
                 bert_thresholds_tensor = torch.zeros((current_batch_size, 77)).to(diagnosis_classifier_device)
+                
                 # Fill thresholds tensor
                 for i, pattern in enumerate(ECG_PATTERNS):
                     bert_thresholds_tensor[:, i] = BERT_THRESHOLDS[pattern]['threshold']
