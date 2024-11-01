@@ -9,13 +9,11 @@ get_param() {
 diagnosis_classifier_device=$(get_param "diagnosis_classifier_device")
 signal_processing_device=$(get_param "signal_processing_device")
 data_path=$(get_param "data_path")
-model_name=$(get_param "model_name")
 batch_size=$(get_param "batch_size")
-output_file=$(get_param "output_file")
 output_folder=$(get_param "output_folder")
 hugging_face_api_key_path=$(get_param "hugging_face_api_key_path")
-signal_processing_model_name=$(get_param "signal_processing_model_name")
-diagnosis_classifier_model_name=$(get_param "diagnosis_classifier_model_name")
+use_wcr=$(get_param "use_wcr")
+use_efficientnet=$(get_param "use_efficientnet")
 ecg_signals_path=$(get_param "ecg_signals_path")
 mode=$(get_param "mode")
 preprocessing_folder=$(get_param "preprocessing_folder")
@@ -33,13 +31,12 @@ run_pipeline() {
     python main.py \
         --diagnosis_classifier_device $diagnosis_classifier_device \
         --signal_processing_device $signal_processing_device \
-        --batch_size $batch_size \
-        --output_file $output_file \
         --data_path $data_path \
+        --batch_size $batch_size \
         --output_folder $output_folder \
         --hugging_face_api_key_path $hugging_face_api_key_path \
-        --signal_processing_model_name $signal_processing_model_name \
-        --diagnosis_classifier_model_name $diagnosis_classifier_model_name \
+        --use_wcr $use_wcr \
+        --use_efficientnet $use_efficientnet \
         --ecg_signals_path $ecg_signals_path \
         --mode $run_mode \
         --preprocessing_folder $preprocessing_folder \
