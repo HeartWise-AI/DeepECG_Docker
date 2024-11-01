@@ -42,7 +42,7 @@ This pipeline offers 3 modes of processing:
 
 2. 🔑 Set up your HuggingFace API key:
    - Create a HuggingFace account if you don't have one yet
-   - Ask for access to the DeepECG models need in the [heartwise-ai/DeepECG](https://huggingface.co/collections/heartwise/deepecg-models-66ce09c7d620749ad819fa0d) repository
+   - Ask for access to the DeepECG models needed in the [heartwise-ai/DeepECG](https://huggingface.co/collections/heartwise/deepecg-models-66ce09c7d620749ad819fa0d) repository
    - Create an API key in the HuggingFace website in `User Settings` -> `API Keys` -> `Create API Key` -> `Read`
    - Add your API key in the following format in the `api_key.json` file in the root directory:
      ```json
@@ -153,7 +153,7 @@ DeepECG_Docker/
 ## 📄 Usage
 
 1. Prepare your input data:
-   - Create a CSV file with the following template in inputs/data_rows_template.csv:
+   - Create a CSV file with the following template in [inputs/data_rows_template.csv](inputs/data_rows_template.csv):
    - For each model, add two columns with the following format:
      ```
      'ecg_machine_diagnosis': '77_classes_ecg_file_name',
@@ -172,22 +172,9 @@ DeepECG_Docker/
    - Place your input CSV file in the `inputs/` directory
 
 2. Configure the pipeline:
-   - Edit the `heartwise.config` file to set the desired configuration - Most of the time, you'll need to change only the `data_path`.
-   ```yaml
-   diagnosis_classifier_device: cuda:0
-   signal_processing_device: cuda:0
-   batch_size: 32
-   output_folder: /app/outputs
-   hugging_face_api_key_path: /app/api_key.json
-   use_efficientnet: True
-   use_wcr: True   
-   data_path: /app/inputs/data_rows_template.csv # Need to be changed for the actual csv filename
-   mode: full_run
-   ecg_signals_path: /app/ecg_signals
-   preprocessing_folder: /app/preprocessing
-   preprocessing_n_workers: 16   
-   ```
-   - `heartwise.config` file contains the configuration settings for the pipeline. Below is a description of each configuration parameter:
+   - Edit the [heartwise.config](heartwise.config) file to set the desired configuration - When using docker, you only need to be changed for the actual csv filename.
+
+   - The `heartwise.config` file contains the configuration settings for the pipeline. Below is a description of each configuration parameter:
 
      - `diagnosis_classifier_device`: Specifies the device to be used for the diagnosis classifier model. Example: `cuda:0` for using the first GPU.
      - `signal_processing_device`: Specifies the device to be used for the signal processing model. Example: `cuda:0` for using the first GPU.
@@ -202,20 +189,11 @@ DeepECG_Docker/
      - `preprocessing_folder`: The path to the folder where the preprocessed files will be saved. Example: `/preprocessing`.
      - `preprocessing_n_workers`: The number of workers to be used for the preprocessing. Example: `16`.
 
-   - Ensure that the paths and model names in the `heartwise.config` file are correctly set according to your setup and requirements.
-
-3. Run the pipeline:
-   - If using Docker, follow the [Docker](#docker) instructions below
-
-4. Retrieve results:
-   - Check the `outputs/` directory for the generated results file
-   - Check the `preprocessing/` directory for the generated preprocessed files
-
 ## 🐳 Docker
 
 ### Running the Docker Container
 
-To run the Docker container, use one of the following commands based on your hardware:
+To run the Docker container, use one of the following commands based on your hardware and mode:
 
 **For full run:**
 Run both preprocessing and analysis:
@@ -272,8 +250,6 @@ These commands mount the `outputs/`, `ecg_signals/` and `preprocessing/` directo
      ```
      bash run_pipeline.bash
      ```
-
-To run the pipeline locally, see [Usage](#usage)
 
 ## 🤝 Contributing
 
