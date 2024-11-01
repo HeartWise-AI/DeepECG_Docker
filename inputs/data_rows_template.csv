@@ -1,2 +1,2 @@
-diagnosis,ecg_file_name
-Sinus bradycardia Otherwise normal ECG,ecg_file_name.xml
+77_classes_ecg_file_name,ecg_machine_diagnosis,afib_5y,afib_ecg_file_name,lvef_40,lvef_40_ecg_file_name,lvef_50,lvef_50_ecg_file_name
+Sinus bradycardia Otherwise normal ECG,ecg_file_name.xml,1,ecg_file_name.xml,0,ecg_file_name.npy,0,ecg_file_name.xml
