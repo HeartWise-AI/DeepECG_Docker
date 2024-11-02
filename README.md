@@ -36,8 +36,8 @@ This pipeline offers 3 modes of processing:
 
 1. 📥 Clone the repository:
    ```
-   git clone https://github.com/HeartWise-AI/DeepECG_Deploy.git
-   cd DeepECG_Deploy
+   git clone https://github.com/HeartWise-AI/DeepECG_Docker.git
+   cd DeepECG_Docker
    ```
 
 2. 🔑 Set up your HuggingFace API key:
@@ -97,58 +97,40 @@ DeepECG_Docker/
 ## Models
 
 1. **BertClassifier**: 
-   - model_name: `bert_diagnosis2classification`
-   - Utilizes the BERT architecture for sequence classification tasks.
-   - Pre-trained model is loaded from HuggingFace, and the model is fine-tuned for diagnosing and classifying ECG diagnosis.
-   - The model processes input text and outputs classification logits.
+   - Utilizes the BERT architecture fine-tuned to classify ECG diagnosis into 77 classes.
+   - More information [here](https://huggingface.co/heartwise/bert_diagnosis2classification)
 
 2. **EfficientV2_77_classes**:
-   - model_name: `efficientnetv2_77_classes`
-   - Utilizes the EfficientNetV2 architecture for processing ECG signals.
-   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
-   - The model takes an input signal tensor and outputs the logits for the 77 diagnosis classes.
+   - Utilizes the EfficientNetV2 architecture to classify ECG signals into 77 classes.
+   - More information [here](https://huggingface.co/heartwise/efficientnetv2_77_classes)
 
 3. **EfficientV2_LVEF_Equal_Under_40**:
-   - model_name: `efficientnetv2_lvef_equal_under_40`
-   - Utilizes the EfficientNetV2 architecture for processing ECG signals.
-   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
-   - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF <= 40%.
+   - Utilizes the EfficientNetV2 architecture to classify ECG signals into binary classification of LVEF <= 40%.
+   - More information [here](https://huggingface.co/heartwise/efficientnetv2_lvef_equal_under_40)
 
 4. **EfficientV2_Under_50**:
-   - model_name: `efficientnetv2_lvef_under_50`
-   - Utilizes the EfficientNetV2 architecture for processing ECG signals.
-   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
-   - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF < 50%.
+   - Utilizes the EfficientNetV2 architecture to classify ECG signals into binary classification of LVEF < 50%.
+   - More information [here](https://huggingface.co/heartwise/efficientnetv2_lvef_under_50)
 
 5. **EfficientV2_Incident_AFIB_At_5_Years**:
-   - model_name: `efficientnetv2_afib_5y`
-   - Utilizes the EfficientNetV2 architecture for processing ECG signals.
-   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
-   - The model takes an input signal tensor and outputs the logits for the binary classification of incident AFIB at 5 years.
+   - Utilizes the EfficientNetV2 architecture to classify ECG signals into binary classification of incident AFIB at 5 years.
+   - More information [here](https://huggingface.co/heartwise/efficientnetv2_afib_5y)
 
 6. **WCR_77_classes**:
-   - model_name: `wcr_77_classes`
-   - Utilizes the WCR architecture for processing ECG signals.
-   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
-   - The model takes an input signal tensor and outputs the logits for the 77 diagnosis classes.
+   - Utilizes the WCR architecture to classify ECG signals into 77 classes.
+   - More information [here](https://huggingface.co/heartwise/wcr_77_classes)
 
 7. **WCR_LVEF_Equal_Under_40**:
-   - model_name: `wcr_lvef_equal_under_40`
-   - Utilizes the WCR architecture for processing ECG signals.
-   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
-   - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF <= 40%.
+   - Utilizes the WCR architecture to classify ECG signals into binary classification of LVEF <= 40%.
+   - More information [here](https://huggingface.co/heartwise/wcr_lvef_equal_under_40)
 
 8. **WCR_LVEF_Under_50**:
-   - model_name: `wcr_lvef_under_50`
-   - Utilizes the WCR architecture for processing ECG signals.
-   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
-   - The model takes an input signal tensor and outputs the logits for the binary classification of LVEF < 50%.
+   - Utilizes the WCR architecture to classify ECG signals into binary classification of LVEF < 50%.
+   - More information [here](https://huggingface.co/heartwise/wcr_lvef_under_50)
 
 9. **WCR_Incident_AFIB_At_5_Years**:
-   - model_name: `wcr_afib_5y`
-   - Utilizes the WCR architecture for processing ECG signals.
-   - Pre-trained model is loaded from a specified directory, and the model is used to process ECG signal tensors.
-   - The model takes an input signal tensor and outputs the logits for the binary classification of incident AFIB at 5 years.
+   - Utilizes the WCR architecture to classify ECG signals into binary classification of incident AFIB at 5 years.
+   - More information [here](https://huggingface.co/heartwise/wcr_afib_5y)
 
 ## 📄 Usage
 
@@ -161,20 +143,19 @@ DeepECG_Docker/
      'lvef_40': 'lvef_40_ecg_file_name',
      'lvef_50': 'lvef_50_ecg_file_name'
      ```
-     - `ecg_machine_diagnosis`: Diagnosis from the ECG machine
-     - `77_classes_ecg_file_name`: The ECG signal **file names** machine ecg diagnosis
-     - `afib_5y`: Binary classification of incident AFIB at 5 years
-     - `afib_ecg_file_name`: The ECG signal **file names** incident AFIB at 5 years
-     - `lvef_40`: Binary classification of LVEF <= 40%
-     - `lvef_40_ecg_file_name`: The ECG signal **file names** LVEF <= 40%
-     - `lvef_50`: Binary classification of LVEF < 50%
-     - `lvef_50_ecg_file_name`: The ECG signal **file names** LVEF < 50%
+   - `ecg_machine_diagnosis` (string): Diagnosis from the ECG machine
+   - `77_classes_ecg_file_name` (string): The ECG signal **file names** machine ecg diagnosis
+   - `afib_5y` (int): Binary classification of incident AFIB at 5 years
+   - `afib_ecg_file_name` (string): The ECG signal **file names** incident AFIB at 5 years
+   - `lvef_40` (int): Binary classification of LVEF <= 40%
+   - `lvef_40_ecg_file_name` (string): The ECG signal **file names** LVEF <= 40%
+   - `lvef_50` (int): Binary classification of LVEF < 50%
+   - `lvef_50_ecg_file_name` (string): The ECG signal **file names** LVEF < 50%
    - Place your input CSV file in the `inputs/` directory
+   - Change the `data_rows_template.csv` filename in the `heartwise.config` file
 
-2. Configure the pipeline:
-   - Edit the [heartwise.config](heartwise.config) file to set the desired configuration - When using docker, you only need to be changed for the actual csv filename.
-
-   - The `heartwise.config` file contains the configuration settings for the pipeline. Below is a description of each configuration parameter:
+2. Pipeline configuration:
+   - When using docker, you only need to change the actual csv filename. Edit the [heartwise.config](heartwise.config) file to set the desired configuration:
 
      - `diagnosis_classifier_device`: Specifies the device to be used for the diagnosis classifier model. Example: `cuda:0` for using the first GPU.
      - `signal_processing_device`: Specifies the device to be used for the signal processing model. Example: `cuda:0` for using the first GPU.
@@ -186,7 +167,7 @@ DeepECG_Docker/
      - `data_path`: The path to the input CSV file containing the data. Example: `/app/inputs/data_rows_template.csv`.
      - `mode`: The mode of the pipeline (overwriten by docker command line). Example: `analysis` | `preprocessing` | `full_run`.
      - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/app/ecg_signals`.
-     - `preprocessing_folder`: The path to the folder where the preprocessed files will be saved. Example: `/preprocessing`.
+     - `preprocessing_folder`: The path to the folder where the preprocessed files will be saved. Example: `/app/preprocessing`.
      - `preprocessing_n_workers`: The number of workers to be used for the preprocessing. Example: `16`.
 
 ## 🐳 Docker
