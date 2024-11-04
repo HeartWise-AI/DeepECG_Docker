@@ -234,5 +234,18 @@ def main(args: HearWiseArgs):
 
 if __name__ == '__main__':
     args = HearWiseArgs.parse_arguments()
+    print("Summary of arguments:")
+    print(f"Diagnosis Classifier Device: {args.diagnosis_classifier_device}")
+    print(f"Signal Processing Device: {args.signal_processing_device}")
+    print(f"Data Path: {args.data_path}")
+    print(f"Batch Size: {args.batch_size}")
+    print(f"Output Folder: {args.output_folder}")
+    print(f"Hugging Face API Key Path: {args.hugging_face_api_key_path}")
+    print(f"Use WCR: {args.use_wcr}")
+    print(f"Use EfficientNet: {args.use_efficientnet}")
+    print(f"ECG Signals Path: {args.ecg_signals_path}")
+    print(f"Mode: {args.mode}")
+    print(f"Preprocessing Folder: {args.preprocessing_folder}")
+    print(f"Preprocessing Number of Workers: {args.preprocessing_n_workers}")
     main(args)
 
