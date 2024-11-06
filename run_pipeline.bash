@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Function to display usage information
+usage() {
+    echo "Usage: source my_bash.bash --mode <mode> --csv_file <file.csv>"
+    echo "  --mode       Specify the mode of operation (e.g., analysis)"
+    echo "  --csv_file   Specify the path to the CSV file"
+    return 1
+}
+
 # Function to get value of a parameter from config file
 get_param() {
     grep "^$1:" heartwise.config | cut -d':' -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
@@ -20,9 +28,40 @@ preprocessing_folder=$(get_param "preprocessing_folder")
 preprocessing_n_workers=$(get_param "preprocessing_n_workers")
 
 # Overwrite mode by command line argument
-if [ $# -eq 1 ]; then
-    mode=$1
-fi
+# Parse command-line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --mode)
+            if [[ -n $2 && ! $2 =~ ^-- ]]; then
+                mode="$2"
+                shift 2
+            else
+                echo "Error: --mode requires a non-empty argument."
+                usage
+                return 1
+            fi
+            ;;
+        --csv_file_name)
+            if [[ -n $2 && ! $2 =~ ^-- ]]; then
+                csv_file_name="$2"
+                shift 2
+            else
+                echo "Error: --csv_file requires a non-empty argument."
+                usage
+                return 1
+            fi
+            ;;
+        --help|-h)
+            usage
+            return 0
+            ;;
+        *)
+            echo "Error: Unknown parameter passed: $1"
+            usage
+            return 1
+            ;;
+    esac
+done
 
 # Function to run the pipeline with given mode
 run_pipeline() {
@@ -31,7 +70,7 @@ run_pipeline() {
     python main.py \
         --diagnosis_classifier_device $diagnosis_classifier_device \
         --signal_processing_device $signal_processing_device \
-        --data_path $data_path \
+        --data_path $data_path"/"$csv_file_name \
         --batch_size $batch_size \
         --output_folder $output_folder \
         --hugging_face_api_key_path $hugging_face_api_key_path \
