@@ -130,7 +130,7 @@ def validate_dataframe(df: pd.DataFrame, diagnosis_to_file_columns: dict) -> tup
     if error_messages:
         full_error_message = "\n".join(error_messages)
         raise ValueError(f"DataFrame validation failed:\n{full_error_message}")
-    
+        
     return list(existing_diagnosis_columns), list(existing_file_columns)
 
 def create_preprocessing_dataframe(df: pd.DataFrame, existing_file_columns: list[str], ecg_path: str) -> pd.DataFrame:
@@ -138,17 +138,35 @@ def create_preprocessing_dataframe(df: pd.DataFrame, existing_file_columns: list
     melted_df = df.melt(value_vars=existing_file_columns, value_name='file_name').dropna(subset=['file_name'])
     # Construct full paths
     melted_df['ecg_path'] = melted_df['file_name'].apply(lambda x: os.path.join(ecg_path, x))
+    
+    # Remove files that do not exist
+    df_preprocessing = melted_df[melted_df['ecg_path'].apply(os.path.exists)].reset_index(drop=True)
+    
+    print(f"Number of rows removed: {len(melted_df) - len(df_preprocessing)} because the files did not exist")
+        
     # Remove duplicates
-    return melted_df[['ecg_path']].drop_duplicates().reset_index(drop=True) 
+    df_preprocessing = df_preprocessing[['ecg_path']].drop_duplicates().reset_index(drop=True) 
+            
+    return df_preprocessing
 
 def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_column: str, preprocessing_folder: str) -> pd.DataFrame:
     df_non_null = df[[diagnosis_column, ecg_file_column]].dropna(subset=[diagnosis_column, ecg_file_column])
-    return pd.DataFrame(
+    
+    df_analysis = pd.DataFrame(
         {
             'diagnosis': df_non_null[diagnosis_column].tolist(),
             'ecg_path': [os.path.splitext(os.path.join(preprocessing_folder, x))[0] + ".base64" for x in df_non_null[ecg_file_column]]
         }
     )
+        
+    # Remove files that do not exist
+    df_analysis = df_analysis[df_analysis['ecg_path'].apply(os.path.exists)]
+    # reset index to 0
+    df_analysis = df_analysis.reset_index(drop=True)
+    
+    print(f"Number of rows removed: {len(df) - len(df_analysis)} because the files did not exist")
+        
+    return df_analysis
 
 def main(args: HearWiseArgs):
     if args.mode not in {Mode.PREPROCESSING, Mode.ANALYSIS, Mode.FULL_RUN}:
@@ -166,9 +184,12 @@ def main(args: HearWiseArgs):
         print(f"Preprocessing data...")
 
         # Create preprocessing dataframe
+        print(f"Creating preprocessing dataframe...")
         df_preprocessing = create_preprocessing_dataframe(df, existing_file_columns, args.ecg_signals_path)
-
+        print(f"Preprocessing dataframe created.")
+        
         # Save and perform preprocessing
+        print(f"Saving and performing preprocessing...")
         save_and_perform_preprocessing(args, df_preprocessing)
         print(f"Data preprocessed.")
 
@@ -177,12 +198,15 @@ def main(args: HearWiseArgs):
         for diagnosis_column in existing_diagnosis_columns:
             # Create a test dataframe with only the diagnosis column and the corresponding ECG file name column
             ecg_file_column = DIAGNOSIS_TO_FILE_COLUMNS[diagnosis_column]
+            
+            print(f"Creating analysis dataframe for {diagnosis_column}...")
             df_analysis = create_analysis_dataframe(
                 df=df, 
                 diagnosis_column=diagnosis_column, 
                 ecg_file_column=ecg_file_column, 
                 preprocessing_folder=args.preprocessing_folder
             )
+            print(f"Analysis dataframe created for {diagnosis_column}.")
             
             # Append default bert model to the list of signal processing models to heartwise args
             args.diagnosis_classifier_model_name = MODEL_MAPPING[diagnosis_column]['bert']
