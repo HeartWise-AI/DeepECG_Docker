@@ -179,25 +179,25 @@ To run the Docker container, use one of the following commands based on your har
 **For full run:**
 Run both preprocessing and analysis:
 ```
-docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker full_run
+docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode full_run --csv_file_name data_rows_template.csv
 ```
 
 **For preprocessing:**
 Run only preprocessing:
 ```
-docker run -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker preprocessing
+docker run -v local_path_to_inputs:/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode preprocessing --csv_file_name data_rows_template.csv
 ```
 
 **For analysis:**
 Run only analysis:
 ```
-docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker analysis
+docker run --gpus "device=0" -v local_path_to_inputs:/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode analysis --csv_file_name data_rows_template.csv
 ```
 
 **Without GPU (CPU only):**
 Note recommanded for WCR models. Note that models device in heartwise.config should be set to "cpu"
 ```
-docker run -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals -v local_path_to_preprocessing:/preprocessing -i deepecg-docker full_run
+docker run -v local_path_to_inputs:/inputs -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals -v local_path_to_preprocessing:/preprocessing -i deepecg-docker --mode full_run --csv_file_name data_rows_template.csv
 ```
 
 These commands mount the `outputs/`, `ecg_signals/` and `preprocessing/` directories from your local machine to the container, allowing you to easily provide input data and retrieve results.
@@ -229,7 +229,7 @@ These commands mount the `outputs/`, `ecg_signals/` and `preprocessing/` directo
      ```
    Option 2: execute the bash script:
      ```
-     bash run_pipeline.bash
+     bash run_pipeline.bash --mode full_run --csv_file_name data_rows_template.csv
      ```
 
 ## 🤝 Contributing
