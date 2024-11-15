@@ -7,3 +7,4 @@ pyarrow
 fastparquet
 tqdm
 statsmodels
+git+https://github.com/HeartWise-AI/HeartWise_StatPlots.git
