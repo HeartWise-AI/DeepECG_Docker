@@ -15,10 +15,10 @@ def find_dcm_files_in_subfolders(folder_path):
     return dcm_files
 
 
-dicom_folder_paths = find_dcm_files_in_subfolders("/mnt/data1/datasets/JGH")
+dicom_folder_paths = find_dcm_files_in_subfolders("path_to_dicoms_folder")
 
-ecg_path = "test_jgh"
-cv_file_path = "inputs/test_jgh.csv"
+ecg_path = "path_to_save_npy_folder"
+cv_file_path = "path_to_save_csv_file.csv"
 os.makedirs(ecg_path, exist_ok=True)
 
 docker_list = []
