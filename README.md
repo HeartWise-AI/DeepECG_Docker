@@ -179,7 +179,7 @@ To run the Docker container, use one of the following commands based on your har
 **For full run:**
 Run both preprocessing and analysis:
 ```
-docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode full_run --csv_file_name data_rows_template.csv
+docker run --gpus "device=0" -v local_path_to_inputs:/app/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode full_run --csv_file_name data_rows_template.csv
 ```
 
 **For preprocessing:**
