@@ -52,9 +52,9 @@ This pipeline offers 3 modes of processing:
      ```
 3. 📄 Populate a csv file containing the data to be processed, example: inputs/data_rows_template.csv (see [Usage](#usage) for more details)
    - If using DICOMs, update the root path in [extract_metada_from_dicoms.py](utils/extract_metada_from_dicoms.py) then run the script to extract the metadata from the DICOMs
-   ```
-   python utils/extract_metada_from_dicoms.py
-   ```
+      ```
+      python utils/extract_metada_from_dicoms.py
+      ```
 
 4. 🐳 Build the docker image:
    ```
