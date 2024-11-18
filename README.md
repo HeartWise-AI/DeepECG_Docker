@@ -59,7 +59,7 @@ This pipeline offers 3 modes of processing:
 
 5. 🚀 Run the docker container: (see [Docker](#docker) for more details)
    ```
-   docker run --gpus "device=0" -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker full_run
+   docker run --gpus "device=0" -v local_path_to_inputs:/app/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode full_run --csv_file_name data_rows_template.csv
    ```
 
 ## Project Structure
