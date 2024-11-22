@@ -33,7 +33,10 @@ class WCREcgTransformer(HeartWiseModelFactory):
                 hugging_face_api_key=hugging_face_api_key
             ),
             map_location=map_location
-        )    
+        ) 
+        # self.mhi_factor = 1
+        # print(f"MHI factor: {self.mhi_factor}")
+        
         
         print(f"Model {model_name} loaded to {map_location}")
         
@@ -55,6 +58,7 @@ class WCREcgTransformer(HeartWiseModelFactory):
         self.model = model.to(map_location)
 
     def __call__(self, x, padding_mask=None):
+        # x *= self.mhi_factor
         net_input = { "source": x, "padding_mask": padding_mask}
         net_output = self.model(**net_input)
         return torch.sigmoid(self.model.get_logits(net_output))
