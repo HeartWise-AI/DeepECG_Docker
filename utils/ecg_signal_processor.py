@@ -35,11 +35,12 @@ class ECGSignalProcessor:
     def compute_average_spectral_power(self, magnitude_spectrum: np.ndarray) -> float:
         return np.mean(magnitude_spectrum)
     
-    def scale_ecg_signals(self, df: pd.DataFrame, power_ratio: float) -> pd.DataFrame:
+    def compute_spectral_power_factor(self, df: pd.DataFrame, power_ratio: float) -> float:
         _, mean_magnitude_spectrum = self.plot_mean_spectrum(np.array(df['ecg_signal'].tolist())[:, :, 0])
         new_avg_power = self.compute_average_spectral_power(mean_magnitude_spectrum)
-        factor = power_ratio / new_avg_power
-        
+        return power_ratio / new_avg_power
+    
+    def scale_ecg_signals(self, df: pd.DataFrame, factor: float) -> pd.DataFrame:
         df['ecg_signal'] = df['ecg_signal'].apply(lambda x: self.adjust_spectral_power(x, factor))
         return df
         
