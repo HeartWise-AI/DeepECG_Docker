@@ -2,9 +2,9 @@
 
 # Function to display usage information
 usage() {
-    echo "Usage: source run_pipeline.bash --mode <mode> --csv_file <file.csv>"
+    echo "Usage: source run_pipeline.bash --mode <mode> --csv_file_name <file.csv>"
     echo "  --mode       Specify the mode of operation (e.g., analysis)"
-    echo "  --csv_file   Specify the path to the CSV file"
+    echo "  --csv_file_name   Specify the name of the CSV file"
     return 1
 }
 
