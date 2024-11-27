@@ -60,7 +60,7 @@ class WCREcgTransformer(HeartWiseModelFactory):
         return torch.sigmoid(self.model.get_logits(net_output))
 
 
-class WCR_77_classes(WCREcgTransformer, HeartWiseModelFactory):
+class WCR_77_classes(WCREcgTransformer):
     name = 'wcr_77_classes'
     
     def __init__(
@@ -75,7 +75,7 @@ class WCR_77_classes(WCREcgTransformer, HeartWiseModelFactory):
             hugging_face_api_key=hugging_face_api_key
         )
         
-class WCR_LVEF_Equal_Under_40(WCREcgTransformer, HeartWiseModelFactory):
+class WCR_LVEF_Equal_Under_40(WCREcgTransformer):
     name = 'wcr_lvef_equal_under_40'
     
     def __init__(
@@ -90,7 +90,7 @@ class WCR_LVEF_Equal_Under_40(WCREcgTransformer, HeartWiseModelFactory):
             hugging_face_api_key=hugging_face_api_key
         )
 
-class WCR_LVEF_Under_50(WCREcgTransformer, HeartWiseModelFactory):
+class WCR_LVEF_Under_50(WCREcgTransformer):
     name = 'wcr_lvef_under_50'
     
     def __init__(
@@ -105,7 +105,7 @@ class WCR_LVEF_Under_50(WCREcgTransformer, HeartWiseModelFactory):
             hugging_face_api_key=hugging_face_api_key
         )
 
-class WCR_AFIB_5Y(WCREcgTransformer, HeartWiseModelFactory):
+class WCR_AFIB_5Y(WCREcgTransformer):
     name = 'wcr_afib_5y'
     
     def __init__(
