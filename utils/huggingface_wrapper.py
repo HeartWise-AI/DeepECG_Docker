@@ -9,9 +9,20 @@ class HuggingFaceWrapper:
     @staticmethod
     def get_model(repo_id, local_dir, hugging_face_api_key):           
         # Download repo from HuggingFace
+        print(f"Checking if {repo_id} already exists in {local_dir}")
+        if os.path.exists(local_dir):
+            print(f"{repo_id} already exists in {local_dir}")
+            return local_dir
+        
+        print(f"{local_dir} does not exist, creating it")
         os.makedirs(local_dir, exist_ok=True)
         print(f"Downloading {repo_id} to {local_dir}")
-        local_dir = snapshot_download(repo_id=repo_id, local_dir=local_dir, repo_type="model", token=hugging_face_api_key)
+        local_dir = snapshot_download(
+            repo_id=repo_id, 
+            local_dir=local_dir, 
+            repo_type="model", 
+            token=hugging_face_api_key
+        )
         
         print(f"{repo_id} downloaded to {local_dir}")
 
