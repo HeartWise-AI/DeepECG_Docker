@@ -5,13 +5,13 @@ from models.efficientnet_wrapper import (
     EfficientNetV2_LVEF_Equal_Under_40, 
     EfficientNetV2_LVEF_Under_50
 )
-from models.wrc_ecg_transformer import (
+from models.wcr_ecg_transformer import (
     WCR_77_classes, 
     WCR_AFIB_5Y, 
     WCR_LVEF_Equal_Under_40, 
     WCR_LVEF_Under_50
 )
-from models.bert_classifier import BertClassifier
+from models.bert_classifier import BertClassifier_En_Fr
 
 DIAGNOSIS_TO_FILE_COLUMNS = {
     'ecg_machine_diagnosis': '77_classes_ecg_file_name',
@@ -24,22 +24,22 @@ MODEL_MAPPING = {
     'ecg_machine_diagnosis': {
         'efficientnet': EfficientNetV2_77_classes.name,
         'wcr': WCR_77_classes.name,
-        'bert': BertClassifier.name
+        'bert': BertClassifier_En_Fr.name
     },
     'afib_5y': {
         'efficientnet': EfficientNetV2_AFIB_5Y.name,
         'wcr': WCR_AFIB_5Y.name,
-        'bert': BertClassifier.name
+        'bert': None
     },
     'lvef_40': {
         'efficientnet': EfficientNetV2_LVEF_Equal_Under_40.name,
         'wcr': WCR_LVEF_Equal_Under_40.name,
-        'bert': BertClassifier.name
+        'bert': None
     },
     'lvef_50': {
         'efficientnet': EfficientNetV2_LVEF_Under_50.name,
         'wcr': WCR_LVEF_Under_50.name,
-        'bert': BertClassifier.name
+        'bert': None
     }
 }
 
