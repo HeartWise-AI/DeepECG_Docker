@@ -4,7 +4,7 @@ import pandas as pd
 from tqdm import tqdm
 from heartwise_statplots.files_handler import DicomReader
 import concurrent.futures
-from functools import partial
+import multiprocessing
 
 def find_dcm_files_in_subfolders(folder_path):
     dcm_files = []
@@ -14,12 +14,14 @@ def find_dcm_files_in_subfolders(folder_path):
                 dcm_files.append(os.path.join(root, file))
     return dcm_files
 
-def process_dicom(index_and_path, ecg_path):
-    index, dicom_folder_path = index_and_path
+def process_dicom(args):
+    index, dicom_folder_path, ecg_path = args
     try:
+        # Read DICOM file
         dicom = DicomReader.read_dicom_file(dicom_folder_path)
         diagnosis = DicomReader.extract_diagnosis_from_dicom(dicom)
         
+        # Extract and save ECG signal
         ecg_signal = DicomReader.extract_ecg_from_dicom(dicom)
         np_file_name = f"ecg_signal_{index}.npy"
         ecg_npy_path = os.path.join(ecg_path, np_file_name)
@@ -35,32 +37,33 @@ def process_dicom(index_and_path, ecg_path):
         return None
 
 def main():
+    # Input and output paths
     dicom_folder_paths = find_dcm_files_in_subfolders("/tmp/dcm_input")
     ecg_path = "/tmp/dcm_output"
     cv_file_path = "/tmp/ECG_metadata.csv"
     os.makedirs(ecg_path, exist_ok=True)
 
-    docker_list = []
-    
-    # Create a partial function with fixed ecg_path
-    process_dicom_partial = partial(process_dicom, ecg_path=ecg_path)
-    
-    # Create index-path pairs
-    indexed_paths = list(enumerate(dicom_folder_paths))
-    
-    # Create a thread pool executor with 12 threads
-    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+    # Prepare arguments for parallel processing
+    args_list = [(i, path, ecg_path) for i, path in enumerate(dicom_folder_paths)]
+
+    # Calculate optimal number of processes
+    num_cores = multiprocessing.cpu_count()
+    num_processes = min(num_cores, 12)  # Use up to 12 cores or all available if less
+
+    # Process files in parallel using ProcessPoolExecutor
+    results = []
+    with concurrent.futures.ProcessPoolExecutor(max_workers=num_processes) as executor:
         # Process results with progress bar
-        for result in tqdm(
-            executor.map(process_dicom_partial, indexed_paths),
+        futures = list(tqdm(
+            executor.map(process_dicom, args_list),
             total=len(dicom_folder_paths),
-            desc="Processing dicoms"
-        ):
-            if result is not None:
-                docker_list.append(result)
+            desc=f"Processing dicoms using {num_processes} processes"
+        ))
+        
+        results = [f for f in futures if f is not None]
 
     # Create and save the DataFrame
-    df = pd.DataFrame(docker_list)
+    df = pd.DataFrame(results)
     df.to_csv(cv_file_path, index=False)
 
 if __name__ == "__main__":
