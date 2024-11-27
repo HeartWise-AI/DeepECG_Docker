@@ -50,21 +50,23 @@ This pipeline offers 3 modes of processing:
        "huggingface_api_key": "your_api_key_here"
      }
      ```
-3. 📄 Populate a csv file containing the data to be processed, example: inputs/data_rows_template.csv (see [Usage](#usage) for more details)
-   - If using DICOMs, update the root path in [extract_metada_from_dicoms.py](utils/extract_metada_from_dicoms.py) then run the script to extract the metadata from the DICOMs
-      ```
-      python utils/extract_metada_from_dicoms.py
-      ```
-
-4. 🐳 Build the docker image:
+3. 🐳 Build the docker image:
    ```
    docker build -t deepecg-docker .
    ```
+
+4. 📄 Populate a csv file containing the data to be processed, example: inputs/data_rows_template.csv (see [Usage](#usage) for more details)
+   - If using DICOMs, run the script to extract the metadata from the DICOMs. Launch the script from the docker while specifying input folder with dicoms, output folder where numpy will be saved and output folder where the csv file will be saved:
+       ```
+       docker run --entrypoint python -v local_path_to_inputs:/tmp/dcm_input -v local_path_to_outputs:/tmp/dcm_output -v local_path_to_csv_output:/tmp deepecg-docker utils/extract_metadata_from_dicoms.py
+      ```
 
 5. 🚀 Run the docker container: (see [Docker](#docker) for more details)
    ```
    docker run --gpus "device=0" -v local_path_to_inputs:/app/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode full_run --csv_file_name data_rows_template.csv
    ```
+
+Running the 
 
 ## Project Structure
 
