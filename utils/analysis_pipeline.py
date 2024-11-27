@@ -227,7 +227,7 @@ class AnalysisPipeline:
     ) -> pd.DataFrame:
         # Generate XML
         print(f"Computing spectral power factor...")
-        df_preprocessing = df.copy().head(20000)
+        df_preprocessing = df.copy().head(10000)
         if df['ecg_path'].iloc[0].endswith('.npy'):
             ecgs = []
             # store the lead array
@@ -267,7 +267,7 @@ class AnalysisPipeline:
         factor = ecg_signal_processor.compute_spectral_power_factor(df=ecg_signals_df, power_ratio=PTBXL_POWER_RATIO)
         print(f"Computed spectral power factor: {factor}")
         
-        batch_size = 20000
+        batch_size = 10000
         i = 0
         while i < len(df):
             print(f"Processing batch {(i // batch_size) + 1} / {(len(df) // batch_size) + 1}")
