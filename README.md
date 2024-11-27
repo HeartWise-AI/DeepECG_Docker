@@ -61,6 +61,8 @@ This pipeline offers 3 modes of processing:
        docker run --entrypoint python -v local_path_to_inputs:/tmp/dcm_input -v local_path_to_outputs:/tmp/dcm_output -v local_path_to_csv_output:/tmp deepecg-docker utils/extract_metadata_from_dicoms.py
       ```
 
+      You will then need to remove rows with NaN for your specific usecases before proceeding to step 5. In example: For LVEF<40, we remove all the rows in the CSV for data point where the LVEF is Nan
+
 5. 🚀 Run the docker container: (see [Docker](#docker) for more details)
    ```
    docker run --gpus "device=0" -v local_path_to_inputs:/app/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode full_run --csv_file_name data_rows_template.csv
