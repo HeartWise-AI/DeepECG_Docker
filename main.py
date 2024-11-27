@@ -174,7 +174,10 @@ def main(args: HearWiseArgs):
         
     df = load_df(args.data_path)
         
-    existing_diagnosis_columns, existing_file_columns = validate_dataframe(df, DIAGNOSIS_TO_FILE_COLUMNS)   
+    existing_diagnosis_columns, existing_file_columns = validate_dataframe(
+        df=df, 
+        diagnosis_to_file_columns=DIAGNOSIS_TO_FILE_COLUMNS
+    )   
     
     # Set up directories
     set_up_directories(args)
@@ -185,7 +188,11 @@ def main(args: HearWiseArgs):
 
         # Create preprocessing dataframe
         print(f"Creating preprocessing dataframe...")
-        df_preprocessing = create_preprocessing_dataframe(df, existing_file_columns, args.ecg_signals_path)
+        df_preprocessing = create_preprocessing_dataframe(
+            df=df, 
+            existing_file_columns=existing_file_columns, 
+            ecg_path=args.ecg_signals_path
+        )
         print(f"Preprocessing dataframe created.")
         
         # Save and perform preprocessing
@@ -230,7 +237,10 @@ def main(args: HearWiseArgs):
                 args.signal_processing_model_name = model_name
                 
                 # Perform analysis
-                metrics, df_probabilities = perform_analysis(args, df_analysis)
+                metrics, df_probabilities = perform_analysis(
+                    args=args, 
+                    df=df_analysis
+                )
 
                 # Save metrics and probabilities
                 current_date = datetime.now().strftime('%Y%m%d')
