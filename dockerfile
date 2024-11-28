@@ -28,6 +28,10 @@ COPY heartwise.config heartwise.config
 COPY main.py main.py
 COPY run_pipeline.bash run_pipeline.bash
 
+RUN apt-get update && apt-get install -y dos2unix && \
+    dos2unix run_pipeline.bash && \
+    chmod +x run_pipeline.bash
+
 # Make the bash script executable
 RUN chmod +x run_pipeline.bash
 
