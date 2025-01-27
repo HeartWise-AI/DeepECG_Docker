@@ -1,0 +1,4 @@
+x_path:/media/data1/ravram/DeepECG_Datasets/mhi-lqts-train-lite.csv
+x_shape:(2500, 12, 1)
+y_labels:['LQTS']
+scale:0.00488

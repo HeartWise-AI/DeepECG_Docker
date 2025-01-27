@@ -23,3 +23,5 @@ ecg_signals_analysis_cleaned_ecg_signals.csv
 *.gitattributes
 notebooks/ptb-xl_lite
 notebooks/README.md
+notebooks/ssl_pretrained_model
+notebooks/outputs
