@@ -133,21 +133,23 @@ def validate_dataframe(df: pd.DataFrame, diagnosis_to_file_columns: dict) -> tup
         
     return list(existing_diagnosis_columns), list(existing_file_columns)
 
-def create_preprocessing_dataframe(df: pd.DataFrame, existing_file_columns: list[str], ecg_path: str) -> pd.DataFrame:
+def create_preprocessing_dataframe(df: pd.DataFrame, existing_file_columns: list[str], ecg_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     # Unpivot the DataFrame to have a single column of file paths
     melted_df = df.melt(value_vars=existing_file_columns, value_name='file_name').dropna(subset=['file_name'])
     # Construct full paths
     melted_df['ecg_path'] = melted_df['file_name'].apply(lambda x: os.path.join(ecg_path, x))
     
-    # Remove files that do not exist
-    df_preprocessing = melted_df[melted_df['ecg_path'].apply(os.path.exists)].reset_index(drop=True)
+    # Create separate dataframes for existing and missing files
+    exists_mask = melted_df['ecg_path'].apply(lambda x: os.path.exists(x))
+    df_preprocessing = melted_df[exists_mask].reset_index(drop=True)
+    df_missing = melted_df[~exists_mask].reset_index(drop=True)
     
-    print(f"Number of rows removed: {len(melted_df) - len(df_preprocessing)} because the files did not exist")
+    print(f"Number of rows removed: {len(df_missing)} because the files did not exist")
         
-    # Remove duplicates
+    # Remove duplicates from preprocessing df
     df_preprocessing = df_preprocessing[['ecg_path']].drop_duplicates().reset_index(drop=True) 
             
-    return df_preprocessing
+    return df_preprocessing, df_missing
 
 def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_column: str, preprocessing_folder: str) -> pd.DataFrame:
     df_non_null = df[[diagnosis_column, ecg_file_column]].dropna(subset=[diagnosis_column, ecg_file_column])
@@ -190,12 +192,19 @@ def main(args: HearWiseArgs):
 
         # Create preprocessing dataframe
         print(f"Creating preprocessing dataframe...")
-        df_preprocessing = create_preprocessing_dataframe(
+        df_preprocessing, df_missing = create_preprocessing_dataframe(
             df=df, 
             existing_file_columns=existing_file_columns, 
             ecg_path=args.ecg_signals_path
         )
         print(f"Preprocessing dataframe created.")
+        
+        # Save missing files information
+        if not df_missing.empty:
+            current_date = datetime.now().strftime('%Y%m%d')
+            missing_files_path = os.path.join(args.output_folder, f'missing_files_{current_date}.csv')
+            save_df(df_missing, missing_files_path)
+            print(f"Missing files information saved to: {missing_files_path}")
         
         # Save and perform preprocessing
         print(f"Saving and performing preprocessing...")
