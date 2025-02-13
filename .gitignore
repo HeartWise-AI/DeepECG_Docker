@@ -17,3 +17,17 @@ api_key.json
 ecg_signals_analysis_cleaned_ecg_signals.csv
 *.csv
 *.json
+notebooks/ptb-xl_lite
+notebooks/README.md
+notebooks/ssl_pretrained_model
+notebooks/outputs
+*.dcm
+*.npy
+*.parquet
+*.h5
+*.gitattributes
+*.ipynb
+*.pyc
+*.ipynb_checkpoints
+*.ipynb_meta
+*.ipynb_checkpoints
