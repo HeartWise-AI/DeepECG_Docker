@@ -171,9 +171,11 @@ def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_
 def main(args: HearWiseArgs):
     if args.mode not in {Mode.PREPROCESSING, Mode.ANALYSIS, Mode.FULL_RUN}:
         raise ValueError(f"Invalid mode: {args.mode}. Please choose from 'preprocessing', 'analysis', or 'full_run'.")
-        
+
+    print('Loading input DataFrame')
     df = load_df(args.data_path)
-        
+    print('DataFrame loaded successfully!')
+
     existing_diagnosis_columns, existing_file_columns = validate_dataframe(
         df=df, 
         diagnosis_to_file_columns=DIAGNOSIS_TO_FILE_COLUMNS
