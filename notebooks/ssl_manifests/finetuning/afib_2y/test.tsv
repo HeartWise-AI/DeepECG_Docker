@@ -1,0 +1,4 @@
+x_path:/home/jdelfrates/DeepECG_Docker/notebooks/ptb-xl_lite/afib_2y_labels.csv
+x_shape:(2500, 12)
+y_labels:['afib_2y']
+scale:0.00488

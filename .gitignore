@@ -12,7 +12,6 @@ models/__pycache__
 __pycache__
 preprocessing
 venv
-*ipynb
 api_key.json
 ecg_signals_analysis_cleaned_ecg_signals.csv
 *.csv

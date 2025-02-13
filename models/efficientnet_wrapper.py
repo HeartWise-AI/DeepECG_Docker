@@ -1,6 +1,5 @@
 
 import os
-import sys
 import torch
 
 from utils.huggingface_wrapper import HuggingFaceWrapper
@@ -41,7 +40,7 @@ class EfficientNetWrapper(HeartWiseModelFactory):
         return torch.sigmoid(self.model(signal))
 
 
-class EfficientNetV2_77_classes(EfficientNetWrapper, HeartWiseModelFactory):
+class EfficientNetV2_77_classes(EfficientNetWrapper):
     name = 'efficientnetv2_77_classes'
     
     def __init__(
@@ -56,7 +55,7 @@ class EfficientNetV2_77_classes(EfficientNetWrapper, HeartWiseModelFactory):
             hugging_face_api_key=hugging_face_api_key
         )
 
-class EfficientNetV2_LVEF_Equal_Under_40(EfficientNetWrapper, HeartWiseModelFactory):
+class EfficientNetV2_LVEF_Equal_Under_40(EfficientNetWrapper):
     name = 'efficientnetv2_lvef_equal_under_40'
     
     def __init__(
@@ -71,7 +70,7 @@ class EfficientNetV2_LVEF_Equal_Under_40(EfficientNetWrapper, HeartWiseModelFact
             hugging_face_api_key=hugging_face_api_key
         )
 
-class EfficientNetV2_LVEF_Under_50(EfficientNetWrapper, HeartWiseModelFactory):
+class EfficientNetV2_LVEF_Under_50(EfficientNetWrapper):
     name = 'efficientnetv2_lvef_under_50'
     
     def __init__(
@@ -86,7 +85,7 @@ class EfficientNetV2_LVEF_Under_50(EfficientNetWrapper, HeartWiseModelFactory):
             hugging_face_api_key=hugging_face_api_key
         )
 
-class EfficientNetV2_AFIB_5Y(EfficientNetWrapper, HeartWiseModelFactory):
+class EfficientNetV2_AFIB_5Y(EfficientNetWrapper):
     name = 'efficientnetv2_afib_5y'
     
     def __init__(
