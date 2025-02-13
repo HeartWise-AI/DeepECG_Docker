@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import pandas as pd
+import os
 
 from tqdm import tqdm
 from sklearn.metrics import (
@@ -219,65 +220,123 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
 class AnalysisPipeline:
     @staticmethod
     def save_and_preprocess_data(df: pd.DataFrame, output_folder: str, preprocessing_folder: str, preprocessing_n_workers: int) -> pd.DataFrame:
-        # Generate XML
-        if df['ecg_path'].iloc[0].endswith('.npy'):
-            ecgs = []
-            # store the lead array
-            import os
-            for index, row in tqdm(df.iterrows(), total=len(df), desc="Processing files"):
-                lead_array = np.load(row['ecg_path'])
-                file_id = os.path.basename(row['ecg_path']).replace(".npy", "")
-                if lead_array.shape[-1] == 1:
-                    lead_array = lead_array.squeeze(-1)
-                if lead_array.shape[0] == 12: # if is (12, X) then transpose it to (X, 12)
-                    lead_array = lead_array.transpose(1, 0)
-                if lead_array.shape[0] != 2500: # if X != 2500 then resize it
-                    if lead_array.shape[0] < 2500: # if X < 2500 then skip it
-                        print(f"Warning: Lead array length is less than 2500 for file {file_id}.")
-                        continue
-                    else: # if X > 2500 then resize it
-                        step = lead_array.shape[0] // 2500
-                        lead_array = lead_array[::step, :]
-                new_path = os.path.join(preprocessing_folder, f"{file_id}.base64")
-                df.at[index, 'ecg_path'] = new_path
-                ecgs.append([new_path, lead_array])
-
-            ecg_signals_df = pd.DataFrame(ecgs, columns=['ecg_path', 'ecg_signal'])
-            print(ecg_signals_df.shape)
-        else:
-            xml_processor = XMLProcessor() 
-            df, ecg_signals_df = xml_processor.process_batch(
-                df=df,
-                num_workers=preprocessing_n_workers,
-                preprocessing_folder=preprocessing_folder
-            )     
-            # Save report
-            xml_processor.save_report(output_folder=output_folder)               
-        
-        print(f"Processed {len(df)} files.")
-
         # Initialize ECG signal processor
         ecg_signal_processor = ECGSignalProcessor()
-
-        # Scale data
-        print(f"Scaling ecg signals...")
-        ecg_signals_df = ecg_signal_processor.scale_ecg_signals(df=ecg_signals_df, power_ratio=PTBXL_POWER_RATIO)
-        print(f"Scaled ecg signals.")
         
-        # Process ECG signals
-        print(f"Processing ecg signals...")
-        cleaned_ecg_signals_df = ecg_signal_processor.clean_and_process_ecg_leads(df=ecg_signals_df, max_workers=preprocessing_n_workers)
-        print(f"Processed {len(cleaned_ecg_signals_df)} ecg signals.")
-
-        # Save cleaned ecg signals
-        print(f"Saving cleaned ecg signals...")
-        for _, row in tqdm(cleaned_ecg_signals_df.iterrows(), total=len(cleaned_ecg_signals_df), desc="Saving cleaned ecg signals"):
-            ECGFileHandler.save_ecg_signal(
-                ecg_signal=row['ecg_signal'],
-                filename=f"{row['ecg_path']}"
-            )
-        print(f"Saved cleaned ecg signals.")
-        return df
+        # Process in batches to manage memory
+        batch_size = 10000
+        total_batches = (len(df) + batch_size - 1) // batch_size
+        processed_df = pd.DataFrame()
+        
+        for batch_idx in range(total_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min((batch_idx + 1) * batch_size, len(df))
+            
+            print(f"\nProcessing batch {batch_idx + 1}/{total_batches}")
+            print(f"Batch size: {end_idx - start_idx} records")
+            
+            try:
+                # Get batch of data
+                batch_df = df.iloc[start_idx:end_idx].copy()
+                
+                # Process based on file type
+                if batch_df['ecg_path'].iloc[0].endswith('.npy'):
+                    ecgs = []
+                    # Process NPY files
+                    for index, row in tqdm(batch_df.iterrows(), total=len(batch_df), desc="Loading NPY files"):
+                        try:
+                            lead_array = np.load(row['ecg_path'])
+                            file_id = os.path.basename(row['ecg_path']).replace(".npy", "")
+                            
+                            # Shape corrections
+                            if lead_array.shape[-1] == 1:
+                                lead_array = lead_array.squeeze(-1)
+                            if lead_array.shape[0] == 12:  # transpose if needed
+                                lead_array = lead_array.transpose(1, 0)
+                                
+                            # Handle different lengths
+                            if lead_array.shape[0] != 2500:
+                                if lead_array.shape[0] < 2500:
+                                    print(f"Warning: Skipping {file_id} - signal length {lead_array.shape[0]} < 2500")
+                                    continue
+                                else:
+                                    step = lead_array.shape[0] // 2500
+                                    lead_array = lead_array[::step, :]
+                                    
+                            if lead_array.shape[1] != 12:
+                                print(f"Warning: Skipping {file_id} - incorrect number of leads: {lead_array.shape[1]}")
+                                continue
+                                
+                            new_path = os.path.join(preprocessing_folder, f"{file_id}.base64")
+                            batch_df.at[index, 'ecg_path'] = new_path
+                            ecgs.append([new_path, lead_array])
+                            
+                        except Exception as e:
+                            print(f"Error processing file {row['ecg_path']}: {str(e)}")
+                            continue
+                            
+                    ecg_signals_df = pd.DataFrame(ecgs, columns=['ecg_path', 'ecg_signal'])
+                    
+                else:
+                    # Process XML files
+                    try:
+                        xml_processor = XMLProcessor()
+                        batch_df, ecg_signals_df = xml_processor.process_batch(
+                            df=batch_df,
+                            num_workers=preprocessing_n_workers,
+                            preprocessing_folder=preprocessing_folder
+                        )
+                        
+                        # Save XML processing report for this batch
+                        xml_processor.save_report(
+                            output_folder=os.path.join(output_folder, f'batch_{batch_idx + 1}')
+                        )
+                        
+                    except Exception as e:
+                        print(f"Error in XML processing batch {batch_idx + 1}: {str(e)}")
+                        continue
+                
+                if len(ecg_signals_df) == 0:
+                    print(f"Warning: No valid signals in batch {batch_idx + 1}")
+                    continue
+                
+                # Scale signals
+                print("Scaling ECG signals...")
+                scaled_signals_df = ecg_signal_processor.scale_ecg_signals(
+                    df=ecg_signals_df, 
+                    power_ratio=PTBXL_POWER_RATIO
+                )
+                
+                # Clean and process
+                print("Processing ECG signals...")
+                cleaned_signals_df = ecg_signal_processor.clean_and_process_ecg_leads(
+                    df=scaled_signals_df,
+                    max_workers=preprocessing_n_workers
+                )
+                
+                # Save processed signals
+                print("Saving processed signals...")
+                for _, row in tqdm(cleaned_signals_df.iterrows(), total=len(cleaned_signals_df), desc="Saving signals"):
+                    ECGFileHandler.save_ecg_signal(
+                        ecg_signal=row['ecg_signal'],
+                        filename=row['ecg_path']
+                    )
+                
+                # Append processed batch
+                processed_df = pd.concat([processed_df, batch_df], ignore_index=True)
+                
+                # Clear memory
+                del ecg_signals_df, scaled_signals_df, cleaned_signals_df, batch_df
+                
+            except Exception as e:
+                print(f"Error processing batch {batch_idx + 1}: {str(e)}")
+                continue
+                
+        if len(processed_df) == 0:
+            raise ValueError("No data was successfully processed")
+            
+        print(f"\nCompleted processing {len(processed_df)} files")
+        return processed_df
               
     @staticmethod
     def run_analysis(
