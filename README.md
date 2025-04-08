@@ -251,12 +251,17 @@ Contributions to DeepECG_Docker repository are welcome! Please follow these step
 If you find this repository useful, please cite our work:
 
 ```
-@article{,
-  title={},
-  author={},
-  journal={},
-  year={},
-  publisher={}
+@article {Nolin-Lapalme2025.03.02.25322575,
+	author = {Nolin-Lapalme, Alexis and Sowa, Achille and Delfrate, Jacques and Tastet, Olivier and Corbin, Denis and Kulbay, Merve and Ozdemir, Derman and No{\"e}l, Marie-Jeanne and Marois-Blanchet, Fran{\c c}ois-Christophe and Harvey, Fran{\c c}ois and Sharma, Surbhi and Ansari, Minhaj and Chiu, I-Min and Dsouza, Valentina and Friedman, Sam F. and Chass{\'e}, Micha{\"e}l and Potter, Brian J. and Afilalo, Jonathan and Elias, Pierre Adil and Jabbour, Gilbert and Bahani, Mourad and Dub{\'e}, Marie-Pierre and Boyle, Patrick M. and Chatterjee, Neal A. and Barrios, Joshua and Tison, Geoffrey H. and Ouyang, David and Maddah, Mahnaz and Khurshid, Shaan and Cadrin-Tourigny, Julia and Tadros, Rafik and Hussin, Julie and Avram, Robert},
+	title = {Foundation models for generalizable electrocardiogram interpretation: comparison of supervised and self-supervised electrocardiogram foundation models},
+	elocation-id = {2025.03.02.25322575},
+	year = {2025},
+	doi = {10.1101/2025.03.02.25322575},
+	publisher = {Cold Spring Harbor Laboratory Press},
+	URL = {https://www.medrxiv.org/content/early/2025/03/05/2025.03.02.25322575},
+	eprint = {https://www.medrxiv.org/content/early/2025/03/05/2025.03.02.25322575.full.pdf},
+	journal = {medRxiv}
 }
+
 ```
 
