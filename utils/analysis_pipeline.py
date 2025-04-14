@@ -246,6 +246,10 @@ class AnalysisPipeline:
                     for index, row in tqdm(batch_df.iterrows(), total=len(batch_df), desc="Loading NPY files"):
                         try:
                             lead_array = np.load(row['ecg_path'])
+
+                            if np.isnan(lead_array).any():
+                                continue
+                            
                             file_id = os.path.basename(row['ecg_path']).replace(".npy", "")
                             
                             # Shape corrections
