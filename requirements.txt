@@ -7,4 +7,5 @@ pyarrow
 fastparquet
 tqdm
 statsmodels
+torchmetrics
 git+https://github.com/HeartWise-AI/HeartWise_StatPlots.git
