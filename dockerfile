@@ -17,6 +17,8 @@ RUN pip install -r requirements.txt
 # Clone the fairseq-signals repository and install it
 RUN git clone https://github.com/HeartWise-AI/fairseq-signals && \
     cd fairseq-signals && \
+    find . -type f -name "*.py" -exec sed -i 's/from transformers\.modeling_utils import apply_chunking_to_forward/from transformers.pytorch_utils import apply_chunking_to_forward/g' {} + && \
+    find . -type f -name "*.py" -exec sed -i 's/from \.\.\.modeling_utils import apply_chunking_to_forward/from ...pytorch_utils import apply_chunking_to_forward/g' {} + && \
     pip install --editable ./    
 
 # Copy the rest of the application code into the container
