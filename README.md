@@ -229,7 +229,7 @@ These commands mount the `outputs/`, `ecg_signals/` and `preprocessing/` directo
 4. Run the pipeline:
    Option 1: execute the main script with the correct arguments:
      ```
-     python main.py --diagnosis_classifier_device cuda:1 --signal_processing_device cuda:1 --batch_size 32 --output_folder /outputs --hugging_face_api_key_path /app/api_key.json --output_file_name results --use_efficientnet True --use_wcr True --data_path /inputs/data_rows_template.csv --ecg_signals_path /ecg_signals_folder --mode full_run --preprocessing_folder /preprocessing --preprocessing_n_workers 16
+     python main.py --diagnosis_classifier_device cuda:1 --signal_processing_device cuda:1 --batch_size 32 --hugging_face_api_key_path /app/api_key.json --output_folder results --use_efficientnet True --use_wcr True --data_path /inputs/data_rows_template.csv --ecg_signals_path /ecg_signals_folder --mode full_run --preprocessing_folder /preprocessing --preprocessing_n_workers 16
      ```
    Option 2: execute the bash script:
      ```
