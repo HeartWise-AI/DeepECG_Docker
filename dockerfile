@@ -41,9 +41,3 @@ RUN if [ "$RUN_MODELS_SETUP" = "true" ]; \
     python models_setup.py; \
     else echo "Skipping models_setup.py"; \
     fi
-
-# Set entrypoint
-ENTRYPOINT ["./run_pipeline.bash"]
-
-# Use CMD to set the defualt mode 
-CMD ["full_run"]
