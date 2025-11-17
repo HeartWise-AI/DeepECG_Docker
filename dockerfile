@@ -41,3 +41,5 @@ RUN if [ "$RUN_MODELS_SETUP" = "true" ]; \
     python models_setup.py; \
     else echo "Skipping models_setup.py"; \
     fi
+
+CMD ["tail", "-f", "/dev/null"]
