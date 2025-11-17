@@ -1,6 +1,6 @@
 torch==2.4.0 --extra-index-url https://download.pytorch.org/whl/cu118
 huggingface_hub
-transformers
+transformers==4.35.0
 pandas
 scikit-learn
 pyarrow
