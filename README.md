@@ -216,35 +216,6 @@ docker run -v local_path_to_inputs:/inputs -v local_path_to_outputs:/outputs -v 
 
 These commands mount the `outputs/`, `ecg_signals/` and `preprocessing/` directories from your local machine to the container, allowing you to easily provide input data and retrieve results.
 
-## 💻 Local run
-
-1. Create a virtual environment:
-   ```
-   python -m venv deploy-venv
-   source deploy-venv/bin/activate
-   ```
-
-2. Install the requirements:
-   ```
-   pip install -r requirements.txt
-   ```
-
-3. Install the following package manually:
-   ```
-   git clone https://github.com/HeartWise-AI/fairseq-signals && \
-   cd fairseq-signals && \
-   pip install --editable ./
-   ```
-
-4. Run the pipeline:
-   Option 1: execute the main script with the correct arguments:
-     ```
-     python main.py --diagnosis_classifier_device cuda:1 --signal_processing_device cuda:1 --batch_size 32 --hugging_face_api_key_path /app/api_key.json --output_folder results --use_efficientnet True --use_wcr True --data_path /inputs/data_rows_template.csv --ecg_signals_path /ecg_signals_folder --mode full_run --preprocessing_folder /preprocessing --preprocessing_n_workers 16
-     ```
-   Option 2: execute the bash script:
-     ```
-     bash run_pipeline.bash --mode full_run --csv_file_name data_rows_template.csv
-     ```
 
 ## 🤝 Contributing
 
