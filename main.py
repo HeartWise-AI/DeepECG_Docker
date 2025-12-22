@@ -157,7 +157,8 @@ def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_
     df_analysis = pd.DataFrame(
         {
             'diagnosis': df_non_null[diagnosis_column].tolist(),
-            'ecg_path': [os.path.splitext(os.path.join(preprocessing_folder, x))[0] + ".base64" for x in df_non_null[ecg_file_column]]
+            'ecg_path': [os.path.splitext(os.path.join(preprocessing_folder, os.path.basename(x)))[0] + ".base64" for x in df_non_null[ecg_file_column]]
+            #'ecg_path': [os.path.splitext(os.path.join(preprocessing_folder, x))[0] + ".base64" for x in df_non_null[ecg_file_column]]
         }
     )
         
