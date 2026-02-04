@@ -45,7 +45,7 @@ def set_up_directories(args: HearWiseArgs):
     # Create preprocessing folder
     os.makedirs(args.preprocessing_folder, exist_ok=True)
 
-def save_and_perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame, errors: list[str] | None = None):
+def save_and_perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame, errors: list[str] | None = None) -> pd.DataFrame | None:
     """
     Save the DataFrame and run preprocessing via AnalysisPipeline.
 
@@ -54,10 +54,10 @@ def save_and_perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame, errors:
         df: DataFrame of ECG paths to preprocess.
         errors: Optional list to collect error messages; if None, errors are not collected.
 
-    Raises:
-        Any exception raised by AnalysisPipeline.save_and_preprocess_data.
+    Returns:
+        Preprocessed DataFrame, or None if preprocessing failed completely.
     """
-    AnalysisPipeline.save_and_preprocess_data(
+    return AnalysisPipeline.save_and_preprocess_data(
         df=df,
         output_folder=args.output_folder,
         preprocessing_folder=args.preprocessing_folder,
@@ -237,6 +237,7 @@ def main(args: HearWiseArgs):
         )
         set_up_directories(args)
 
+        preprocessing_failed = False
         if args.mode == Mode.PREPROCESSING or args.mode == Mode.FULL_RUN:
             logger.info("Preprocessing data...")
             logger.info("Creating preprocessing dataframe...")
@@ -252,10 +253,14 @@ def main(args: HearWiseArgs):
                 save_df(df_missing, missing_files_path)
                 logger.info("Missing files list saved to %s", missing_files_path)
             logger.info("Saving and performing preprocessing...")
-            save_and_perform_preprocessing(args, df_preprocessing, errors=errors)
-            logger.info("Data preprocessed.")
+            preprocessed_df = save_and_perform_preprocessing(args, df_preprocessing, errors=errors)
+            if preprocessed_df is None:
+                logger.warning("Preprocessing failed completely.")
+                preprocessing_failed = True
+            else:
+                logger.info("Data preprocessed.")
 
-        if args.mode == Mode.ANALYSIS or args.mode == Mode.FULL_RUN:
+        if (args.mode == Mode.ANALYSIS or args.mode == Mode.FULL_RUN) and not preprocessing_failed:
             for diagnosis_column in existing_diagnosis_columns:
                 ecg_file_column = DIAGNOSIS_TO_FILE_COLUMNS[diagnosis_column]
                 logger.info("Creating analysis dataframe for %s...", diagnosis_column)

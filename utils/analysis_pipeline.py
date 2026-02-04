@@ -231,12 +231,12 @@ class AnalysisPipeline:
         preprocessing_folder: str,
         preprocessing_n_workers: int,
         errors: list[str] | None = None,
-    ) -> pd.DataFrame:
+    ) -> pd.DataFrame | None:
         """
         Preprocess ECG files from df (NPY or XML), scale and clean signals, and save as .base64.
 
         Processes in batches; failed files or batches are skipped and optionally reported via errors.
-        Raises ValueError if no data was successfully processed.
+        Returns None if no data was successfully processed.
         """
         ecg_signal_processor = ECGSignalProcessor()
         batch_size = 10000
@@ -354,7 +354,7 @@ class AnalysisPipeline:
                 continue
         if len(processed_df) == 0:
             collect(errors, "preprocessing", "No data was successfully processed", None)
-            raise ValueError("No data was successfully processed")
+            return None
         logger.info("Preprocessing complete: %d files", len(processed_df))
         return processed_df
               
