@@ -242,7 +242,7 @@ If `docker run -it ...` hangs or shows a blank screen in Cursor’s terminal, st
 docker run -d --gpus all --name deepecg \
   -v $(pwd)/inputs:/app/inputs \
   -v $(pwd)/outputs:/app/outputs \
-  -v $(pwd)/ecg_signals:/app/ecg_signals:ro \
+  -v /mnt/data1/datasets/CLSA/:/app/ecg_signals:ro \
   -v $(pwd)/preprocessing:/app/preprocessing \
   deepecg-docker
 ```
@@ -258,37 +258,6 @@ You’ll get a prompt inside the container. Run the pipeline manually when you�
 ```
 
 When you’re done, exit the shell (`exit`) and stop the container: `docker stop deepecg`. Remove it before the next run if you reuse the name: `docker rm deepecg` (or use `docker rm -f deepecg` to remove a running container).
-
-### Running the Docker Container (one-shot)
-
-To run the Docker container in one shot, use one of the following commands based on your hardware and mode:
-
-**For full run:**
-Run both preprocessing and analysis:
-```
-docker run --gpus "device=0" -v local_path_to_inputs:/app/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode full_run --csv_file_name data_rows_template.csv
-```
-
-**For preprocessing:**
-Run only preprocessing:
-```
-docker run -v local_path_to_inputs:/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode preprocessing --csv_file_name data_rows_template.csv
-```
-
-**For analysis:**
-Run only analysis:
-```
-docker run --gpus "device=0" -v local_path_to_inputs:/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode analysis --csv_file_name data_rows_template.csv
-```
-
-**Without GPU (CPU only):**
-Note recommanded for WCR models. Note that models device in heartwise.config should be set to "cpu"
-```
-docker run -v local_path_to_inputs:/inputs -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals -v local_path_to_preprocessing:/preprocessing -i deepecg-docker --mode full_run --csv_file_name data_rows_template.csv
-```
-
-These commands mount the `outputs/`, `ecg_signals/` and `preprocessing/` directories from your local machine to the container, allowing you to easily provide input data and retrieve results.
-
 
 ## 🤝 Contributing
 
