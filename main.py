@@ -45,6 +45,17 @@ def set_up_directories(args: HearWiseArgs):
     os.makedirs(args.preprocessing_folder, exist_ok=True)
 
 def save_and_perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame, errors: list[str] | None = None):
+    """
+    Save the DataFrame and run preprocessing via AnalysisPipeline.
+
+    Args:
+        args: Configuration (output_folder, preprocessing_folder, preprocessing_n_workers).
+        df: DataFrame of ECG paths to preprocess.
+        errors: Optional list to collect error messages; if None, errors are not collected.
+
+    Raises:
+        Any exception raised by AnalysisPipeline.save_and_preprocess_data.
+    """
     AnalysisPipeline.save_and_preprocess_data(
         df=df,
         output_folder=args.output_folder,
@@ -58,6 +69,17 @@ def perform_analysis(
     df: pd.DataFrame,
     errors: list[str] | None = None,
 ) -> tuple[dict | None, pd.DataFrame | None]:
+    """
+    Run the analysis pipeline (model inference and metrics) on the given DataFrame.
+
+    Args:
+        args: Configuration (batch_size, devices, model names, API key path).
+        df: DataFrame with diagnosis and ecg_path columns.
+        errors: Optional list to collect error messages; if provided, failures append here and return (None, None).
+
+    Returns:
+        (metrics, df_probabilities) on success, or (None, None) if analysis failed and errors was provided.
+    """
     hugging_face_api_key = read_api_key(args.hugging_face_api_key_path)['HUGGING_FACE_API_KEY']
     return AnalysisPipeline.run_analysis(
         df=df,
@@ -71,7 +93,19 @@ def perform_analysis(
     )
 
 def validate_dataframe(df: pd.DataFrame, diagnosis_to_file_columns: dict) -> tuple[list[str], list[str]]:
+    """
+    Ensure DataFrame has consistent diagnosis and file-name column pairs per the mapping.
 
+    Args:
+        df: Input DataFrame.
+        diagnosis_to_file_columns: Map from diagnosis column name to ECG file name column name.
+
+    Returns:
+        (existing_diagnosis_columns, existing_file_columns) for columns present in df.
+
+    Raises:
+        ValueError: If any diagnosis column exists without its file column, or vice versa.
+    """
     # Invert the mapping for reverse lookup
     file_to_diagnosis_columns = {v: k for k, v in diagnosis_to_file_columns.items()}
     
@@ -113,6 +147,20 @@ def validate_dataframe(df: pd.DataFrame, diagnosis_to_file_columns: dict) -> tup
     return list(existing_diagnosis_columns), list(existing_file_columns)
 
 def create_preprocessing_dataframe(df: pd.DataFrame, existing_file_columns: list[str], ecg_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Build a preprocessing DataFrame of ECG file paths and a DataFrame of missing files.
+
+    Unpivots file columns into a single ecg_path column, filters by file existence,
+    and deduplicates.
+
+    Args:
+        df: Source DataFrame.
+        existing_file_columns: Column names containing ECG file names.
+        ecg_path: Base directory to join with file names.
+
+    Returns:
+        (df_preprocessing, df_missing) where df_preprocessing has ecg_path and df_missing lists missing paths.
+    """
     # Unpivot the DataFrame to have a single column of file paths
     melted_df = df.melt(value_vars=existing_file_columns, value_name='file_name').dropna(subset=['file_name'])
     # Construct full paths
@@ -131,6 +179,21 @@ def create_preprocessing_dataframe(df: pd.DataFrame, existing_file_columns: list
     return df_preprocessing, df_missing
 
 def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_column: str, preprocessing_folder: str) -> pd.DataFrame:
+    """
+    Build an analysis DataFrame with diagnosis and paths to preprocessed .base64 ECG files.
+
+    Drops rows with null diagnosis or file name, resolves paths under preprocessing_folder,
+    and keeps only rows whose preprocessed file exists.
+
+    Args:
+        df: Source DataFrame.
+        diagnosis_column: Column name for diagnosis labels.
+        ecg_file_column: Column name for ECG file names.
+        preprocessing_folder: Directory where preprocessed .base64 files are stored.
+
+    Returns:
+        DataFrame with columns diagnosis and ecg_path.
+    """
     df_non_null = df[[diagnosis_column, ecg_file_column]].dropna(subset=[diagnosis_column, ecg_file_column])
     
     df_analysis = pd.DataFrame(
@@ -151,6 +214,12 @@ def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_
     return df_analysis
 
 def main(args: HearWiseArgs):
+    """
+    Run the pipeline: load data, optionally preprocess and/or run analysis, and print any collected errors.
+
+    Mode controls whether preprocessing, analysis, or both run. Errors are collected
+    and printed at the end under "Errors encountered:".
+    """
     if args.mode not in {Mode.PREPROCESSING, Mode.ANALYSIS, Mode.FULL_RUN}:
         raise ValueError(f"Invalid mode: {args.mode}. Please choose from 'preprocessing', 'analysis', or 'full_run'.")
 

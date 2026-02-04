@@ -3,8 +3,11 @@ import argparse
 
 
 class HearWiseArgs:
+    """Parse and validate command-line arguments for the ECG pipeline."""
+
     @staticmethod
     def str2bool(v):
+        """Convert string to bool (e.g. 'true'/'false', 'yes'/'no'). Raises ArgumentTypeError if invalid."""
         if isinstance(v, bool):
             return v
         if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -16,6 +19,7 @@ class HearWiseArgs:
     
     @staticmethod
     def parse_arguments():
+        """Parse command-line arguments and return the namespace (diagnosis_classifier_device, data_path, etc.)."""
         parser = argparse.ArgumentParser(description='Script to process ECG data.')
         parser.add_argument('--diagnosis_classifier_device', help='Device to run the diagnosis classifier on', type=str, required=True)
         parser.add_argument('--signal_processing_device', help='Device to run the signal processing on', type=str, required=True)

@@ -7,12 +7,15 @@ logger = get_logger(__name__)
 
 
 class HuggingFaceWrapper:
+    """Download and upload Hugging Face Hub models using an API key."""
+
     def __init__(self, hugging_face_api_key):
         self.hugging_face_api_key = hugging_face_api_key
         self.api = HfApi()
 
     @staticmethod
-    def get_model(repo_id, local_dir, hugging_face_api_key):           
+    def get_model(repo_id, local_dir, hugging_face_api_key):
+        """Download a Hugging Face model to local_dir if not already present; return the path."""
         if os.path.exists(local_dir):
             logger.info("Model already cached: %s at %s", repo_id, local_dir)
             return local_dir

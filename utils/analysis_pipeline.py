@@ -222,6 +222,8 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
     return metrics
  
 class AnalysisPipeline:
+    """Orchestrates ECG preprocessing (NPY/XML) and model-based analysis with metrics."""
+
     @staticmethod
     def save_and_preprocess_data(
         df: pd.DataFrame,
@@ -230,6 +232,12 @@ class AnalysisPipeline:
         preprocessing_n_workers: int,
         errors: list[str] | None = None,
     ) -> pd.DataFrame:
+        """
+        Preprocess ECG files from df (NPY or XML), scale and clean signals, and save as .base64.
+
+        Processes in batches; failed files or batches are skipped and optionally reported via errors.
+        Raises ValueError if no data was successfully processed.
+        """
         ecg_signal_processor = ECGSignalProcessor()
         batch_size = 10000
         total_batches = (len(df) + batch_size - 1) // batch_size
@@ -361,6 +369,9 @@ class AnalysisPipeline:
         hugging_face_api_key: str,
         errors: list[str] | None = None,
     ) -> tuple[dict | None, pd.DataFrame | None]:
+        """
+        Run inference and compute metrics. On failure, if errors is provided, append and return (None, None).
+        """
         try:
             return AnalysisPipeline._run_analysis_impl(
                 df=df,
@@ -385,6 +396,7 @@ class AnalysisPipeline:
         diagnosis_classifier_model_name: str,
         hugging_face_api_key: str,
     ) -> tuple[dict, pd.DataFrame]:
+        """Internal implementation: load models, run inference, return (metrics, df_probabilities)."""
         signal_processing_model = HeartWiseModelFactory.create_model(
             {
                 'model_name': signal_processing_model_name,
