@@ -13,6 +13,7 @@ This pipeline offers 3 modes of processing:
 - [Models](#models)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Testing](#testing)
 - [Docker](#docker)
 - [Contributing](#contributing)
 - [Citation](#citation)
@@ -184,38 +185,82 @@ DeepECG_Docker/
      - `preprocessing_folder`: The path to the folder where the preprocessed files will be saved. Example: `/app/preprocessing`.
      - `preprocessing_n_workers`: The number of workers to be used for the preprocessing. Example: `16`.
 
+3. Notes:
+   - **Single ECG processing**: When running the pipeline with only one ECG file, metrics computation (AUC, F1, etc.) is automatically skipped since these metrics require multiple samples. Predictions are still generated and saved normally.
+
+## Testing
+
+Run the error-collector unit tests (no GPU or data required):
+
+```bash
+python tests/test_error_collector.py
+```
+
+To verify that errors are collected and printed at the end (no data or GPU needed):
+
+```bash
+python main.py \
+  --mode analysis \
+  --data_path /nonexistent.csv \
+  --output_folder /tmp/out \
+  --preprocessing_folder /tmp/pre \
+  --hugging_face_api_key_path api_key.json \
+  --use_wcr False \
+  --use_efficientnet False \
+  --ecg_signals_path /tmp
+```
+
+You should see `Errors encountered:` followed by a clear message (e.g. file not found) instead of a raw traceback.
+
+Run the full pipeline from the project root (requires `heartwise.config` and data). From inside the container or after installing dependencies locally:
+
+```bash
+bash run_pipeline.bash --mode full_run --csv_file_name data_rows_template.csv
+```
+
+To run `main.py` directly with explicit arguments:
+
+```bash
+python main.py \
+  --mode analysis \
+  --data_path inputs/your_data.csv \
+  --output_folder outputs \
+  --preprocessing_folder preprocessing \
+  --hugging_face_api_key_path api_key.json \
+  --use_wcr True \
+  --use_efficientnet True \
+  --ecg_signals_path ecg_signals
+```
+
+If any step fails, the pipeline collects error messages and prints them at the end under `Errors encountered:`.
+
 ## 🐳 Docker
 
-### Running the Docker Container
+### Interactive shell (recommended for Cursor / IDE terminals)
 
-To run the Docker container, use one of the following commands based on your hardware and mode:
+If `docker run -it ...` hangs or shows a blank screen in Cursor’s terminal, start the container in the background and attach a shell with `docker exec -it`. The image keeps the container running by default.
 
-**For full run:**
-Run both preprocessing and analysis:
-```
-docker run --gpus "device=0" -v local_path_to_inputs:/app/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode full_run --csv_file_name data_rows_template.csv
-```
-
-**For preprocessing:**
-Run only preprocessing:
-```
-docker run -v local_path_to_inputs:/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode preprocessing --csv_file_name data_rows_template.csv
+**1. Start the container (no `-it`):**
+```bash
+docker run -d --gpus all --name deepecg \
+  -v $(pwd)/inputs:/app/inputs \
+  -v $(pwd)/outputs:/app/outputs \
+  -v $(pwd)/ecg_signals:/app/ecg_signals:ro \
+  -v $(pwd)/preprocessing:/app/preprocessing \
+  deepecg-docker
 ```
 
-**For analysis:**
-Run only analysis:
-```
-docker run --gpus "device=0" -v local_path_to_inputs:/inputs -v local_path_to_outputs:/app/outputs -v local_path_to_ecg_signals:/app/ecg_signals -v local_path_to_preprocessing:/app/preprocessing -i deepecg-docker --mode analysis --csv_file_name data_rows_template.csv
-```
-
-**Without GPU (CPU only):**
-Note recommanded for WCR models. Note that models device in heartwise.config should be set to "cpu"
-```
-docker run -v local_path_to_inputs:/inputs -v local_path_to_outputs:/outputs -v local_path_to_ecg_signals:/ecg_signals -v local_path_to_preprocessing:/preprocessing -i deepecg-docker --mode full_run --csv_file_name data_rows_template.csv
+**2. Open an interactive shell:**
+```bash
+docker exec -it deepecg bash
 ```
 
-These commands mount the `outputs/`, `ecg_signals/` and `preprocessing/` directories from your local machine to the container, allowing you to easily provide input data and retrieve results.
+You’ll get a prompt inside the container. Run the pipeline manually when you’re ready, e.g.:
+```bash
+./run_pipeline.bash --mode full_run --csv_file_name data_rows_template.csv
+```
 
+When you’re done, exit the shell (`exit`) and stop the container: `docker stop deepecg`. Remove it before the next run if you reuse the name: `docker rm deepecg` (or use `docker rm -f deepecg` to remove a running container).
 
 ## 🤝 Contributing
 

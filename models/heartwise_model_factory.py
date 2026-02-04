@@ -1,8 +1,11 @@
 class HeartWiseModelFactory:
+    """Factory to instantiate ECG models by name (BERT, WCR, EfficientNet, etc.)."""
+
     name = 'HeartWiseModelFactory'
-    
+
     @classmethod
     def create_model(cls, model_config: dict):
+        """Return a model instance for the given model_config; model_config must include 'model_name' and device/key args."""
         model_name = model_config['model_name']
         model_name_lower = model_name.lower()
 

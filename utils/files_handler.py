@@ -10,8 +10,12 @@ import xml.etree.ElementTree as ET
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.parser import HearWiseArgs
+from utils.log_config import get_logger
+
+logger = get_logger(__name__)
 
 def load_df(path: str) -> pd.DataFrame:
+    """Load a DataFrame from a .csv or .parquet file. Raises ValueError for other extensions."""
     if path.endswith('.csv'):
         df = pd.read_csv(path)
     elif path.endswith('.parquet'):
@@ -22,6 +26,7 @@ def load_df(path: str) -> pd.DataFrame:
     return df
 
 def save_df(df: pd.DataFrame, path: str) -> None:
+    """Save a DataFrame to .csv or .parquet. Raises ValueError for other extensions."""
     if path.endswith('.csv'):
         df.to_csv(path, index=False)
     elif path.endswith('.parquet'):
@@ -90,7 +95,7 @@ def load_and_prepare_data(args: HearWiseArgs, new_path: str, new_ext: str = None
     missing_diagnosis_count = df['diagnosis'].isna().sum()
     df = df.dropna(subset=['diagnosis']).reset_index(drop=True)
     if missing_diagnosis_count > 0:
-        print(f"Removed {missing_diagnosis_count} rows with empty 'diagnosis' column.")
+        logger.info("Removed %d rows with empty 'diagnosis' column.", missing_diagnosis_count)
     
     # Set path to ecg signals
     df = set_path(df, new_path)
@@ -106,16 +111,17 @@ def load_and_prepare_data(args: HearWiseArgs, new_path: str, new_ext: str = None
         missing_files_df = pd.DataFrame(missing_files_list, columns=['missing_files'])
         missing_path = os.path.join(args.output_folder, 'missing_files.csv')
         missing_files_df.to_csv(missing_path, index=False)
-        print(f'Warning: Missing files saved to {missing_path} - List of missing files:')
-        print(missing_files_df)
-        
-        # Discard missing_files from df
+        logger.warning(
+            "%d missing files discarded; list saved to %s",
+            len(missing_files),
+            missing_path,
+        )
         df = df[df['ecg_path'].apply(os.path.exists)].reset_index(drop=True)
-        print(f'Warning: {len(missing_files)} files were missing and discarded from the DataFrame.')
         
     return df
 
 def save_to_csv(metrics: dict, path: str) -> None:
+    """Write a nested metrics dict to a CSV file, creating the parent directory if needed."""
     if not os.path.exists('/'.join(path.split('/')[:-1])):
         os.makedirs('/'.join(path.split('/')[:-1]))
 
@@ -144,20 +150,25 @@ def save_to_csv(metrics: dict, path: str) -> None:
         writer.writerows(rows)
 
 def save_json(data: dict, path: str) -> None:
+    """Write a dict to a JSON file, creating the parent directory if needed."""
     if not os.path.exists('/'.join(path.split('/')[:-1])):
         os.makedirs('/'.join(path.split('/')[:-1]))
     with open(path, 'w') as f:
         json.dump(data, f, indent=4)
 
 def read_api_key(path: str) -> dict[str, str]:
+    """Load API keys from a JSON file (e.g. containing HUGGING_FACE_API_KEY)."""
     with open(path) as f:
         api_key = json.load(f)
     return api_key
 
 
 class ECGFileHandler:
+    """Save and load ECG signals as .base64 or .npy files."""
+
     @staticmethod
-    def save_ecg_signal(ecg_signal, filename) -> None:  
+    def save_ecg_signal(ecg_signal, filename) -> None:
+        """Save an ECG array to .base64 (float32) or .npy."""
         if filename.endswith('.base64'):
             ecg_signal = ecg_signal.astype(np.float32)
             base64_str = base64.b64encode(ecg_signal.tobytes()).decode('utf-8')
@@ -168,6 +179,7 @@ class ECGFileHandler:
     
     @staticmethod
     def load_ecg_signal(filename) -> np.ndarray:
+        """Load an ECG array from .base64 or .npy; returns shape (samples, 12)."""
         if filename.endswith('.base64'):
             with open(filename, 'r') as f:
                 base64_str = f.read()
@@ -179,9 +191,13 @@ class ECGFileHandler:
     
     @staticmethod
     def list_files(directory_path: str) -> list[str]:
+        """Return full paths of all files in the given directory."""
         return [os.path.join(directory_path, f) for f in os.listdir(directory_path) if os.path.isfile(os.path.join(directory_path, f))]
 
+
 class XMLProcessor:
+    """Parse CLSA and MHI XML ECG files and produce normalized lead arrays."""
+
     def __init__(self):
         self.report = []
         self.expected_shape = (2500, 12)
@@ -229,6 +245,7 @@ class XMLProcessor:
         return XMLProcessor.flatten_dict(XMLProcessor.parse_xml_to_dict(root))
 
     def process_single_file(self, file_path: str) -> tuple[tuple[str, str, str, str], str, np.ndarray]:
+        """Parse one XML file; return (report_entry, file_id, lead_array) or (report_entry, file_id, None) on failure."""
         file_id = os.path.splitext(os.path.basename(file_path))[0]
         
         try:
@@ -246,10 +263,11 @@ class XMLProcessor:
             return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array
         
         except Exception as e:
-            print(f"Error processing file: {str(e)}")
+            logger.error("Failed to process file %s: %s", file_path, e)
             return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
 
     def process_batch(self, df: pd.DataFrame, num_workers: int = 32, preprocessing_folder: str = './tmp') -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Process all XML paths in df in parallel; return updated df and a DataFrame of (ecg_path, ecg_signal)."""
         xml_files = df['ecg_path'].tolist()
         ecgs = []
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
@@ -263,8 +281,8 @@ class XMLProcessor:
                         if lead_array.shape[0] == self.expected_shape[1]: # if is (12, X) then transpose it to (X, 12)
                             lead_array = lead_array.transpose(1, 0)
                         if lead_array.shape[0] != self.expected_shape[0]: # if X != 2500 then resize it
-                            if lead_array.shape[0] < self.expected_shape[0]: # if X < 2500 then skip it
-                                print(f"Warning: Lead array length is less than 2500 for file {file_id}.")
+                            if lead_array.shape[0] < self.expected_shape[0]:
+                                logger.warning("Skipping %s: lead array length %d < 2500", file_id, lead_array.shape[0])
                                 continue
                             else: # if X > 2500 then resize it
                                 step = lead_array.shape[0] // self.expected_shape[0]
@@ -276,7 +294,7 @@ class XMLProcessor:
                         ecgs.append([new_path, lead_array])
                     
                 except Exception as e:
-                    print(f"Error processing file: {str(e)}")
+                    logger.error("Failed to process file %s: %s", file, e)
                     file_id = os.path.splitext(os.path.basename(file))[0]
                     self.report.append((file_id, 'Unknown', 'Failed', str(e)))
         
@@ -305,11 +323,9 @@ class XMLProcessor:
 
             for lead in leads:
                 if leads[lead] is None:
-                    print(f"Lead {lead} is None")
+                    logger.warning("CLSA file %s: lead %s missing, filling with NaN", file_id, lead)
                     leads[lead] = np.full(non_empty_lead_dim, np.nan)
-
             self.full_leads_array = np.vstack([leads[lead] for lead in correct_lead_order])
-                
         except Exception as e:
             raise ValueError(f"Error processing CLSA XML for file {file_id}: {str(e)}") from e
 
@@ -339,15 +355,14 @@ class XMLProcessor:
 
             for lead in leads:
                 if leads[lead] is None:
-                    print(f"Lead {lead} is None")
+                    logger.warning("MHI file %s: lead %s missing, filling with NaN", file_id, lead)
                     leads[lead] = np.full(non_empty_lead_dim, np.nan)
-
             self.full_leads_array = np.vstack([leads[lead] for lead in correct_lead_order])
-
         except Exception as e:
             raise ValueError(f"Error processing MHI XML for file {file_id}: {str(e)}") from e
 
-    def save_report(self, output_folder: str) -> None:        
+    def save_report(self, output_folder: str) -> None:
+        """Write detailed and summary CSV reports for the processed XML batch to output_folder."""
         report_df = pd.DataFrame(self.report, columns=['file_id', 'xml_type', 'status', 'message'])
         
         # Calculate summary statistics
@@ -387,7 +402,7 @@ if __name__ == "__main__":
         directory_path=root_dir,
         num_workers=4
     )
-    print(f"Processed {len(processed_files)} files.")
+    logger.info("Processed %d files.", len(processed_files))
     
     # Save report
     xml_processor.save_report(output_folder=output_folder)

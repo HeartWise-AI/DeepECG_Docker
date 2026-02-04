@@ -1,7 +1,10 @@
 import os
 import torch
 from utils.huggingface_wrapper import HuggingFaceWrapper
+from utils.log_config import get_logger
 from models.heartwise_model_factory import HeartWiseModelFactory
+
+logger = get_logger(__name__)
 
 
 class ResNetWrapper(HeartWiseModelFactory):
@@ -23,7 +26,7 @@ class ResNetWrapper(HeartWiseModelFactory):
             ),
             map_location=map_location
         )
-        print(f"Model {model_name} loaded to {map_location}")
+        logger.info("Model %s loaded on %s", model_name, map_location)
 
     def _load_model(self, model_path: str, map_location: torch.device) -> None:       
         pt_file = next((f for f in os.listdir(model_path) if f.endswith('.pt')), None)

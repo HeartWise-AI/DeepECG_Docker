@@ -7,11 +7,19 @@ from scipy.signal import medfilt
 from concurrent.futures import ThreadPoolExecutor
 from statsmodels.nonparametric.smoothers_lowess import lowess
 
+from utils.log_config import get_logger
+
+logger = get_logger(__name__)
+
+
 class ECGSignalProcessor:
+    """Scale, clean, and process multi-lead ECG signals (spectral scaling, peak detection, lead processing)."""
+
     def __init__(self, fs=250):
         self.fs = fs
 
     def compute_magnitude_spectrum(self, signal: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Return (fft_freq, magnitude_spectrum) for the given 1D signal."""
         fft_result = np.fft.fft(signal)
         fft_freq = np.fft.fftfreq(len(signal), 1/self.fs)
         magnitude_spectrum = np.abs(fft_result)
@@ -36,6 +44,7 @@ class ECGSignalProcessor:
         return np.mean(magnitude_spectrum)
     
     def scale_ecg_signals(self, df: pd.DataFrame, power_ratio: float) -> pd.DataFrame:
+        """Scale ECG signals in df to match the target power_ratio (e.g. PTBXL); returns df with updated ecg_signal column."""
         _, mean_magnitude_spectrum = self.plot_mean_spectrum(np.array(df['ecg_signal'].tolist())[:, :, 0])
         new_avg_power = self.compute_average_spectral_power(mean_magnitude_spectrum)
         factor = power_ratio / new_avg_power
@@ -241,29 +250,29 @@ class ECGSignalProcessor:
         return [(start - widen_by, end + widen_by) for start, end in ranges_list]
 
     def clean_and_process_ecg_leads(
-        self, 
-        df: pd.DataFrame, 
-        window_size: int = 5, 
-        std_threshold: int = 5, 
-        max_workers: int = 16
+        self,
+        df: pd.DataFrame,
+        window_size: int = 5,
+        std_threshold: int = 5,
+        max_workers: int = 16,
     ) -> pd.DataFrame:
-        print("Step 1: Detecting peaks")
+        """Detect peaks and clean each lead; returns df with processed ecg_signal column."""
+        logger.info("Step 1: Detecting peaks")
         input_data = np.array(df['ecg_signal'].tolist())
-        print(input_data.shape)
+        logger.debug("Input shape: %s", input_data.shape)
         peak_ranges = self.detect_peaks_with_sliding_window(
-            np.squeeze(input_data[:, :, 0]),
+            input_data[:, :, 0],
             window_size=window_size,
             std_threshold=std_threshold
         )
         
         if len(peak_ranges) == 0:
-            print("No peaks detected - Signal similar to MHI")
+            logger.warning("No peaks detected; signal similar to flat/MHI, returning unchanged.")
             return df
-        
         processed_leads = []
-        print("Step 2: Processing leads **WARNING this step takes a lot of time**")
+        logger.info("Step 2: Processing leads (this step can be slow)")
         for lead_index in tqdm(range(12)):
-            print(f"Processing lead {lead_index}")
+            logger.debug("Processing lead %d", lead_index)
             crossings = self.find_crossings_for_peaks(input_data[:, :, lead_index], peak_ranges=peak_ranges)
             widened_crossings = self.widen_ranges(crossings)
 

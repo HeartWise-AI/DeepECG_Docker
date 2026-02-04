@@ -1,31 +1,33 @@
 import os
 from huggingface_hub import snapshot_download, HfApi
 
+from utils.log_config import get_logger
+
+logger = get_logger(__name__)
+
+
 class HuggingFaceWrapper:
+    """Download and upload Hugging Face Hub models using an API key."""
+
     def __init__(self, hugging_face_api_key):
         self.hugging_face_api_key = hugging_face_api_key
         self.api = HfApi()
 
     @staticmethod
-    def get_model(repo_id, local_dir, hugging_face_api_key):           
-        # Download repo from HuggingFace
-        print(f"Checking if {repo_id} already exists in {local_dir}")
+    def get_model(repo_id, local_dir, hugging_face_api_key):
+        """Download a Hugging Face model to local_dir if not already present; return the path."""
         if os.path.exists(local_dir):
-            print(f"{repo_id} already exists in {local_dir}")
+            logger.info("Model already cached: %s at %s", repo_id, local_dir)
             return local_dir
-        
-        print(f"{local_dir} does not exist, creating it")
+        logger.info("Downloading %s to %s", repo_id, local_dir)
         os.makedirs(local_dir, exist_ok=True)
-        print(f"Downloading {repo_id} to {local_dir}")
         local_dir = snapshot_download(
-            repo_id=repo_id, 
-            local_dir=local_dir, 
-            repo_type="model", 
+            repo_id=repo_id,
+            local_dir=local_dir,
+            repo_type="model",
             token=hugging_face_api_key
         )
-        
-        print(f"{repo_id} downloaded to {local_dir}")
-
+        logger.info("Downloaded %s to %s", repo_id, local_dir)
         return local_dir
 
     def upload_model(self, repo_id, local_dir, commit_message="Update model"):
@@ -41,7 +43,7 @@ class HuggingFaceWrapper:
             try:
                 self.api.create_repo(repo_id=repo_id, token=self.hugging_face_api_key, exist_ok=True)
             except Exception as e:
-                print(f"Note: {e}")
+                logger.debug("create_repo: %s", e)
 
             # Upload all files in the directory
             for root, _, files in os.walk(local_dir):
@@ -55,16 +57,13 @@ class HuggingFaceWrapper:
                         repo_id=repo_id,
                         token=self.hugging_face_api_key
                     )
-                    print(f"Uploaded {file} to {repo_id}")
-
-            # Create a commit with all the uploaded files
+                    logger.debug("Uploaded %s to %s", file, repo_id)
             self.api.create_commit(
                 repo_id=repo_id,
                 operations="push",
                 commit_message=commit_message,
                 token=self.hugging_face_api_key
             )
-            
-            print(f"Successfully uploaded and committed model to {repo_id}")
+            logger.info("Uploaded and committed model to %s", repo_id)
         except Exception as e:
-            print(f"An error occurred while uploading the model: {e}")
+            logger.error("Model upload to %s failed: %s", repo_id, e, exc_info=True)
