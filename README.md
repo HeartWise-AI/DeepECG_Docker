@@ -185,6 +185,9 @@ DeepECG_Docker/
      - `preprocessing_folder`: The path to the folder where the preprocessed files will be saved. Example: `/app/preprocessing`.
      - `preprocessing_n_workers`: The number of workers to be used for the preprocessing. Example: `16`.
 
+3. Notes:
+   - **Single ECG processing**: When running the pipeline with only one ECG file, metrics computation (AUC, F1, etc.) is automatically skipped since these metrics require multiple samples. Predictions are still generated and saved normally.
+
 ## Testing
 
 Run the error-collector unit tests (no GPU or data required):
@@ -242,7 +245,7 @@ If `docker run -it ...` hangs or shows a blank screen in Cursor’s terminal, st
 docker run -d --gpus all --name deepecg \
   -v $(pwd)/inputs:/app/inputs \
   -v $(pwd)/outputs:/app/outputs \
-  -v /mnt/data1/datasets/CLSA/:/app/ecg_signals:ro \
+  -v $(pwd)/ecg_signals:/app/ecg_signals:ro \
   -v $(pwd)/preprocessing:/app/preprocessing \
   deepecg-docker
 ```
