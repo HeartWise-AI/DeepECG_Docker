@@ -10,6 +10,9 @@ import xml.etree.ElementTree as ET
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.parser import HearWiseArgs
+from utils.log_config import get_logger
+
+logger = get_logger(__name__)
 
 def load_df(path: str) -> pd.DataFrame:
     if path.endswith('.csv'):
@@ -90,7 +93,7 @@ def load_and_prepare_data(args: HearWiseArgs, new_path: str, new_ext: str = None
     missing_diagnosis_count = df['diagnosis'].isna().sum()
     df = df.dropna(subset=['diagnosis']).reset_index(drop=True)
     if missing_diagnosis_count > 0:
-        print(f"Removed {missing_diagnosis_count} rows with empty 'diagnosis' column.")
+        logger.info("Removed %d rows with empty 'diagnosis' column.", missing_diagnosis_count)
     
     # Set path to ecg signals
     df = set_path(df, new_path)
@@ -106,12 +109,12 @@ def load_and_prepare_data(args: HearWiseArgs, new_path: str, new_ext: str = None
         missing_files_df = pd.DataFrame(missing_files_list, columns=['missing_files'])
         missing_path = os.path.join(args.output_folder, 'missing_files.csv')
         missing_files_df.to_csv(missing_path, index=False)
-        print(f'Warning: Missing files saved to {missing_path} - List of missing files:')
-        print(missing_files_df)
-        
-        # Discard missing_files from df
+        logger.warning(
+            "%d missing files discarded; list saved to %s",
+            len(missing_files),
+            missing_path,
+        )
         df = df[df['ecg_path'].apply(os.path.exists)].reset_index(drop=True)
-        print(f'Warning: {len(missing_files)} files were missing and discarded from the DataFrame.')
         
     return df
 
@@ -246,7 +249,7 @@ class XMLProcessor:
             return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array
         
         except Exception as e:
-            print(f"Error processing file: {str(e)}")
+            logger.error("Failed to process file %s: %s", file_path, e)
             return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
 
     def process_batch(self, df: pd.DataFrame, num_workers: int = 32, preprocessing_folder: str = './tmp') -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -263,8 +266,8 @@ class XMLProcessor:
                         if lead_array.shape[0] == self.expected_shape[1]: # if is (12, X) then transpose it to (X, 12)
                             lead_array = lead_array.transpose(1, 0)
                         if lead_array.shape[0] != self.expected_shape[0]: # if X != 2500 then resize it
-                            if lead_array.shape[0] < self.expected_shape[0]: # if X < 2500 then skip it
-                                print(f"Warning: Lead array length is less than 2500 for file {file_id}.")
+                            if lead_array.shape[0] < self.expected_shape[0]:
+                                logger.warning("Skipping %s: lead array length %d < 2500", file_id, lead_array.shape[0])
                                 continue
                             else: # if X > 2500 then resize it
                                 step = lead_array.shape[0] // self.expected_shape[0]
@@ -276,7 +279,7 @@ class XMLProcessor:
                         ecgs.append([new_path, lead_array])
                     
                 except Exception as e:
-                    print(f"Error processing file: {str(e)}")
+                    logger.error("Failed to process file %s: %s", file, e)
                     file_id = os.path.splitext(os.path.basename(file))[0]
                     self.report.append((file_id, 'Unknown', 'Failed', str(e)))
         
@@ -305,11 +308,9 @@ class XMLProcessor:
 
             for lead in leads:
                 if leads[lead] is None:
-                    print(f"Lead {lead} is None")
+                    logger.warning("CLSA file %s: lead %s missing, filling with NaN", file_id, lead)
                     leads[lead] = np.full(non_empty_lead_dim, np.nan)
-
             self.full_leads_array = np.vstack([leads[lead] for lead in correct_lead_order])
-                
         except Exception as e:
             raise ValueError(f"Error processing CLSA XML for file {file_id}: {str(e)}") from e
 
@@ -339,11 +340,9 @@ class XMLProcessor:
 
             for lead in leads:
                 if leads[lead] is None:
-                    print(f"Lead {lead} is None")
+                    logger.warning("MHI file %s: lead %s missing, filling with NaN", file_id, lead)
                     leads[lead] = np.full(non_empty_lead_dim, np.nan)
-
             self.full_leads_array = np.vstack([leads[lead] for lead in correct_lead_order])
-
         except Exception as e:
             raise ValueError(f"Error processing MHI XML for file {file_id}: {str(e)}") from e
 
@@ -387,7 +386,7 @@ if __name__ == "__main__":
         directory_path=root_dir,
         num_workers=4
     )
-    print(f"Processed {len(processed_files)} files.")
+    logger.info("Processed %d files.", len(processed_files))
     
     # Save report
     xml_processor.save_report(output_folder=output_folder)

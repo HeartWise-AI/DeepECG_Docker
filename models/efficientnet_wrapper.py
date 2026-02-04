@@ -3,7 +3,10 @@ import os
 import torch
 
 from utils.huggingface_wrapper import HuggingFaceWrapper
+from utils.log_config import get_logger
 from models.heartwise_model_factory import HeartWiseModelFactory
+
+logger = get_logger(__name__)
 
 
 class EfficientNetWrapper(HeartWiseModelFactory):
@@ -25,7 +28,7 @@ class EfficientNetWrapper(HeartWiseModelFactory):
             ),
             map_location=map_location
         )
-        print(f"Model {model_name} loaded to {map_location}")
+        logger.info("Model %s loaded on %s", model_name, map_location)
         self.mhi_factor = 1/0.0048
 
     def _load_model(self, model_path: str, map_location: torch.device) -> None:       

@@ -21,6 +21,10 @@ from utils.constants import (
     PTBXL_POWER_RATIO
 )
 from utils.ecg_signal_processor import ECGSignalProcessor
+from utils.log_config import get_logger
+from utils.error_collector import collect
+
+logger = get_logger(__name__)
 
 def compute_best_threshold(df_gt_col: pd.Series, df_pred_col: pd.Series) -> float:
     """
@@ -73,7 +77,7 @@ def compute_metrics_binary(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
 
     # Check if there are positive samples in ground truth
     if gt.sum() == 0:
-        print(f"Warning: No positive samples in ground truth. Metrics may not be meaningful.")
+        logger.warning("No positive samples in ground truth; metrics will be NaN.")
         return metrics
 
     try:
@@ -98,8 +102,8 @@ def compute_metrics_binary(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
         metrics["results"]["prevalence_pred %"] = (predictions_binary.sum() / len(pred)) * 100
 
     except Exception as e:
-        print(f"An error occurred while computing metrics for binary classification: {e}")
-    print(metrics)
+        logger.error("Binary classification metrics failed: %s", e, exc_info=True)
+    logger.debug("Computed metrics: %s", metrics)
     return metrics
 
 def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
@@ -219,21 +223,23 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
  
 class AnalysisPipeline:
     @staticmethod
-    def save_and_preprocess_data(df: pd.DataFrame, output_folder: str, preprocessing_folder: str, preprocessing_n_workers: int) -> pd.DataFrame:
-        # Initialize ECG signal processor
+    def save_and_preprocess_data(
+        df: pd.DataFrame,
+        output_folder: str,
+        preprocessing_folder: str,
+        preprocessing_n_workers: int,
+        errors: list[str] | None = None,
+    ) -> pd.DataFrame:
         ecg_signal_processor = ECGSignalProcessor()
-        
-        # Process in batches to manage memory
         batch_size = 10000
         total_batches = (len(df) + batch_size - 1) // batch_size
         processed_df = pd.DataFrame()
-        
+
         for batch_idx in range(total_batches):
             start_idx = batch_idx * batch_size
             end_idx = min((batch_idx + 1) * batch_size, len(df))
             
-            print(f"\nProcessing batch {batch_idx + 1}/{total_batches}")
-            print(f"Batch size: {end_idx - start_idx} records")
+            logger.info("Processing batch %d/%d (%d records)", batch_idx + 1, total_batches, end_idx - start_idx)
             
             try:
                 # Get batch of data
@@ -261,14 +267,22 @@ class AnalysisPipeline:
                             # Handle different lengths
                             if lead_array.shape[0] != 2500:
                                 if lead_array.shape[0] < 2500:
-                                    print(f"Warning: Skipping {file_id} - signal length {lead_array.shape[0]} < 2500")
+                                    collect(
+                                        errors, "preprocessing",
+                                        "Skipped file (signal too short)",
+                                        f"file_id={file_id} length={lead_array.shape[0]}",
+                                    )
                                     continue
                                 else:
                                     step = lead_array.shape[0] // 2500
                                     lead_array = lead_array[::step, :]
                                     
                             if lead_array.shape[1] != 12:
-                                print(f"Warning: Skipping {file_id} - incorrect number of leads: {lead_array.shape[1]}")
+                                collect(
+                                    errors, "preprocessing",
+                                    "Skipped file (wrong lead count)",
+                                    f"file_id={file_id} leads={lead_array.shape[1]}",
+                                )
                                 continue
                                 
                             new_path = os.path.join(preprocessing_folder, f"{file_id}.base64")
@@ -276,7 +290,7 @@ class AnalysisPipeline:
                             ecgs.append([new_path, lead_array])
                             
                         except Exception as e:
-                            print(f"Error processing file {row['ecg_path']}: {str(e)}")
+                            collect(errors, "preprocessing", "Failed to process file", f"path={row['ecg_path']} error={e}")
                             continue
                             
                     ecg_signals_df = pd.DataFrame(ecgs, columns=['ecg_path', 'ecg_signal'])
@@ -297,29 +311,24 @@ class AnalysisPipeline:
                         )
                         
                     except Exception as e:
-                        print(f"Error in XML processing batch {batch_idx + 1}: {str(e)}")
+                        collect(errors, "preprocessing", f"XML processing failed for batch {batch_idx + 1}", str(e))
                         continue
-                
                 if len(ecg_signals_df) == 0:
-                    print(f"Warning: No valid signals in batch {batch_idx + 1}")
+                    collect(errors, "preprocessing", f"No valid signals in batch {batch_idx + 1}", None)
                     continue
-                
-                # Scale signals
-                print("Scaling ECG signals...")
+                logger.info("Scaling ECG signals...")
                 scaled_signals_df = ecg_signal_processor.scale_ecg_signals(
                     df=ecg_signals_df, 
                     power_ratio=PTBXL_POWER_RATIO
                 )
                 
-                # Clean and process
-                print("Processing ECG signals...")
+                logger.info("Processing ECG signals...")
                 cleaned_signals_df = ecg_signal_processor.clean_and_process_ecg_leads(
                     df=scaled_signals_df,
                     max_workers=preprocessing_n_workers
                 )
                 
-                # Save processed signals
-                print("Saving processed signals...")
+                logger.info("Saving processed signals...")
                 for _, row in tqdm(cleaned_signals_df.iterrows(), total=len(cleaned_signals_df), desc="Saving signals"):
                     ECGFileHandler.save_ecg_signal(
                         ecg_signal=row['ecg_signal'],
@@ -333,26 +342,49 @@ class AnalysisPipeline:
                 del ecg_signals_df, scaled_signals_df, cleaned_signals_df, batch_df
                 
             except Exception as e:
-                print(f"Error processing batch {batch_idx + 1}: {str(e)}")
+                collect(errors, "preprocessing", f"Batch {batch_idx + 1} failed", str(e))
                 continue
-                
         if len(processed_df) == 0:
+            collect(errors, "preprocessing", "No data was successfully processed", None)
             raise ValueError("No data was successfully processed")
-            
-        print(f"\nCompleted processing {len(processed_df)} files")
+        logger.info("Preprocessing complete: %d files", len(processed_df))
         return processed_df
               
     @staticmethod
     def run_analysis(
-        df: pd.DataFrame, 
+        df: pd.DataFrame,
         batch_size: int,
         diagnosis_classifier_device: int,
         signal_processing_device: int,
-        signal_processing_model_name: str, 
+        signal_processing_model_name: str,
         diagnosis_classifier_model_name: str,
-        hugging_face_api_key: str
-    ) -> dict:
-        
+        hugging_face_api_key: str,
+        errors: list[str] | None = None,
+    ) -> tuple[dict | None, pd.DataFrame | None]:
+        try:
+            return AnalysisPipeline._run_analysis_impl(
+                df=df,
+                batch_size=batch_size,
+                diagnosis_classifier_device=diagnosis_classifier_device,
+                signal_processing_device=signal_processing_device,
+                signal_processing_model_name=signal_processing_model_name,
+                diagnosis_classifier_model_name=diagnosis_classifier_model_name,
+                hugging_face_api_key=hugging_face_api_key,
+            )
+        except Exception as e:
+            collect(errors, "analysis", "Run failed", f"model={signal_processing_model_name} error={e}")
+            return None, None
+
+    @staticmethod
+    def _run_analysis_impl(
+        df: pd.DataFrame,
+        batch_size: int,
+        diagnosis_classifier_device: int,
+        signal_processing_device: int,
+        signal_processing_model_name: str,
+        diagnosis_classifier_model_name: str,
+        hugging_face_api_key: str,
+    ) -> tuple[dict, pd.DataFrame]:
         signal_processing_model = HeartWiseModelFactory.create_model(
             {
                 'model_name': signal_processing_model_name,
@@ -375,9 +407,8 @@ class AnalysisPipeline:
             predictions = []
             ground_truth = []
             probabities_rows = []
-            print(f"Creating dataloader...")
+            logger.info("Creating dataloader (batch_size=%d)...", batch_size)
             dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
-            print(f"Created dataloader.")
                         
             for batch in tqdm(dataloader, total=len(dataloader)):
                 diagnosis = batch['diagnosis']

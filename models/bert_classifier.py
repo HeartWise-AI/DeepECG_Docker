@@ -4,8 +4,11 @@ import os
 import torch
 
 from utils.huggingface_wrapper import HuggingFaceWrapper
+from utils.log_config import get_logger
 from models.heartwise_model_factory import HeartWiseModelFactory
 from transformers import BertTokenizer, BertForSequenceClassification
+
+logger = get_logger(__name__)
 
 class BaseBertClassifier(HeartWiseModelFactory):
     name = 'base_bert_classifier'
@@ -27,7 +30,7 @@ class BaseBertClassifier(HeartWiseModelFactory):
             map_location=map_location, 
             num_classes=num_classes
         )
-        print(f"Model {model_name} loaded to {map_location}")
+        logger.info("Model %s loaded on %s", model_name, map_location)
 
     def _load_model(self, model_path: str, map_location: torch.device, num_classes: int) -> None:
         self.model = BertForSequenceClassification.from_pretrained(

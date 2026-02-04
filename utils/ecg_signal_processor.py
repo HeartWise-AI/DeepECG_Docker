@@ -7,6 +7,11 @@ from scipy.signal import medfilt
 from concurrent.futures import ThreadPoolExecutor
 from statsmodels.nonparametric.smoothers_lowess import lowess
 
+from utils.log_config import get_logger
+
+logger = get_logger(__name__)
+
+
 class ECGSignalProcessor:
     def __init__(self, fs=250):
         self.fs = fs
@@ -247,9 +252,9 @@ class ECGSignalProcessor:
         std_threshold: int = 5, 
         max_workers: int = 16
     ) -> pd.DataFrame:
-        print("Step 1: Detecting peaks")
+        logger.info("Step 1: Detecting peaks")
         input_data = np.array(df['ecg_signal'].tolist())
-        print(input_data.shape)
+        logger.debug("Input shape: %s", input_data.shape)
         peak_ranges = self.detect_peaks_with_sliding_window(
             np.squeeze(input_data[:, :, 0]),
             window_size=window_size,
@@ -257,13 +262,12 @@ class ECGSignalProcessor:
         )
         
         if len(peak_ranges) == 0:
-            print("No peaks detected - Signal similar to MHI")
+            logger.warning("No peaks detected; signal similar to flat/MHI, returning unchanged.")
             return df
-        
         processed_leads = []
-        print("Step 2: Processing leads **WARNING this step takes a lot of time**")
+        logger.info("Step 2: Processing leads (this step can be slow)")
         for lead_index in tqdm(range(12)):
-            print(f"Processing lead {lead_index}")
+            logger.debug("Processing lead %d", lead_index)
             crossings = self.find_crossings_for_peaks(input_data[:, :, lead_index], peak_ranges=peak_ranges)
             widened_crossings = self.widen_ranges(crossings)
 
