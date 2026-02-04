@@ -173,18 +173,31 @@ def main():
             'efficientnet'
         )
         
-        # Combine binary predictions (merge on file_name)
-        # Get bert_binary columns from wcr (they should be the same)
+        # Combine binary predictions by merging on file_name
         bert_cols = [c for c in wcr_binary.columns if c.endswith('_bert_binary')]
-        wcr_sig_cols = [c for c in wcr_binary.columns if '_wcr_binary_youden' in c]  # Only Youden
-        eff_sig_cols = [c for c in eff_binary.columns if '_efficientnet_binary_youden' in c]  # Only Youden
+        wcr_sig_cols = [c for c in wcr_binary.columns if '_wcr_binary_youden' in c]
+        eff_sig_cols = [c for c in eff_binary.columns if '_efficientnet_binary_youden' in c]
         
-        # Start with file_name and bert_binary columns from wcr
-        combined_df = wcr_binary[['file_name'] + bert_cols + wcr_sig_cols].copy()
+        # Select columns to merge from each DataFrame
+        wcr_merge_cols = ['file_name'] + bert_cols + wcr_sig_cols
+        eff_merge_cols = ['file_name'] + eff_sig_cols
         
-        # Add efficientnet columns
-        for col in eff_sig_cols:
-            combined_df[col] = eff_binary[col].values
+        # Perform proper merge on file_name to ensure correct alignment
+        combined_df = pd.merge(
+            wcr_binary[wcr_merge_cols],
+            eff_binary[eff_merge_cols],
+            on='file_name',
+            how='inner'
+        )
+        
+        # Validate merge results
+        n_wcr = len(wcr_binary)
+        n_eff = len(eff_binary)
+        n_combined = len(combined_df)
+        if n_combined < n_wcr or n_combined < n_eff:
+            print(f"Warning: Merge reduced rows. WCR: {n_wcr}, EfficientNet: {n_eff}, Combined: {n_combined}")
+            print(f"  {n_wcr - n_combined} WCR files not in EfficientNet")
+            print(f"  {n_eff - n_combined} EfficientNet files not in WCR")
         
         # Rename columns: bert_binary -> bert_groundtruth, remove _youden suffix
         rename_map = {}
