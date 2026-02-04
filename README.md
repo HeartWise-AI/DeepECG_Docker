@@ -233,9 +233,35 @@ If any step fails, the pipeline collects error messages and prints them at the e
 
 ## 🐳 Docker
 
-### Running the Docker Container
+### Interactive shell (recommended for Cursor / IDE terminals)
 
-To run the Docker container, use one of the following commands based on your hardware and mode:
+If `docker run -it ...` hangs or shows a blank screen in Cursor’s terminal, start the container in the background and attach a shell with `docker exec -it`. The image keeps the container running by default.
+
+**1. Start the container (no `-it`):**
+```bash
+docker run -d --gpus all --name deepecg \
+  -v $(pwd)/inputs:/app/inputs \
+  -v $(pwd)/outputs:/app/outputs \
+  -v $(pwd)/ecg_signals:/app/ecg_signals:ro \
+  -v $(pwd)/preprocessing:/app/preprocessing \
+  deepecg-docker
+```
+
+**2. Open an interactive shell:**
+```bash
+docker exec -it deepecg bash
+```
+
+You’ll get a prompt inside the container. Run the pipeline manually when you’re ready, e.g.:
+```bash
+./run_pipeline.bash --mode full_run --csv_file_name data_rows_template.csv
+```
+
+When you’re done, exit the shell (`exit`) and stop the container: `docker stop deepecg`. Remove it before the next run if you reuse the name: `docker rm deepecg` (or use `docker rm -f deepecg` to remove a running container).
+
+### Running the Docker Container (one-shot)
+
+To run the Docker container in one shot, use one of the following commands based on your hardware and mode:
 
 **For full run:**
 Run both preprocessing and analysis:
