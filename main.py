@@ -1,4 +1,5 @@
 import os
+import sys
 import warnings
 import pandas as pd
 from datetime import datetime
@@ -308,6 +309,7 @@ def main(args: HearWiseArgs):
         print("Errors encountered:")
         for msg in errors:
             print(f"  {msg}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     args = HearWiseArgs.parse_arguments()
