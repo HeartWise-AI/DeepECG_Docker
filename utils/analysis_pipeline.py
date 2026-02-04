@@ -454,7 +454,11 @@ class AnalysisPipeline:
             columns = ['file_name'] + bert_columns + sig_columns
             df_probabilities = pd.DataFrame(probabities_rows, columns=columns)
 
-            # Compute and return metrics
+            # Skip metrics computation if only one ECG (requires multiple samples for AUC, F1, etc.)
+            if len(ground_truth) <= 1:
+                logger.warning("Skipping metrics computation: only %d ECG(s) provided", len(ground_truth))
+                return {}, df_probabilities
+
             return compute_metrics(
                 df_gt=pd.DataFrame(ground_truth, columns=ECG_PATTERNS), 
                 df_pred=pd.DataFrame(predictions, columns=ECG_PATTERNS)
@@ -477,8 +481,15 @@ class AnalysisPipeline:
                         predictions.append(sig_prob[i].detach().cpu().numpy())
                         ground_truth.append(diagnosis[i].detach().cpu().numpy())
                         probabilities_rows.append([file_name[i]] + list(diagnosis[i].detach().cpu().numpy()) + list(sig_prob[i].detach().cpu().numpy()))
-                        
+
+            df_probabilities = pd.DataFrame(probabilities_rows, columns=['file_name', 'ground_truth', 'predictions'])
+
+            # Skip metrics computation if only one ECG (requires multiple samples for AUC, F1, etc.)
+            if len(ground_truth) <= 1:
+                logger.warning("Skipping metrics computation: only %d ECG(s) provided", len(ground_truth))
+                return {}, df_probabilities
+
             return compute_metrics_binary(
                 df_gt=pd.DataFrame(ground_truth, columns=["ground_truth"]), 
                 df_pred=pd.DataFrame(predictions, columns=["predictions"])
-            ), pd.DataFrame(probabilities_rows, columns=['file_name', 'ground_truth', 'predictions'])
+            ), df_probabilities
