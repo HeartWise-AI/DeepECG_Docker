@@ -13,6 +13,7 @@ This pipeline offers 3 modes of processing:
 - [Models](#models)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Testing](#testing)
 - [Docker](#docker)
 - [Contributing](#contributing)
 - [Citation](#citation)
@@ -183,6 +184,52 @@ DeepECG_Docker/
      - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/app/ecg_signals`.
      - `preprocessing_folder`: The path to the folder where the preprocessed files will be saved. Example: `/app/preprocessing`.
      - `preprocessing_n_workers`: The number of workers to be used for the preprocessing. Example: `16`.
+
+## Testing
+
+Run the error-collector unit tests (no GPU or data required):
+
+```bash
+python tests/test_error_collector.py
+```
+
+To verify that errors are collected and printed at the end (no data or GPU needed):
+
+```bash
+python main.py \
+  --mode analysis \
+  --data_path /nonexistent.csv \
+  --output_folder /tmp/out \
+  --preprocessing_folder /tmp/pre \
+  --hugging_face_api_key_path api_key.json \
+  --use_wcr False \
+  --use_efficientnet False \
+  --ecg_signals_path /tmp
+```
+
+You should see `Errors encountered:` followed by a clear message (e.g. file not found) instead of a raw traceback.
+
+Run the full pipeline from the project root (requires `heartwise.config` and data). From inside the container or after installing dependencies locally:
+
+```bash
+bash run_pipeline.bash --mode full_run --csv_file_name data_rows_template.csv
+```
+
+To run `main.py` directly with explicit arguments:
+
+```bash
+python main.py \
+  --mode analysis \
+  --data_path inputs/your_data.csv \
+  --output_folder outputs \
+  --preprocessing_folder preprocessing \
+  --hugging_face_api_key_path api_key.json \
+  --use_wcr True \
+  --use_efficientnet True \
+  --ecg_signals_path ecg_signals
+```
+
+If any step fails, the pipeline collects error messages and prints them at the end under `Errors encountered:`.
 
 ## 🐳 Docker
 
