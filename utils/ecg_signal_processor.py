@@ -261,7 +261,7 @@ class ECGSignalProcessor:
         input_data = np.array(df['ecg_signal'].tolist())
         logger.debug("Input shape: %s", input_data.shape)
         peak_ranges = self.detect_peaks_with_sliding_window(
-            np.squeeze(input_data[:, :, 0]),
+            input_data[:, :, 0],
             window_size=window_size,
             std_threshold=std_threshold
         )
