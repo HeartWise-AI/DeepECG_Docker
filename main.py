@@ -1,6 +1,9 @@
 import os
+import warnings
 import pandas as pd
 from datetime import datetime
+
+warnings.filterwarnings("ignore", message=".*_register_pytree_node.*deprecated", category=FutureWarning)
 
 from utils.constants import (
     Mode, 
