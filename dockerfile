@@ -15,7 +15,7 @@ RUN pip install uv
 COPY requirements.txt .
 
 # Install required libraries using uv
-RUN uv pip install --system -r requirements.txt
+RUN uv pip install --system --extra-index-url https://download.pytorch.org/whl/cu118 -r requirements.txt
 
 # Clone the fairseq-signals repository and install it
 RUN git clone https://github.com/HeartWise-AI/fairseq-signals && \

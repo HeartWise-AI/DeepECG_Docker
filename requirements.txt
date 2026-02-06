@@ -1,4 +1,4 @@
-torch==2.4.0 --extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.4.0
 huggingface_hub
 transformers==4.35.0
 pandas
