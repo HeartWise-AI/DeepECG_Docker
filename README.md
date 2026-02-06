@@ -16,6 +16,7 @@ This pipeline offers 3 modes of processing:
 - [Testing](#testing)
 - [Docker](#docker)
 - [Output Folder Structure](#-output-folder-structure)
+- [Adding Support for New XML Formats](#-adding-support-for-new-xml-formats)
 - [Contributing](#contributing)
 - [Citation](#citation)
 
@@ -376,6 +377,111 @@ The JSON contains metrics grouped by **diagnostic category** and **individual pa
 | `threshold` | Optimal classification threshold |
 | `prevalence_gt %` | Ground truth prevalence percentage |
 | `prevalence_pred %` | Predicted prevalence percentage |
+
+## 🔧 Adding Support for New XML Formats
+
+ECG machines from different vendors export XML files with varying structures. The pipeline currently supports:
+
+- **CLSA** (Canadian Longitudinal Study on Aging format)
+- **MHI** (Montreal Heart Institute format)
+
+To add support for a new XML format, modify the `XMLProcessor` class in `utils/files_handler.py`:
+
+### Step 1: Identify the XML Structure
+
+First, examine your XML file to understand its structure. Use the built-in helper to flatten the XML:
+
+```python
+from utils.files_handler import XMLProcessor
+
+processor = XMLProcessor()
+data_dict = processor.xml_to_dict('path/to/your/ecg.xml')
+
+# Print all keys to understand the structure
+for key in sorted(data_dict.keys()):
+    print(f"{key}: {data_dict[key][:50] if isinstance(data_dict[key], str) else data_dict[key]}")
+```
+
+### Step 2: Add Detection Logic
+
+In the `process_single_file` method (~line 322), add a condition to detect your XML format:
+
+```python
+def process_single_file(self, file_path: str):
+    # ... existing code ...
+    
+    if 'RestingECGMeasurements.MeasurementTable.LeadOrder' in data_dict:
+        xml_type = 'CLSA'
+        self._process_clsa_xml(data_dict, file_id)
+    elif any(f'Waveform.1.LeadData.{j}.LeadID' in data_dict for j in range(12)):
+        xml_type = 'MHI'
+        self._process_mhi_xml(data_dict, file_id)
+    # Add your format here:
+    elif 'YourVendor.UniqueKey' in data_dict:
+        xml_type = 'YOUR_VENDOR'
+        self._process_your_vendor_xml(data_dict, file_id)
+    else:
+        xml_type = 'Unknown'
+        return (file_id, xml_type, 'Failed', 'Unknown XML format'), None, None
+```
+
+### Step 3: Implement the Processing Method
+
+Add a new method to extract the 12-lead ECG data. The output must be a numpy array with shape `(samples, 12)` where samples is typically 2500 (10 seconds at 250Hz):
+
+```python
+def _process_your_vendor_xml(self, data_dict: dict, file_id: str) -> None:
+    """Process YOUR_VENDOR XML format."""
+    try:
+        # Standard 12-lead order
+        correct_lead_order = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
+        leads = {lead: None for lead in correct_lead_order}
+        
+        # Extract lead data from your XML structure
+        # Adapt these keys to match your XML format
+        for i in range(12):
+            lead_id_key = f'YourVendor.Lead.{i}.ID'
+            lead_data_key = f'YourVendor.Lead.{i}.WaveformData'
+            
+            if lead_id_key in data_dict and lead_data_key in data_dict:
+                lead_name = data_dict[lead_id_key]
+                # Decode waveform data (base64, comma-separated, etc.)
+                waveform_str = data_dict[lead_data_key]
+                leads[lead_name] = np.array([float(x) for x in waveform_str.split(',')])
+        
+        # Handle missing leads
+        non_empty_lead_dim = next((leads[l].shape[0] for l in leads if leads[l] is not None), 2500)
+        for lead in leads:
+            if leads[lead] is None:
+                logger.warning("YOUR_VENDOR file %s: lead %s missing, filling with NaN", file_id, lead)
+                leads[lead] = np.full(non_empty_lead_dim, np.nan)
+        
+        # Stack leads into array (samples, 12)
+        self.full_leads_array = np.vstack([leads[lead] for lead in correct_lead_order])
+        
+    except Exception as e:
+        raise ValueError(f"Error processing YOUR_VENDOR XML for file {file_id}: {str(e)}") from e
+```
+
+### Key Requirements
+
+| Requirement | Description |
+|-------------|-------------|
+| Lead order | Must be: I, II, III, aVR, aVL, aVF, V1, V2, V3, V4, V5, V6 |
+| Output shape | `(samples, 12)` - will be transposed/resampled automatically if needed |
+| Sample rate | Pipeline resamples to 2500 samples (10s at 250Hz) |
+| Data type | Numeric values (float/int), decoded from base64 or text as needed |
+
+### Common XML Vendors
+
+Different ECG machine manufacturers use different XML schemas:
+
+| Vendor | Common Format | Notes |
+|--------|---------------|-------|
+| GE Healthcare | MUSE XML | Often uses base64-encoded waveforms |
+| Philips | Philips XML | May have different lead naming |
+| Mortara | Mortara XML | Check for ELI format |
+| Schiller | SEMA XML | European standard format |
 
 ## 🤝 Contributing
 
