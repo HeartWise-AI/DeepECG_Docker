@@ -272,7 +272,7 @@ class ECGSignalProcessor:
         processed_leads = []
         logger.info("Step 2: Processing leads (this step can be slow)")
         for lead_index in tqdm(range(12)):
-            logger.debug("Processing lead %d", lead_index)
+            logger.debug("Processing lead %d", lead_index + 1)
             crossings = self.find_crossings_for_peaks(input_data[:, :, lead_index], peak_ranges=peak_ranges)
             widened_crossings = self.widen_ranges(crossings)
 
