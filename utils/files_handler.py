@@ -333,7 +333,7 @@ class XMLProcessor:
                 self._process_mhi_xml(data_dict, file_id)
             else:
                 xml_type = 'Unknown'
-                return (file_id, xml_type, 'Failed', 'Unknown XML format'), None, None
+                return (file_id, xml_type, 'Failed', 'Unknown XML format. See README "Adding Support for New XML Formats" to add support or preprocess your XML.'), None, None
             
             return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array
         
