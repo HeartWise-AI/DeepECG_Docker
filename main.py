@@ -248,7 +248,7 @@ def main(args: HearWiseArgs):
             )
             logger.info("Preprocessing dataframe created.")
             if not df_missing.empty:
-                current_date = datetime.now().strftime('%Y%m%d')
+                current_date = datetime.now().strftime('%Y%m%d_%H%M%S')
                 missing_files_path = os.path.join(args.output_folder, f'missing_files_{current_date}.csv')
                 save_df(df_missing, missing_files_path)
                 logger.info("Missing files list saved to %s", missing_files_path)
@@ -286,7 +286,7 @@ def main(args: HearWiseArgs):
                     if metrics is None or df_probabilities is None:
                         continue
 
-                    current_date = datetime.now().strftime('%Y%m%d')
+                    current_date = datetime.now().strftime('%Y%m%d_%H%M%S')
                     logger.info("Saving metrics and probabilities...")
                     save_df(
                         df_probabilities,
