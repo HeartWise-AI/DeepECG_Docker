@@ -1,2 +1,0 @@
-ecg_machine_diagnosis,77_classes_ecg_file_name,afib_5y,afib_ecg_file_name,lvef_40,lvef_40_ecg_file_name,lvef_50,lvef_50_ecg_file_name
-"*** Poor data quality, interpretation may be adversely affected Sinus bradycardia with occasional premature ventricular complexes Otherwise normal ECG",dummy_ecg.npy,1,dummy_ecg.npy,0,dummy_ecg.npy,0,dummy_ecg.npy
