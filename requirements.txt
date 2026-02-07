@@ -1,6 +1,6 @@
-torch==2.4.0
+torch==2.8.0
 huggingface_hub
-transformers==4.35.0
+transformers==4.53.0
 pandas
 scikit-learn
 pyarrow
