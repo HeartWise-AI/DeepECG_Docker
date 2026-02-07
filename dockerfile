@@ -7,17 +7,20 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y git build-essential && \
     rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN pip install uv
     
 # Copy the files into the container
 COPY requirements.txt .
 
-# Create a virtual environment and install required libraries
-RUN pip install -r requirements.txt
+# Install required libraries using uv
+RUN uv pip install --system --extra-index-url https://download.pytorch.org/whl/cu118 -r requirements.txt
 
 # Clone the fairseq-signals repository and install it
 RUN git clone https://github.com/HeartWise-AI/fairseq-signals && \
     cd fairseq-signals && \
-    pip install --editable ./    
+    uv pip install --system --editable ./    
 
 # Copy the rest of the application code into the container
 COPY data/ data/

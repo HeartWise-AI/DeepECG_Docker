@@ -10,7 +10,7 @@ from sklearn.metrics import (
     f1_score, 
     roc_curve
 )
-from utils.files_handler import XMLProcessor, ECGFileHandler
+from utils.files_handler import XMLProcessor, NPYProcessor, ECGFileHandler
 from data.project_dataset import create_dataloader
 from models import HeartWiseModelFactory
 from utils.constants import (
@@ -253,74 +253,22 @@ class AnalysisPipeline:
                 # Get batch of data
                 batch_df = df.iloc[start_idx:end_idx].copy()
                 
-                # Process based on file type
-                if batch_df['ecg_path'].iloc[0].endswith('.npy'):
-                    ecgs = []
-                    # Process NPY files
-                    for index, row in tqdm(batch_df.iterrows(), total=len(batch_df), desc="Loading NPY files"):
-                        try:
-                            lead_array = np.load(row['ecg_path'])
+                # Select processor based on file type
+                is_npy = batch_df['ecg_path'].iloc[0].endswith('.npy')
+                processor = NPYProcessor() if is_npy else XMLProcessor()
 
-                            if np.isnan(lead_array).any():
-                                continue
-                            
-                            file_id = os.path.basename(row['ecg_path']).replace(".npy", "")
-                            
-                            # Shape corrections
-                            if lead_array.shape[-1] == 1:
-                                lead_array = lead_array.squeeze(-1)
-                            if lead_array.shape[0] == 12:  # transpose if needed
-                                lead_array = lead_array.transpose(1, 0)
-                                
-                            # Handle different lengths
-                            if lead_array.shape[0] != 2500:
-                                if lead_array.shape[0] < 2500:
-                                    collect(
-                                        errors, "preprocessing",
-                                        "Skipped file (signal too short)",
-                                        f"file_id={file_id} length={lead_array.shape[0]}",
-                                    )
-                                    continue
-                                else:
-                                    step = lead_array.shape[0] // 2500
-                                    lead_array = lead_array[::step, :]
-                                    
-                            if lead_array.shape[1] != 12:
-                                collect(
-                                    errors, "preprocessing",
-                                    "Skipped file (wrong lead count)",
-                                    f"file_id={file_id} leads={lead_array.shape[1]}",
-                                )
-                                continue
-                                
-                            new_path = os.path.join(preprocessing_folder, f"{file_id}.base64")
-                            batch_df.at[index, 'ecg_path'] = new_path
-                            ecgs.append([new_path, lead_array])
-                            
-                        except Exception as e:
-                            collect(errors, "preprocessing", "Failed to process file", f"path={row['ecg_path']} error={e}")
-                            continue
-                            
-                    ecg_signals_df = pd.DataFrame(ecgs, columns=['ecg_path', 'ecg_signal'])
-                    
-                else:
-                    # Process XML files
-                    try:
-                        xml_processor = XMLProcessor()
-                        batch_df, ecg_signals_df = xml_processor.process_batch(
-                            df=batch_df,
-                            num_workers=preprocessing_n_workers,
-                            preprocessing_folder=preprocessing_folder
-                        )
-                        
-                        # Save XML processing report for this batch
-                        xml_processor.save_report(
-                            output_folder=os.path.join(output_folder, f'batch_{batch_idx + 1}')
-                        )
-                        
-                    except Exception as e:
-                        collect(errors, "preprocessing", f"XML processing failed for batch {batch_idx + 1}", str(e))
-                        continue
+                try:
+                    batch_df, ecg_signals_df = processor.process_batch(
+                        df=batch_df,
+                        num_workers=preprocessing_n_workers,
+                        preprocessing_folder=preprocessing_folder
+                    )
+                    processor.save_report(
+                        output_folder=os.path.join(output_folder, f'batch_{batch_idx + 1}')
+                    )
+                except Exception as e:
+                    collect(errors, "preprocessing", f"Batch {batch_idx + 1} processing failed", str(e))
+                    continue
                 if len(ecg_signals_df) == 0:
                     collect(errors, "preprocessing", f"No valid signals in batch {batch_idx + 1}", None)
                     continue

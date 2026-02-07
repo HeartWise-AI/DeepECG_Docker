@@ -195,6 +195,81 @@ class ECGFileHandler:
         return [os.path.join(directory_path, f) for f in os.listdir(directory_path) if os.path.isfile(os.path.join(directory_path, f))]
 
 
+class NPYProcessor:
+    """Load and validate NPY ECG files, producing normalized lead arrays."""
+
+    def __init__(self):
+        self.report = []
+        self.expected_shape = (2500, 12)
+
+    def process_single_file(self, file_path: str) -> tuple[tuple[str, str, str], str, np.ndarray]:
+        """Parse one NPY file; return (report_entry, file_id, lead_array) or (report_entry, file_id, None) on failure."""
+        file_id = os.path.splitext(os.path.basename(file_path))[0]
+
+        try:
+            lead_array = np.load(file_path)
+
+            if np.isnan(lead_array).any():
+                return (file_id, 'Failed', 'Contains NaN values'), file_id, None
+
+            # Shape corrections
+            if lead_array.shape[-1] == 1:
+                lead_array = lead_array.squeeze(-1)
+            if lead_array.shape[0] == 12:  # transpose if needed
+                lead_array = lead_array.transpose(1, 0)
+
+            # Handle different lengths
+            if lead_array.shape[0] != self.expected_shape[0]:
+                if lead_array.shape[0] < self.expected_shape[0]:
+                    return (file_id, 'Failed', f'Signal too short: {lead_array.shape[0]}'), file_id, None
+                else:
+                    step = lead_array.shape[0] // self.expected_shape[0]
+                    lead_array = lead_array[::step, :]
+
+            if lead_array.shape[1] != self.expected_shape[1]:
+                return (file_id, 'Failed', f'Wrong lead count: {lead_array.shape[1]}'), file_id, None
+
+            return (file_id, 'Success', ''), file_id, lead_array
+
+        except Exception as e:
+            logger.error("Failed to process file %s: %s", file_path, e)
+            return (file_id, 'Failed', str(e)), file_id, None
+
+    def process_batch(self, df: pd.DataFrame, num_workers: int = 32, preprocessing_folder: str = './tmp') -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Process all NPY paths in df; return updated df and a DataFrame of (ecg_path, ecg_signal)."""
+        npy_files = df['ecg_path'].tolist()
+        ecgs = []
+
+        for index, file_path in enumerate(tqdm(npy_files, desc="Processing NPY files")):
+            report_entry, file_id, lead_array = self.process_single_file(file_path)
+            self.report.append(report_entry)
+
+            if lead_array is not None:
+                new_path = os.path.join(preprocessing_folder, f"{file_id}.base64")
+                df.at[index, 'ecg_path'] = new_path
+                ecgs.append([new_path, lead_array])
+
+        return df, pd.DataFrame(ecgs, columns=['ecg_path', 'ecg_signal'])
+
+    def save_report(self, output_folder: str) -> None:
+        """Write detailed and summary CSV reports for the processed NPY batch to output_folder."""
+        os.makedirs(output_folder, exist_ok=True)
+        report_df = pd.DataFrame(self.report, columns=['file_id', 'status', 'message'])
+
+        total_files = len(report_df)
+        successful_files = sum(report_df['status'] == 'Success')
+        failed_files = sum(report_df['status'] == 'Failed')
+
+        summary_data = {
+            'Metric': ['Total Files', 'Successful Files', 'Failed Files'],
+            'Value': [total_files, successful_files, failed_files]
+        }
+        summary_df = pd.DataFrame(summary_data)
+
+        report_df.to_csv(os.path.join(output_folder, 'ecg_processing_detailed_report.csv'), index=False)
+        summary_df.to_csv(os.path.join(output_folder, 'ecg_processing_summary_report.csv'), index=False)
+
+
 class XMLProcessor:
     """Parse CLSA and MHI XML ECG files and produce normalized lead arrays."""
 
@@ -258,7 +333,7 @@ class XMLProcessor:
                 self._process_mhi_xml(data_dict, file_id)
             else:
                 xml_type = 'Unknown'
-                return (file_id, xml_type, 'Failed', 'Unknown XML format'), None, None
+                return (file_id, xml_type, 'Failed', 'Unknown XML format. See README "Adding Support for New XML Formats" to add support or preprocess your XML.'), None, None
             
             return (file_id, xml_type, 'Success', ''), file_id, self.full_leads_array
         
@@ -363,6 +438,7 @@ class XMLProcessor:
 
     def save_report(self, output_folder: str) -> None:
         """Write detailed and summary CSV reports for the processed XML batch to output_folder."""
+        os.makedirs(output_folder, exist_ok=True)
         report_df = pd.DataFrame(self.report, columns=['file_id', 'xml_type', 'status', 'message'])
         
         # Calculate summary statistics

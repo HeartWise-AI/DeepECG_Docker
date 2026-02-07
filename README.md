@@ -15,6 +15,8 @@ This pipeline offers 3 modes of processing:
 - [Usage](#usage)
 - [Testing](#testing)
 - [Docker](#docker)
+- [Output Folder Structure](#-output-folder-structure)
+- [Adding Support for New XML Formats](#-adding-support-for-new-xml-formats)
 - [Contributing](#contributing)
 - [Citation](#citation)
 
@@ -92,7 +94,13 @@ DeepECG_Docker/
 │   └── data_rows_template.csv
 │
 ├── outputs/
-│   └── (output files will be generated here)
+│   ├── batch_1/                    # Preprocessing reports per batch
+│   │   ├── ecg_processing_detailed_report.csv
+│   │   └── ecg_processing_summary_report.csv
+│   ├── {model}_{date}_{task}.json           # Metrics (JSON)
+│   ├── {model}_{date}_{task}.csv            # Metrics (CSV)
+│   ├── {model}_{date}_{task}_probabilities.csv  # Per-file predictions
+│   └── missing_files_{date}.csv             # Files not found (if any)
 │
 ├── preprocessing/
 │   └── (preprocessed files will be saved here)
@@ -261,6 +269,219 @@ You’ll get a prompt inside the container. Run the pipeline manually when you�
 ```
 
 When you’re done, exit the shell (`exit`) and stop the container: `docker stop deepecg`. Remove it before the next run if you reuse the name: `docker rm deepecg` (or use `docker rm -f deepecg` to remove a running container).
+
+## 📂 Output Folder Structure
+
+After running the pipeline, the `outputs/` folder contains the following files:
+
+### Preprocessing Reports (per batch)
+
+Located in `outputs/batch_X/` where X is the batch number:
+
+**`ecg_processing_detailed_report.csv`** - Per-file processing status:
+
+| Column | Description |
+|--------|-------------|
+| `file_id` | ECG file identifier (without extension) |
+| `xml_type` | Detected XML format (e.g., `CLSA`, `MHI`) |
+| `status` | `Success` or `Failed` |
+| `message` | Error message if failed, empty if successful |
+
+**`ecg_processing_summary_report.csv`** - Aggregate statistics:
+
+| Metric | Value |
+|--------|-------|
+| Total Files | Number of files processed |
+| Successful Files | Number of files successfully processed |
+| Failed Files | Number of files that failed |
+| XML Type: {type} | Count per XML format detected |
+
+### Model Predictions and Metrics
+
+Generated in the root `outputs/` folder with naming pattern `{model}_{datetime}_{task}`:
+
+| File Pattern | Description |
+|--------------|-------------|
+| `{model}_{datetime}_{task}.json` | Performance metrics in JSON format |
+| `{model}_{datetime}_{task}.csv` | Same metrics in CSV format |
+| `{model}_{datetime}_{task}_probabilities.csv` | Per-file prediction probabilities |
+| `missing_files_{datetime}.csv` | List of ECG files not found on disk |
+
+**Example filenames** (format: `{model}_{YYYYMMDD_HHMMSS}_{task}`):
+- `efficientnetv2_77_classes_20260206_143052_ecg_machine_diagnosis.json`
+- `efficientnetv2_77_classes_20260206_143052_ecg_machine_diagnosis_probabilities.csv`
+- `wcr_afib_5y_20260206_143052_afib_5y.json`
+
+### Probabilities CSV Columns
+
+For **77-class models** (`ecg_machine_diagnosis`), the CSV contains 155 columns:
+
+| Column Pattern | Count | Description |
+|----------------|-------|-------------|
+| `file_name` | 1 | ECG file identifier |
+| `{pattern}_bert_model` | 77 | BERT classifier probability for each ECG pattern |
+| `{pattern}_sig_model` | 77 | Signal model (EfficientNet/WCR) probability for each pattern |
+
+Example patterns: `Sinusal`, `Afib`, `Left bundle branch block`, `Left ventricular hypertrophy`, etc.
+
+For **binary models** (`afib_5y`, `lvef_40`, `lvef_50`):
+
+| Column | Description |
+|--------|-------------|
+| `file_name` | ECG file identifier |
+| `ground_truth` | Label from input CSV (0 or 1) |
+| `predictions` | Model prediction probability (0.0 to 1.0) |
+
+### Metrics JSON Structure
+
+The JSON contains metrics grouped by **diagnostic category** and **individual patterns**:
+
+**Category-level metrics** (e.g., "Rhythm Disorders", "Conduction Disorder"):
+
+```json
+{
+  "Rhythm Disorders": {
+    "macro_auc": 0.967,
+    "macro_auprc": 0.670,
+    "macro_f1": 0.431,
+    "micro_auc": 0.997,
+    "micro_auprc": 0.991,
+    "micro_f1": 0.984,
+    "threshold": 0.156,
+    "prevalence_gt %": 16.07,
+    "prevalence_pred %": 16.96
+  }
+}
+```
+
+**Individual pattern metrics** (e.g., "Sinusal", "Afib", "Left bundle branch block"):
+
+```json
+{
+  "Sinusal": {
+    "auc": 0.936,
+    "auprc": 0.996,
+    "threshold": 0.994,
+    "f1": 0.952,
+    "prevalence_gt %": 96.28,
+    "prevalence_pred %": 88.38
+  }
+}
+```
+
+| Metric | Description |
+|--------|-------------|
+| `auc` / `macro_auc` / `micro_auc` | Area Under ROC Curve |
+| `auprc` / `macro_auprc` / `micro_auprc` | Area Under Precision-Recall Curve |
+| `f1` / `macro_f1` / `micro_f1` | F1 Score |
+| `threshold` | Optimal classification threshold |
+| `prevalence_gt %` | Ground truth prevalence percentage |
+| `prevalence_pred %` | Predicted prevalence percentage |
+
+## 🔧 Adding Support for New XML Formats
+
+ECG machines from different vendors export XML files with varying structures. The pipeline currently supports:
+
+- **CLSA** (Canadian Longitudinal Study on Aging format)
+- **MHI** (Montreal Heart Institute format)
+
+To add support for a new XML format, modify the `XMLProcessor` class in `utils/files_handler.py`:
+
+### Step 1: Identify the XML Structure
+
+First, examine your XML file to understand its structure. Use the built-in helper to flatten the XML:
+
+```python
+from utils.files_handler import XMLProcessor
+
+processor = XMLProcessor()
+data_dict = processor.xml_to_dict('path/to/your/ecg.xml')
+
+# Print all keys to understand the structure
+for key in sorted(data_dict.keys()):
+    print(f"{key}: {data_dict[key][:50] if isinstance(data_dict[key], str) else data_dict[key]}")
+```
+
+### Step 2: Add Detection Logic
+
+In the `process_single_file` method (~line 322), add a condition to detect your XML format:
+
+```python
+def process_single_file(self, file_path: str):
+    # ... existing code ...
+    
+    if 'RestingECGMeasurements.MeasurementTable.LeadOrder' in data_dict:
+        xml_type = 'CLSA'
+        self._process_clsa_xml(data_dict, file_id)
+    elif any(f'Waveform.1.LeadData.{j}.LeadID' in data_dict for j in range(12)):
+        xml_type = 'MHI'
+        self._process_mhi_xml(data_dict, file_id)
+    # Add your format here:
+    elif 'YourVendor.UniqueKey' in data_dict:
+        xml_type = 'YOUR_VENDOR'
+        self._process_your_vendor_xml(data_dict, file_id)
+    else:
+        xml_type = 'Unknown'
+        return (file_id, xml_type, 'Failed', 'Unknown XML format'), None, None
+```
+
+### Step 3: Implement the Processing Method
+
+Add a new method to extract the 12-lead ECG data. The output must be a numpy array with shape `(samples, 12)` where samples is typically 2500 (10 seconds at 250Hz):
+
+```python
+def _process_your_vendor_xml(self, data_dict: dict, file_id: str) -> None:
+    """Process YOUR_VENDOR XML format."""
+    try:
+        # Standard 12-lead order
+        correct_lead_order = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
+        leads = {lead: None for lead in correct_lead_order}
+        
+        # Extract lead data from your XML structure
+        # Adapt these keys to match your XML format
+        for i in range(12):
+            lead_id_key = f'YourVendor.Lead.{i}.ID'
+            lead_data_key = f'YourVendor.Lead.{i}.WaveformData'
+            
+            if lead_id_key in data_dict and lead_data_key in data_dict:
+                lead_name = data_dict[lead_id_key]
+                # Decode waveform data (base64, comma-separated, etc.)
+                waveform_str = data_dict[lead_data_key]
+                leads[lead_name] = np.array([float(x) for x in waveform_str.split(',')])
+        
+        # Handle missing leads
+        non_empty_lead_dim = next((leads[l].shape[0] for l in leads if leads[l] is not None), 2500)
+        for lead in leads:
+            if leads[lead] is None:
+                logger.warning("YOUR_VENDOR file %s: lead %s missing, filling with NaN", file_id, lead)
+                leads[lead] = np.full(non_empty_lead_dim, np.nan)
+        
+        # Stack leads into array (samples, 12)
+        self.full_leads_array = np.vstack([leads[lead] for lead in correct_lead_order])
+        
+    except Exception as e:
+        raise ValueError(f"Error processing YOUR_VENDOR XML for file {file_id}: {str(e)}") from e
+```
+
+### Key Requirements
+
+| Requirement | Description |
+|-------------|-------------|
+| Lead order | Must be: I, II, III, aVR, aVL, aVF, V1, V2, V3, V4, V5, V6 |
+| Output shape | `(samples, 12)` - will be transposed/resampled automatically if needed |
+| Sample rate | Pipeline resamples to 2500 samples (10s at 250Hz) |
+| Data type | Numeric values (float/int), decoded from base64 or text as needed |
+
+### Common XML Vendors
+
+Different ECG machine manufacturers use different XML schemas:
+
+| Vendor | Common Format | Notes |
+|--------|---------------|-------|
+| GE Healthcare | MUSE XML | Often uses base64-encoded waveforms |
+| Philips | Philips XML | May have different lead naming |
+| Mortara | Mortara XML | Check for ELI format |
+| Schiller | SEMA XML | European standard format |
 
 ## 🤝 Contributing
 
