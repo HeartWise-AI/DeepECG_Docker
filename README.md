@@ -1,6 +1,6 @@
 # DeepECG_Docker
 
-DeepECG_Docker is a repository designed for deploying deep learning models for ECG signal analysis and comparing their performance over a Bert Classifier model or a specified ground truth. The pipeline can be run locally or in a docker container.
+DeepECG_Docker is a repository designed for deploying deep learning models for ECG signal analysis and comparing their performance over a Bert Classifier model or a specified ground truth. The pipeline have to be run in a docker container for backward library compatibility.
 This pipeline offers 3 modes of processing:
 - **Preprocessing**: Preprocess the ecg signals and save them in the `preprocessing/` folder
 - **Analysis**: Analyze the ecg signals and save the results in the `outputs/` folder (using the preprocessed data)
