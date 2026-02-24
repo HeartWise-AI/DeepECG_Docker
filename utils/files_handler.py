@@ -223,8 +223,7 @@ class NPYProcessor:
                 if lead_array.shape[0] < self.expected_shape[0]:
                     return (file_id, 'Failed', f'Signal too short: {lead_array.shape[0]}'), file_id, None
                 else:
-                    step = lead_array.shape[0] // self.expected_shape[0]
-                    lead_array = lead_array[::step, :]
+                    lead_array = resample(lead_array, self.expected_shape[0], axis=0).astype(np.float32)
 
             if lead_array.shape[1] != self.expected_shape[1]:
                 return (file_id, 'Failed', f'Wrong lead count: {lead_array.shape[1]}'), file_id, None
@@ -360,8 +359,7 @@ class XMLProcessor:
                                 logger.warning("Skipping %s: lead array length %d < 2500", file_id, lead_array.shape[0])
                                 continue
                             else: # if X > 2500 then resize it
-                                step = lead_array.shape[0] // self.expected_shape[0]
-                                lead_array = lead_array[::step, :]
+                                lead_array = resample(lead_array, self.expected_shape[0], axis=0).astype(np.float32)
                         
                         # store the lead array
                         new_path = os.path.join(preprocessing_folder, f"{file_id}.base64")
