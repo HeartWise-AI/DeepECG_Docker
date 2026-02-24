@@ -33,4 +33,6 @@ class HearWiseArgs:
         parser.add_argument('--mode', help='Mode of the script', type=str, required=True)
         parser.add_argument('--preprocessing_folder', help='Path to the preprocessing folder', type=str, required=True)
         parser.add_argument('--preprocessing_n_workers', help='Number of workers for the preprocessing', type=int, default=16)
+        parser.add_argument('--ecg_processing_mode', type=str, default='auto', choices=['auto', 'single', 'batch'],help='ECG signal processing mode: auto, single, or batch')
+
         return parser.parse_args()

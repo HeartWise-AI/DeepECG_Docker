@@ -230,6 +230,7 @@ class AnalysisPipeline:
         output_folder: str,
         preprocessing_folder: str,
         preprocessing_n_workers: int,
+        ecg_processing_mode: str,
         errors: list[str] | None = None,
     ) -> pd.DataFrame | None:
         """
