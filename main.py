@@ -9,7 +9,8 @@ warnings.filterwarnings("ignore", message=".*_register_pytree_node.*deprecated",
 from utils.constants import (
     Mode, 
     DIAGNOSIS_TO_FILE_COLUMNS,
-    MODEL_MAPPING
+    MODEL_MAPPING,
+    PTBXL_POWER_RATIO
 )
 from utils.parser import HearWiseArgs
 from utils.analysis_pipeline import AnalysisPipeline
@@ -44,8 +45,10 @@ def set_up_directories(args: HearWiseArgs):
     os.makedirs(args.output_folder, exist_ok=True)
     # Create preprocessing folder
     os.makedirs(args.preprocessing_folder, exist_ok=True)
+    # Create resnet preprocessing folder
+    os.makedirs(args.resnet_preprocessing_folder, exist_ok=True)
 
-def save_and_perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame, errors: list[str] | None = None) -> pd.DataFrame | None:
+def save_and_perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame, preprocessing_folder: str, errors: list[str] | None = None, power_ratio: float | None = PTBXL_POWER_RATIO) -> pd.DataFrame | None:
     """
     Save the DataFrame and run preprocessing via AnalysisPipeline.
 
@@ -60,9 +63,10 @@ def save_and_perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame, errors:
     return AnalysisPipeline.save_and_preprocess_data(
         df=df,
         output_folder=args.output_folder,
-        preprocessing_folder=args.preprocessing_folder,
+        preprocessing_folder=preprocessing_folder,
         preprocessing_n_workers=args.preprocessing_n_workers,
         ecg_processing_mode=args.ecg_processing_mode,
+        power_ratio=power_ratio,
         errors=errors,
     )
 
@@ -239,6 +243,7 @@ def main(args: HearWiseArgs):
         set_up_directories(args)
 
         preprocessing_failed = False
+        resnet_preprocessing_failed = False
         if args.mode == Mode.PREPROCESSING or args.mode == Mode.FULL_RUN:
             logger.info("Preprocessing data...")
             logger.info("Creating preprocessing dataframe...")
@@ -253,61 +258,86 @@ def main(args: HearWiseArgs):
                 missing_files_path = os.path.join(args.output_folder, f'missing_files_{current_date}.csv')
                 save_df(df_missing, missing_files_path)
                 logger.info("Missing files list saved to %s", missing_files_path)
-            logger.info("Saving and performing preprocessing...")
-            preprocessed_df = save_and_perform_preprocessing(args, df_preprocessing, errors=errors)
-            if preprocessed_df is None:
-                logger.warning("Preprocessing failed completely.")
-                preprocessing_failed = True
-            else:
-                logger.info("Data preprocessed.")
+            
+            if args.use_resnet:
+                logger.info("Saving and performing preprocessing for DeepECG (no PTB-XL scaling)...")
+                preprocessed_df_deepecg = save_and_perform_preprocessing(
+                    args, df_preprocessing,
+                    preprocessing_folder=args.resnet_preprocessing_folder,
+                    power_ratio=None,
+                    errors=errors
+                )
+                if preprocessed_df_deepecg is None:
+                    logger.warning("DeepECG preprocessing failed completely.")
+                    resnet_preprocessing_failed = True
+                else:
+                    logger.info("DeepECG data preprocessed.")
+                    
+            if args.use_wcr or args.use_efficientnet:
+                logger.info("Saving and performing preprocessing (with PTB-XL scaling)...")
+                preprocessed_df = save_and_perform_preprocessing(args, df_preprocessing, 
+                    preprocessing_folder=args.preprocessing_folder, 
+                    errors=errors)
+                if preprocessed_df is None:
+                    logger.warning("Preprocessing failed completely.")
+                    preprocessing_failed = True
+                else:
+                    logger.info("Data preprocessed.")
 
         if (args.mode == Mode.ANALYSIS or args.mode == Mode.FULL_RUN) and not preprocessing_failed:
             for diagnosis_column in existing_diagnosis_columns:
                 ecg_file_column = DIAGNOSIS_TO_FILE_COLUMNS[diagnosis_column]
-                logger.info("Creating analysis dataframe for %s...", diagnosis_column)
-                df_analysis = create_analysis_dataframe(
-                    df=df,
-                    diagnosis_column=diagnosis_column,
-                    ecg_file_column=ecg_file_column,
-                    preprocessing_folder=args.preprocessing_folder
-                )
-                logger.info("Analysis dataframe created for %s.", diagnosis_column)
                 args.diagnosis_classifier_model_name = MODEL_MAPPING[diagnosis_column]['bert']
-                signal_processing_models = []
-                if args.use_wcr:
-                    signal_processing_models.append(MODEL_MAPPING[diagnosis_column]['wcr'])
-                if args.use_efficientnet:
-                    signal_processing_models.append(MODEL_MAPPING[diagnosis_column]['efficientnet'])
 
-                for model_name in signal_processing_models:
+                scaled_models = []
+                if args.use_wcr:
+                    scaled_models.append(MODEL_MAPPING[diagnosis_column]['wcr'])
+                if args.use_efficientnet:
+                    scaled_models.append(MODEL_MAPPING[diagnosis_column]['efficientnet'])
+
+                if scaled_models:
+                    logger.info("Creating analysis dataframe for %s...", diagnosis_column)
+                    df_analysis = create_analysis_dataframe(
+                        df=df,
+                        diagnosis_column=diagnosis_column,
+                        ecg_file_column=ecg_file_column,
+                        preprocessing_folder=args.preprocessing_folder
+                    )
+                    logger.info("Analysis dataframe created for %s.", diagnosis_column)
+                    for model_name in scaled_models:
+                        logger.info("Performing analysis with %s...", model_name)
+                        args.signal_processing_model_name = model_name
+                        metrics, df_probabilities = perform_analysis(args=args, df=df_analysis, errors=errors)
+                        if metrics is None or df_probabilities is None:
+                            continue
+                        current_date = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        logger.info("Saving metrics and probabilities...")
+                        save_df(df_probabilities, os.path.join(args.output_folder, f'{model_name}_{current_date}_{diagnosis_column}_probabilities.csv'))
+                        save_json(metrics, os.path.join(args.output_folder, f'{model_name}_{current_date}_{diagnosis_column}.json'))
+                        save_to_csv(metrics, os.path.join(args.output_folder, f'{model_name}_{current_date}_{diagnosis_column}.csv'))
+                        logger.info("Metrics and probabilities saved.")
+
+                if args.use_resnet and not resnet_preprocessing_failed:
+                    logger.info("Creating DeepECG analysis dataframe for %s...", diagnosis_column)
+                    df_analysis_deepecg = create_analysis_dataframe(
+                        df=df,
+                        diagnosis_column=diagnosis_column,
+                        ecg_file_column=ecg_file_column,
+                        preprocessing_folder=args.resnet_preprocessing_folder
+                    )
+                    logger.info("ResNet analysis dataframe created for %s.", diagnosis_column)
+                    model_name = MODEL_MAPPING[diagnosis_column]['deepecg']
                     logger.info("Performing analysis with %s...", model_name)
                     args.signal_processing_model_name = model_name
-                    metrics, df_probabilities = perform_analysis(args=args, df=df_analysis, errors=errors)
+                    metrics, df_probabilities = perform_analysis(args=args, df=df_analysis_deepecg, errors=errors)
+                    if metrics is not None and df_probabilities is not None:
+                        current_date = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        logger.info("Saving metrics and probabilities...")
+                        save_df(df_probabilities, os.path.join(args.output_folder, f'{model_name}_{current_date}_{diagnosis_column}_probabilities.csv'))
+                        save_json(metrics, os.path.join(args.output_folder, f'{model_name}_{current_date}_{diagnosis_column}.json'))
+                        save_to_csv(metrics, os.path.join(args.output_folder, f'{model_name}_{current_date}_{diagnosis_column}.csv'))
+                        logger.info("Metrics and probabilities saved.")
 
-                    if metrics is None or df_probabilities is None:
-                        continue
-
-                    current_date = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    logger.info("Saving metrics and probabilities...")
-                    save_df(
-                        df_probabilities,
-                        os.path.join(
-                            args.output_folder,
-                            f'{model_name}_{current_date}_{diagnosis_column}_probabilities.csv'
-                        )
-                    )
-                    save_json(
-                        metrics,
-                        os.path.join(
-                            args.output_folder,
-                            f'{model_name}_{current_date}_{diagnosis_column}.json'
-                        )
-                    )
-                    save_to_csv(
-                        metrics,
-                        os.path.join(args.output_folder, f'{model_name}_{current_date}_{diagnosis_column}.csv')
-                    )
-                    logger.info("Metrics and probabilities saved.")
     except Exception as e:
         errors.append(f"[main] Fatal: {e}")
 
@@ -321,7 +351,7 @@ if __name__ == "__main__":
     args = HearWiseArgs.parse_arguments()
     logger.info(
         "Run config: mode=%s data_path=%s output_folder=%s batch_size=%s "
-        "diagnosis_device=%s signal_device=%s use_wcr=%s use_efficientnet=%s",
+        "diagnosis_device=%s signal_device=%s use_wcr=%s use_efficientnet=%s use_resnet=%s",
         args.mode,
         args.data_path,
         args.output_folder,
@@ -330,6 +360,7 @@ if __name__ == "__main__":
         args.signal_processing_device,
         args.use_wcr,
         args.use_efficientnet,
+        args.use_resnet,
     )
     main(args)
 

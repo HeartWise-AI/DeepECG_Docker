@@ -11,7 +11,11 @@ from models.wcr_ecg_transformer import (
     WCR_LVEF_Equal_Under_40, 
     WCR_LVEF_Under_50
 )
+from models.resnet_wrapper import (
+    ResNet_77_classes,
+)
 from models.bert_classifier import BertClassifier_En_Fr
+
 
 DIAGNOSIS_TO_FILE_COLUMNS = {
     'ecg_machine_diagnosis': '77_classes_ecg_file_name',
@@ -24,7 +28,8 @@ MODEL_MAPPING = {
     'ecg_machine_diagnosis': {
         'efficientnet': EfficientNetV2_77_classes.name,
         'wcr': WCR_77_classes.name,
-        'bert': BertClassifier_En_Fr.name
+        'bert': BertClassifier_En_Fr.name,
+        'resnet': ResNet_77_classes.name
     },
     'afib_5y': {
         'efficientnet': EfficientNetV2_AFIB_5Y.name,

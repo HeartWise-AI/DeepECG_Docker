@@ -21,12 +21,14 @@ batch_size=$(get_param "batch_size")
 output_folder=$(get_param "output_folder")
 hugging_face_api_key_path=$(get_param "hugging_face_api_key_path")
 use_wcr=$(get_param "use_wcr")
+use_resnet=$(get_param "use_resnet")
 use_efficientnet=$(get_param "use_efficientnet")
 ecg_signals_path=$(get_param "ecg_signals_path")
 mode=$(get_param "mode")
 preprocessing_folder=$(get_param "preprocessing_folder")
 preprocessing_n_workers=$(get_param "preprocessing_n_workers")
 ecg_processing_mode=$(get_param "ecg_processing_mode")
+resnet_preprocessing_folder=$(get_param "resnet_preprocessing_folder")
 
 # Overwrite mode by command line argument
 # Parse command-line arguments
@@ -91,7 +93,9 @@ run_pipeline() {
         --mode $run_mode \
         --preprocessing_folder $preprocessing_folder \
         --preprocessing_n_workers $preprocessing_n_workers \
-        --ecg_processing_mode $ecg_processing_mode
+        --ecg_processing_mode $ecg_processing_mode \
+        --use_resnet $use_resnet \
+        --resnet_preprocessing_folder $resnet_preprocessing_folder
 }
 
 # Main execution based on mode

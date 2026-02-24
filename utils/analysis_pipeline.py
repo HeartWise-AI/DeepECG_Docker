@@ -232,6 +232,7 @@ class AnalysisPipeline:
         preprocessing_n_workers: int,
         ecg_processing_mode: str,
         errors: list[str] | None = None,
+        power_ratio: float | None = None,
     ) -> pd.DataFrame | None:
         """
         Preprocess ECG files from df (NPY or XML), scale and clean signals, and save as .base64.
@@ -279,7 +280,7 @@ class AnalysisPipeline:
                     df=ecg_signals_df,
                     max_workers=preprocessing_n_workers,
                     ecg_processing_mode=ecg_processing_mode,
-                    power_ratio=PTBXL_POWER_RATIO
+                    power_ratio=power_ratio
                 )
                 
                 logger.info("Saving processed signals...")

@@ -1,5 +1,7 @@
 from models.heartwise_model_factory import HeartWiseModelFactory
-
+from models.resnet_wrapper import (
+    ResNet_77_classes,
+)
 from models.bert_classifier import (
     BertClassifier,
     BertClassifier_En_Fr
@@ -28,5 +30,6 @@ __all__ = [
     'EfficientNetV2_LVEF_Equal_Under_40',
     'EfficientNetV2_LVEF_Under_50',
     'EfficientNetV2_AFIB_5Y',
+    'ResNet_77_classes',
 ]
 
