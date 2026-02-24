@@ -62,6 +62,7 @@ def save_and_perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame, errors:
         output_folder=args.output_folder,
         preprocessing_folder=args.preprocessing_folder,
         preprocessing_n_workers=args.preprocessing_n_workers,
+        ecg_processing_mode=args.ecg_processing_mode,
         errors=errors,
     )
 

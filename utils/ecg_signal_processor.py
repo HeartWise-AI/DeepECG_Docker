@@ -51,16 +51,42 @@ class ECGSignalProcessor:
         
         df['ecg_signal'] = df['ecg_signal'].apply(lambda x: self.adjust_spectral_power(x, factor))
         return df
+    
+    def scale_single_ecg_signal(self, ecg_signal: np.ndarray, power_ratio: float) -> np.ndarray:
+        x = np.asarray(ecg_signal, dtype=np.float32)
+        if not np.isfinite(x).all():
+            x = np.nan_to_num(x)
+
+        if self.is_near_flat(x):
+            logger.warning("Near-flat ECG; skipping scaling.")
+            return x
+
+        _, mag = self.compute_magnitude_spectrum(x[:, 0])
+        current_power = float(np.mean(mag))
+
+        if (not np.isfinite(current_power)) or current_power == 0.0:
+            logger.warning(f"Invalid power ({current_power}); skipping scaling.")
+            return x
+
+        factor = power_ratio / current_power
+        return self.adjust_spectral_power(x, factor).astype(np.float32)
         
-    def detect_peaks_with_sliding_window(
+    def detect_peaks(
         self, 
         signals: np.ndarray, 
         window_size: int = 3, 
         std_threshold: int = 2, 
         min_freq: int = 20, 
-        merge_threshold: int = 1
+        merge_threshold: int = 1,
+        ecg_processing_mode: str = 'auto'
     ) -> List[Tuple[float, float]]:
-        fft_freq, mean_magnitude_spectrum = self.plot_mean_spectrum(signals)
+        if ecg_processing_mode == 'auto':
+            ecg_processing_mode = 'single' if signals.ndim == 1 else 'batch'
+            
+        if ecg_processing_mode == 'single':
+            fft_freq, mean_magnitude_spectrum = self.compute_magnitude_spectrum(signals.astype(np.float32))
+        else:
+            fft_freq, mean_magnitude_spectrum = self.plot_mean_spectrum(signals)
         valid_indices = fft_freq >= min_freq
         valid_freqs = fft_freq[valid_indices]
         valid_magnitude_spectrum = mean_magnitude_spectrum[valid_indices]
@@ -248,6 +274,12 @@ class ECGSignalProcessor:
 
     def widen_ranges(self, ranges_list: List[Tuple[float, float]], widen_by: int = 1) -> List[Tuple[float, float]]:
         return [(start - widen_by, end + widen_by) for start, end in ranges_list]
+    
+    def is_near_flat(self, ecg: np.ndarray, std_thr=1e-6, maxabs_thr=1e-8) -> bool:
+        x = np.asarray(ecg, dtype=np.float32)
+        if not np.isfinite(x).all():
+            x = np.nan_to_num(x)
+        return (np.std(x) < std_thr) or (np.max(np.abs(x)) < maxabs_thr)
 
     def clean_and_process_ecg_leads(
         self,
@@ -255,38 +287,85 @@ class ECGSignalProcessor:
         window_size: int = 5,
         std_threshold: int = 5,
         max_workers: int = 16,
+        ecg_processing_mode: str = 'auto',
+        predefined_peaks: List[Tuple[float, float]] = None,
+        power_ratio: float = None
     ) -> pd.DataFrame:
         """Detect peaks and clean each lead; returns df with processed ecg_signal column."""
-        logger.info("Step 1: Detecting peaks")
-        input_data = np.array(df['ecg_signal'].tolist())
-        logger.debug("Input shape: %s", input_data.shape)
-        peak_ranges = self.detect_peaks_with_sliding_window(
-            input_data[:, :, 0],
-            window_size=window_size,
-            std_threshold=std_threshold
-        )
         
-        if len(peak_ranges) == 0:
-            logger.warning("No peaks detected; signal similar to flat/MHI, returning unchanged.")
-            return df
-        processed_leads = []
-        logger.info("Step 2: Processing leads (this step can be slow)")
-        for lead_index in tqdm(range(12)):
-            logger.debug("Processing lead %d", lead_index + 1)
-            crossings = self.find_crossings_for_peaks(input_data[:, :, lead_index], peak_ranges=peak_ranges)
-            widened_crossings = self.widen_ranges(crossings)
+        if ecg_processing_mode == 'auto':
+            ecg_processing_mode = 'single' if len(df) == 1 else 'batch'
+        
+        if ecg_processing_mode == 'single':
+            print(f"Processing {len(df)} ECG(s) in single mode")
+            cleaned_signals = []
+            for i, row in tqdm(df.iterrows(), total=len(df), desc="Processing ECG signals"):
+                # Scale first if power ratio is provided 
+                ecg_to_process = row['ecg_signal']
+                if power_ratio is not None:
+                    ecg_to_process = self.scale_single_ecg_signal(ecg_to_process, power_ratio)
+                
+                
+                peak_ranges = predefined_peaks if predefined_peaks is not None else []
+                
+                if len(peak_ranges) == 0:
+                    cleaned_signals.append(ecg_to_process)
+                else:
+                    processed_leads = []
+                    for lead_index in range(12):
+                        lead_signal = ecg_to_process[:, lead_index].astype(np.float32)
+                        cleaned_lead = self.flatten_fft_peak(lead_signal, flatten_ranges=peak_ranges)
+                        processed_leads.append(cleaned_lead.astype(np.float32))
+                
+                    cleaned_signals.append(np.stack(processed_leads, axis=-1).astype(np.float32))
+                
+            return pd.DataFrame({
+                'ecg_path': df['ecg_path'].tolist(),
+                'ecg_signal': list(cleaned_signals)
+            })
+        
+        elif ecg_processing_mode == 'batch':
+            print(f"Processing {len(df)} ECG(s) in batch mode")
+            logger.info("Step 1: Detecting peaks")
+            
+            if power_ratio is not None:
+                scaled_data = self.scale_ecg_signals(df, power_ratio)
+                input_data = np.array(scaled_data['ecg_signal'].tolist())
+            else:
+                input_data = np.array(df['ecg_signal'].tolist())
+                
+            logger.debug("Input shape: %s", input_data.shape)
+            peak_ranges = self.detect_peaks(
+                input_data[:, :, 0],
+                window_size=window_size,
+                std_threshold=std_threshold
+            )
+        
+            if len(peak_ranges) == 0:
+                logger.warning("No peaks detected; signal similar to flat/MHI, returning unchanged.")
+                df['ecg_signal'] = input_data.tolist()
+                return df
+            
+            processed_leads = []
+            logger.info("Step 2: Processing leads (this step can be slow)")
+            for lead_index in tqdm(range(12)):
+                logger.debug("Processing lead %d", lead_index + 1)
+                crossings = self.find_crossings_for_peaks(input_data[:, :, lead_index], peak_ranges=peak_ranges)
+                widened_crossings = self.widen_ranges(crossings)
 
-            cleaned_lead = self.process_signals_parallel(input_data[:, :, lead_index].astype(np.float32), flatten_ranges=widened_crossings, max_workers=max_workers)
-            processed_leads.append(cleaned_lead.astype(np.float32))
+                cleaned_lead = self.process_signals_parallel(input_data[:, :, lead_index].astype(np.float32), flatten_ranges=widened_crossings, max_workers=max_workers)
+                processed_leads.append(cleaned_lead.astype(np.float32))
 
-        cleaned_data = np.array(processed_leads).astype(np.float32)
-        cleaned_data = np.swapaxes(cleaned_data, 0, -2)
-        cleaned_data = np.swapaxes(cleaned_data, -1, -2)
+            cleaned_data = np.array(processed_leads).astype(np.float32)
+            cleaned_data = np.swapaxes(cleaned_data, 0, -2)
+            cleaned_data = np.swapaxes(cleaned_data, -1, -2)
 
-        return pd.DataFrame({
-            'ecg_path': df['ecg_path'].tolist(),
-            'ecg_signal': list(cleaned_data)
-        })
+            return pd.DataFrame({
+                'ecg_path': df['ecg_path'].tolist(),
+                'ecg_signal': list(cleaned_data)
+            })
+        else:
+            raise ValueError(f"Invalid ECG processing mode: {ecg_processing_mode}")
 
 if __name__ == "__main__":
     root_dir = "./tmp/"

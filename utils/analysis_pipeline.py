@@ -273,16 +273,13 @@ class AnalysisPipeline:
                 if len(ecg_signals_df) == 0:
                     collect(errors, "preprocessing", f"No valid signals in batch {batch_idx + 1}", None)
                     continue
-                logger.info("Scaling ECG signals...")
-                scaled_signals_df = ecg_signal_processor.scale_ecg_signals(
-                    df=ecg_signals_df, 
-                    power_ratio=PTBXL_POWER_RATIO
-                )
-                
+                                
                 logger.info("Processing ECG signals...")
                 cleaned_signals_df = ecg_signal_processor.clean_and_process_ecg_leads(
-                    df=scaled_signals_df,
-                    max_workers=preprocessing_n_workers
+                    df=ecg_signals_df,
+                    max_workers=preprocessing_n_workers,
+                    ecg_processing_mode=ecg_processing_mode,
+                    power_ratio=PTBXL_POWER_RATIO
                 )
                 
                 logger.info("Saving processed signals...")
@@ -296,7 +293,7 @@ class AnalysisPipeline:
                 processed_df = pd.concat([processed_df, batch_df], ignore_index=True)
                 
                 # Clear memory
-                del ecg_signals_df, scaled_signals_df, cleaned_signals_df, batch_df
+                del ecg_signals_df, cleaned_signals_df, batch_df
                 
             except Exception as e:
                 collect(errors, "preprocessing", f"Batch {batch_idx + 1} failed", str(e))
