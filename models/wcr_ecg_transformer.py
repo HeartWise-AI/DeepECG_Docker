@@ -56,10 +56,12 @@ class WCREcgTransformer(HeartWiseModelFactory):
             suffix=""
         )        
         self.model = model.to(map_location)
+        self.model.eval()
 
     def __call__(self, x, padding_mask=None):
-        net_input = { "source": x, "padding_mask": padding_mask}
-        net_output = self.model(**net_input)
+        net_input = {"source": x, "padding_mask": padding_mask}
+        with torch.no_grad():
+            net_output = self.model(**net_input)
         return torch.sigmoid(self.model.get_logits(net_output))
 
 

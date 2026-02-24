@@ -37,10 +37,12 @@ class EfficientNetWrapper(HeartWiseModelFactory):
             raise ValueError("No .pt file found in the directory")
         model_path = os.path.join(model_path, pt_file)
         self.model = torch.jit.load(model_path, map_location=map_location)
+        self.model.eval()
 
     def __call__(self, signal):
         signal *= self.mhi_factor
-        return torch.sigmoid(self.model(signal))
+        with torch.no_grad():
+            return torch.sigmoid(self.model(signal))
 
 
 class EfficientNetV2_77_classes(EfficientNetWrapper):

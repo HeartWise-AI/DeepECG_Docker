@@ -41,6 +41,7 @@ class BaseBertClassifier(HeartWiseModelFactory):
         self.processor = BertTokenizer.from_pretrained(
             model_path,
         )
+        self.model.eval()
 
     def preprocessing(self, text: str) -> dict:
         return self.processor(
@@ -56,11 +57,12 @@ class BaseBertClassifier(HeartWiseModelFactory):
         input_ids = batch_t['input_ids'].to(self.device)
         token_type_ids = batch_t['token_type_ids'].to(self.device)
         attention_mask = batch_t['attention_mask'].to(self.device)
-        logits = self.model(
-            input_ids=input_ids, 
-            token_type_ids=token_type_ids, 
-            attention_mask=attention_mask
-        )['logits']
+        with torch.no_grad():
+            logits = self.model(
+                input_ids=input_ids, 
+                token_type_ids=token_type_ids, 
+                attention_mask=attention_mask
+            )['logits']
         return torch.sigmoid(logits)   
 
 class BertClassifier(BaseBertClassifier):
