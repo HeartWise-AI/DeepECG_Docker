@@ -343,7 +343,7 @@ class ECGSignalProcessor:
         
             if len(peak_ranges) == 0:
                 logger.warning("No peaks detected; signal similar to flat/MHI, returning unchanged.")
-                df['ecg_signal'] = input_data.tolist()
+                df['ecg_signal'] = list(input_data)
                 return df
             
             processed_leads = []
