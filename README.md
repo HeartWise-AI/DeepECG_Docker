@@ -11,6 +11,7 @@ This pipeline offers 3 modes of processing:
 - [Installation](#installation)
 - [Project Structure](#project-structure)
 - [Models](#models)
+- [Optimal Thresholds](#-optimal-thresholds)
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [Testing](#testing)
@@ -105,6 +106,9 @@ DeepECG_Docker/
 ├── preprocessing/
 │   └── (preprocessed files will be saved here)
 │
+├── thresholds/
+│   └── wcr_77_classes_ecg_machine_diagnosis.json  # WCR optimal thresholds (MHI training)
+│
 ├── utils/
 │   └── ...
 │
@@ -154,6 +158,30 @@ DeepECG_Docker/
 9. **WCR_Incident_AFIB_At_5_Years**:
    - Utilizes the WCR architecture to classify ECG signals into binary classification of incident AFIB at 5 years.
    - More information [here](https://huggingface.co/heartwise/wcr_afib_5y)
+
+## 📊 Optimal Thresholds
+
+Optimal classification thresholds are stored in `utils/constants.py` and in JSON files under `thresholds/`. During inference, these thresholds are used to binarize model predictions and log diagnostic warnings.
+
+### Threshold Status by Model
+
+| Model | Task | Thresholds | Source | Location |
+|-------|------|------------|--------|----------|
+| BERT Classifier | 77 classes | Available (77 labels) | Manual tuning | `utils/constants.py` → `BERT_THRESHOLDS` |
+| WCR | 77 classes | Available (76 labels, Brugada N/A) | MHI training data (Youden index) | `utils/constants.py` → `WCR_THRESHOLDS`, `thresholds/wcr_77_classes_ecg_machine_diagnosis.json` |
+| EfficientNetV2 | 77 classes | **Missing** | — | — |
+| WCR | LVEF <= 40% | **Missing** | — | — |
+| WCR | LVEF < 50% | **Missing** | — | — |
+| WCR | AFIB 5Y | **Missing** | — | — |
+| EfficientNetV2 | LVEF <= 40% | **Missing** | — | — |
+| EfficientNetV2 | LVEF < 50% | **Missing** | — | — |
+| EfficientNetV2 | AFIB 5Y | **Missing** | — | — |
+
+### Notes
+- **WCR 77-class thresholds** were computed on the MHI training set using the Youden index (maximizing sensitivity + specificity - 1). The full JSON includes per-label AUC, AUPRC, F1, threshold, and prevalence metrics.
+- **Brugada** has no threshold (no positive samples in training data).
+- During WCR 77-class inference, the pipeline logs the number of predictions exceeding each label's threshold for monitoring purposes.
+- Binary models (LVEF, AFIB 5Y) compute thresholds dynamically at evaluation time using the Youden index when ground truth is available.
 
 ## 📄 Usage
 

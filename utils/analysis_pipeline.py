@@ -14,10 +14,11 @@ from utils.files_handler import XMLProcessor, NPYProcessor, ECGFileHandler
 from data.project_dataset import create_dataloader
 from models import HeartWiseModelFactory
 from utils.constants import (
-    ECG_CATEGORIES, 
-    ECG_PATTERNS, 
-    BERT_THRESHOLDS, 
-    WCR_COLUMN_CONVERSION, 
+    ECG_CATEGORIES,
+    ECG_PATTERNS,
+    BERT_THRESHOLDS,
+    WCR_THRESHOLDS,
+    WCR_COLUMN_CONVERSION,
     PTBXL_POWER_RATIO
 )
 from utils.ecg_signal_processor import ECGSignalProcessor
@@ -221,6 +222,26 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
         
     return metrics
  
+def _log_wcr_threshold_warnings(df_probabilities: pd.DataFrame, sig_columns: list[str]) -> None:
+    """Log warnings for WCR predictions that exceed MHI-trained thresholds."""
+    for col in sig_columns:
+        pattern = col.replace("_sig_model", "")
+        wcr_info = WCR_THRESHOLDS.get(pattern)
+        if wcr_info is None:
+            continue
+        thresh = wcr_info.get("threshold")
+        if thresh is None:
+            logger.warning("WCR threshold for '%s' is unavailable (NaN in training data)", pattern)
+            continue
+        n_positive = (df_probabilities[col] >= thresh).sum()
+        if n_positive > 0:
+            pct = n_positive / len(df_probabilities) * 100
+            logger.info(
+                "WCR threshold check: %s — %d/%d (%.1f%%) above threshold %.4f",
+                pattern, n_positive, len(df_probabilities), pct, thresh
+            )
+
+
 class AnalysisPipeline:
     """Orchestrates ECG preprocessing (NPY/XML) and model-based analysis with metrics."""
 
@@ -402,13 +423,17 @@ class AnalysisPipeline:
             columns = ['file_name'] + bert_columns + sig_columns
             df_probabilities = pd.DataFrame(probabities_rows, columns=columns)
 
+            # Apply WCR thresholds and log warnings for predictions above threshold
+            if "wcr" in signal_processing_model_name:
+                _log_wcr_threshold_warnings(df_probabilities, sig_columns)
+
             # Skip metrics computation if only one ECG (requires multiple samples for AUC, F1, etc.)
             if len(ground_truth) <= 1:
                 logger.warning("Skipping metrics computation: only %d ECG(s) provided", len(ground_truth))
                 return {}, df_probabilities
 
             return compute_metrics(
-                df_gt=pd.DataFrame(ground_truth, columns=ECG_PATTERNS), 
+                df_gt=pd.DataFrame(ground_truth, columns=ECG_PATTERNS),
                 df_pred=pd.DataFrame(predictions, columns=ECG_PATTERNS)
             ), df_probabilities
         
