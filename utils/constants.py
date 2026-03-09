@@ -1,3 +1,6 @@
+import json
+import math
+import os
 
 from models.efficientnet_wrapper import (
     EfficientNetV2_77_classes, 
@@ -474,8 +477,38 @@ BERT_THRESHOLDS = {
     }
 }
 
-WCR_COLUMN_CONVERSION = [15, 23, 16, 1, 57, 63, 73, 41, 39, 36, 2, 29, 30, 65, 34, 12, 55, 56, 21, 8, 42, 71, 
-                         37, 50, 13, 38, 46, 24, 49, 9, 66, 26, 40, 4, 22, 0, 11, 74, 64, 7, 76, 58, 33, 70, 17, 6, 28, 
+_WCR_THRESHOLDS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "thresholds",
+    "wcr_77_classes_ecg_machine_diagnosis.json",
+)
+
+
+def _load_wcr_thresholds() -> dict:
+    """Load WCR thresholds from JSON file (single source of truth)."""
+    with open(_WCR_THRESHOLDS_PATH, "r") as f:
+        raw = json.load(f)
+    thresholds = {}
+    for label, metrics in raw.items():
+        thresh_val = metrics.get("threshold")
+        if label in ECG_CATEGORIES:
+            # Category-level: use the micro threshold from the JSON
+            thresholds[label] = {
+                "macro_threshold": thresh_val,
+                "micro_threshold": thresh_val,
+            }
+        else:
+            # Convert NaN values to None
+            if isinstance(thresh_val, float) and math.isnan(thresh_val):
+                thresh_val = None
+            thresholds[label] = {"threshold": thresh_val}
+    return thresholds
+
+
+WCR_THRESHOLDS = _load_wcr_thresholds()
+
+WCR_COLUMN_CONVERSION = [15, 23, 16, 1, 57, 63, 73, 41, 39, 36, 2, 29, 30, 65, 34, 12, 55, 56, 21, 8, 42, 71,
+                         37, 50, 13, 38, 46, 24, 49, 9, 66, 26, 40, 4, 22, 0, 11, 74, 64, 7, 76, 58, 33, 70, 17, 6, 28,
                          69, 44, 61, 32, 72, 45, 25, 75, 18, 14, 5, 3, 31, 27, 67, 62, 10, 43, 51, 52, 47, 19, 68, 53, 48, 60, 20, 59, 54, 35]
 
 PTBXL_POWER_RATIO = 3.003154

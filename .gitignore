@@ -16,6 +16,7 @@ api_key.json
 ecg_signals_analysis_cleaned_ecg_signals.csv
 *.csv
 *.json
+!thresholds/*.json
 notebooks/ptb-xl_lite
 notebooks/README.md
 notebooks/ssl_pretrained_model
