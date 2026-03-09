@@ -224,10 +224,12 @@ def compute_metrics(df_gt: pd.DataFrame, df_pred: pd.DataFrame) -> dict:
  
 def _log_wcr_threshold_warnings(df_probabilities: pd.DataFrame, sig_columns: list[str]) -> None:
     """Log warnings for WCR predictions that exceed MHI-trained thresholds."""
+    if len(df_probabilities) == 0:
+        return
     for col in sig_columns:
         pattern = col.replace("_sig_model", "")
         wcr_info = WCR_THRESHOLDS.get(pattern)
-        if wcr_info is None:
+        if wcr_info is None or pattern in ECG_CATEGORIES:
             continue
         thresh = wcr_info.get("threshold")
         if thresh is None:
@@ -410,7 +412,7 @@ class AnalysisPipeline:
 
                 # Append batch data 
                 sig_prob = signal_processing_model(ecg_tensor)   
-                if "wcr" in signal_processing_model_name:
+                if "wcr" in signal_processing_model_name.lower():
                     sig_prob = sig_prob[:, WCR_COLUMN_CONVERSION]
                         
                 for i in range(len(diag_binary)):
@@ -424,7 +426,7 @@ class AnalysisPipeline:
             df_probabilities = pd.DataFrame(probabities_rows, columns=columns)
 
             # Apply WCR thresholds and log warnings for predictions above threshold
-            if "wcr" in signal_processing_model_name:
+            if "wcr" in signal_processing_model_name.lower():
                 _log_wcr_threshold_warnings(df_probabilities, sig_columns)
 
             # Skip metrics computation if only one ECG (requires multiple samples for AUC, F1, etc.)

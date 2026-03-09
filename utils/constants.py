@@ -1,3 +1,6 @@
+import json
+import math
+import os
 
 from models.efficientnet_wrapper import (
     EfficientNetV2_77_classes, 
@@ -474,263 +477,35 @@ BERT_THRESHOLDS = {
     }
 }
 
-WCR_THRESHOLDS = {
-    "Rhythm Disorders": {
-        "macro_threshold": 0.12457835674285889,
-        "micro_threshold": 0.12457835674285889
-    },
-    "Conduction Disorder": {
-        "macro_threshold": 0.026223255321383476,
-        "micro_threshold": 0.026223255321383476
-    },
-    "Enlargement of the heart chambers": {
-        "macro_threshold": 0.023761164397001266,
-        "micro_threshold": 0.023761164397001266
-    },
-    "Pericarditis": {
-        "macro_threshold": 0.004548099357634783,
-        "micro_threshold": 0.004548099357634783
-    },
-    "Infarction or ischemia": {
-        "macro_threshold": 0.019382962957024574,
-        "micro_threshold": 0.019382962957024574
-    },
-    "Other diagnoses": {
-        "macro_threshold": 0.07094576954841614,
-        "micro_threshold": 0.07094576954841614
-    },
-    "Sinusal": {
-        "threshold": 0.8075482249259949
-    },
-    "Regular": {
-        "threshold": 0.8469119071960449
-    },
-    "Monomorph": {
-        "threshold": 0.9181361794471741
-    },
-    "QS complex in V1-V2-V3": {
-        "threshold": 0.016304679214954376
-    },
-    "R complex in V5-V6": {
-        "threshold": 0.0392032228410244
-    },
-    "T wave inversion (inferior - II, III, aVF)": {
-        "threshold": 0.15714240074157715
-    },
-    "Left bundle branch block": {
-        "threshold": 0.018835967406630516
-    },
-    "RaVL > 11 mm": {
-        "threshold": 0.03399272263050079
-    },
-    "SV1 + RV5 or RV6 > 35 mm": {
-        "threshold": 0.0222533717751503
-    },
-    "T wave inversion (lateral -I, aVL, V5-V6)": {
-        "threshold": 0.13455051183700562
-    },
-    "T wave inversion (anterior - V3-V4)": {
-        "threshold": 0.0724065974354744
-    },
-    "Left axis deviation": {
-        "threshold": 0.15760254859924316
-    },
-    "Left ventricular hypertrophy": {
-        "threshold": 0.08567972481250763
-    },
-    "Bradycardia": {
-        "threshold": 0.19554725289344788
-    },
-    "Q wave (inferior - II, III, aVF)": {
-        "threshold": 0.09673208743333817
-    },
-    "Afib": {
-        "threshold": 0.1037951335310936
-    },
-    "Irregularly irregular": {
-        "threshold": 0.10453741252422333
-    },
-    "Atrial tachycardia (>= 100 BPM)": {
-        "threshold": 0.04391631856560707
-    },
-    "Nonspecific intraventricular conduction delay": {
-        "threshold": 0.029311716556549072
-    },
-    "Premature ventricular complex": {
-        "threshold": 0.060315560549497604
-    },
-    "Polymorph": {
-        "threshold": 0.01651196926832199
-    },
-    "T wave inversion (septal- V1-V2)": {
-        "threshold": 0.07128537446260452
-    },
-    "Right bundle branch block": {
-        "threshold": 0.060605697333812714
-    },
-    "Ventricular paced": {
-        "threshold": 0.04323868080973625
-    },
-    "ST elevation (anterior - V3-V4)": {
-        "threshold": 0.009488987736403942
-    },
-    "ST elevation (septal - V1-V2)": {
-        "threshold": 0.007370146457105875
-    },
-    "1st degree AV block": {
-        "threshold": 0.054165828973054886
-    },
-    "Premature atrial complex": {
-        "threshold": 0.02900737151503563
-    },
-    "Atrial flutter": {
-        "threshold": 0.012458192184567451
-    },
-    "rSR' in V1-V2": {
-        "threshold": 0.024231072515249252
-    },
-    "qRS in V5-V6-I, aVL": {
-        "threshold": 0.016562914475798607
-    },
-    "Left anterior fascicular block": {
-        "threshold": 0.037277620285749435
-    },
-    "Right axis deviation": {
-        "threshold": 0.010496498085558414
-    },
-    "2nd degree AV block - mobitz 1": {
-        "threshold": 0.006294497288763523
-    },
-    "ST depression (inferior - II, III, aVF)": {
-        "threshold": 0.010292482562363148
-    },
-    "Acute pericarditis": {
-        "threshold": 0.004548099357634783
-    },
-    "ST elevation (inferior - II, III, aVF)": {
-        "threshold": 0.00899659376591444
-    },
-    "Low voltage": {
-        "threshold": 0.05578191205859184
-    },
-    "Regularly irregular": {
-        "threshold": 0.051944803446531296
-    },
-    "Junctional rhythm": {
-        "threshold": 0.01158860418945551
-    },
-    "Left atrial enlargement": {
-        "threshold": 0.025674456730484962
-    },
-    "ST elevation (lateral - I, aVL, V5-V6)": {
-        "threshold": 0.006438542157411575
-    },
-    "Atrial paced": {
-        "threshold": 0.016819339245557785
-    },
-    "Right ventricular hypertrophy": {
-        "threshold": 0.0056317038834095
-    },
-    "Delta wave": {
-        "threshold": 0.0004455529560800642
-    },
-    "Wolff-Parkinson-White (Pre-excitation syndrome)": {
-        "threshold": 0.0005034709465689957
-    },
-    "Prolonged QT": {
-        "threshold": 0.046002209186553955
-    },
-    "ST depression (anterior - V3-V4)": {
-        "threshold": 0.006790333427488804
-    },
-    "QRS complex negative in III": {
-        "threshold": 0.09670284390449524
-    },
-    "Q wave (lateral- I, aVL, V5-V6)": {
-        "threshold": 0.01590864546597004
-    },
-    "Supraventricular tachycardia": {
-        "threshold": 0.007044760510325432
-    },
-    "ST downslopping": {
-        "threshold": 0.08333136141300201
-    },
-    "ST depression (lateral - I, avL, V5-V6)": {
-        "threshold": 0.019376173615455627
-    },
-    "2nd degree AV block - mobitz 2": {
-        "threshold": 0.00933077186346054
-    },
-    "U wave": {
-        "threshold": 0.000755671935621649
-    },
-    "R/S ratio in V1-V2 >1": {
-        "threshold": 0.01122095063328743
-    },
-    "RV1 + SV6 > 11 mm": {
-        "threshold": 0.005522996187210083
-    },
-    "Left posterior fascicular block": {
-        "threshold": 0.0036026940215379
-    },
-    "Right atrial enlargement": {
-        "threshold": 0.002089146990329027
-    },
-    "ST depression (septal- V1-V2)": {
-        "threshold": 0.001671362086199224
-    },
-    "Q wave (septal- V1-V2)": {
-        "threshold": 0.03893815353512764
-    },
-    "Q wave (anterior - V3-V4)": {
-        "threshold": 0.05494214594364166
-    },
-    "ST upslopping": {
-        "threshold": 0.009845602326095104
-    },
-    "Right superior axis": {
-        "threshold": 0.0002490754995960742
-    },
-    "Ventricular tachycardia": {
-        "threshold": 0.0002493064384907484
-    },
-    "ST elevation (posterior - V7-V8-V9)": {
-        "threshold": 0.0013480085181072354
-    },
-    "Ectopic atrial rhythm (< 100 BPM)": {
-        "threshold": 0.004058691672980785
-    },
-    "Lead misplacement": {
-        "threshold": 2.4045009922701865e-05
-    },
-    "Third Degree AV Block": {
-        "threshold": 0.002749016275629401
-    },
-    "Acute MI": {
-        "threshold": 0.013021176680922508
-    },
-    "Early repolarization": {
-        "threshold": 0.004803062882274389
-    },
-    "Q wave (posterior - V7-V9)": {
-        "threshold": 0.002231500344350934
-    },
-    "Bi-atrial enlargement": {
-        "threshold": 0.0013420595787465572
-    },
-    "LV pacing": {
-        "threshold": 0.0006026728078722954
-    },
-    "Brugada": {
-        "threshold": None
-    },
-    "Ventricular Rhythm": {
-        "threshold": 0.010783462785184383
-    },
-    "no_qrs": {
-        "threshold": 0.00020396339823491871
-    }
-}
+_WCR_THRESHOLDS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "thresholds",
+    "wcr_77_classes_ecg_machine_diagnosis.json",
+)
+
+
+def _load_wcr_thresholds() -> dict:
+    """Load WCR thresholds from JSON file (single source of truth)."""
+    with open(_WCR_THRESHOLDS_PATH, "r") as f:
+        raw = json.load(f)
+    thresholds = {}
+    for label, metrics in raw.items():
+        thresh_val = metrics.get("threshold")
+        if label in ECG_CATEGORIES:
+            # Category-level: use the micro threshold from the JSON
+            thresholds[label] = {
+                "macro_threshold": thresh_val,
+                "micro_threshold": thresh_val,
+            }
+        else:
+            # Convert NaN values to None
+            if isinstance(thresh_val, float) and math.isnan(thresh_val):
+                thresh_val = None
+            thresholds[label] = {"threshold": thresh_val}
+    return thresholds
+
+
+WCR_THRESHOLDS = _load_wcr_thresholds()
 
 WCR_COLUMN_CONVERSION = [15, 23, 16, 1, 57, 63, 73, 41, 39, 36, 2, 29, 30, 65, 34, 12, 55, 56, 21, 8, 42, 71,
                          37, 50, 13, 38, 46, 24, 49, 9, 66, 26, 40, 4, 22, 0, 11, 74, 64, 7, 76, 58, 33, 70, 17, 6, 28,
