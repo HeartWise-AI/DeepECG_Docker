@@ -1,0 +1,22 @@
+{
+  "iAF5": {
+    "SL_sens_spec_threshold": 0.207,
+    "SSL_sens_spec_threshold": 0.231
+  },
+  "LVEF ≤ 40": {
+    "SL_sens_spec_threshold": 0.197,
+    "SSL_sens_spec_threshold": 0.002
+  },
+  "LVEF < 50": {
+    "SL_sens_spec_threshold": 0.268,
+    "SSL_sens_spec_threshold": 0.032
+  },
+  "LQTS": {
+    "SL_sens_spec_threshold": 0.303,
+    "SSL_sens_spec_threshold": 0.015
+  },
+  "LQTS TYPE": {
+    "SL_sens_spec_threshold": 0.388,
+    "SSL_sens_spec_threshold": 0.094
+  }
+}

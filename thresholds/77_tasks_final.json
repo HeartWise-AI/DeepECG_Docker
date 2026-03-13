@@ -1,0 +1,334 @@
+{
+  "RHYTHM": {
+    "SL_sens_spec_threshold": 0.13,
+    "SSL_sens_spec_threshold": 0.023
+  },
+  "Ventricular tachycardia": {
+    "SL_sens_spec_threshold": 0.002,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Bradycardia": {
+    "SL_sens_spec_threshold": 0.304,
+    "SSL_sens_spec_threshold": 0.073
+  },
+  "Brugada": {
+    "SL_sens_spec_threshold": 0.001,
+    "SSL_sens_spec_threshold": 0.537
+  },
+  "Wolff-Parkinson-White (Pre-excitation syndrome)": {
+    "SL_sens_spec_threshold": 0.001,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Atrial flutter": {
+    "SL_sens_spec_threshold": 0.01,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Ectopic atrial rhythm (< 100 BPM)": {
+    "SL_sens_spec_threshold": 0.007,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Atrial tachycardia (>= 100 BPM)": {
+    "SL_sens_spec_threshold": 0.035,
+    "SSL_sens_spec_threshold": 0.005
+  },
+  "Sinusal": {
+    "SL_sens_spec_threshold": 0.872,
+    "SSL_sens_spec_threshold": 0.95
+  },
+  "Ventricular Rhythm": {
+    "SL_sens_spec_threshold": 0.027,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Supraventricular tachycardia": {
+    "SL_sens_spec_threshold": 0.005,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Junctional rhythm": {
+    "SL_sens_spec_threshold": 0.013,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Regular": {
+    "SL_sens_spec_threshold": 0.898,
+    "SSL_sens_spec_threshold": 0.95
+  },
+  "Regularly irregular": {
+    "SL_sens_spec_threshold": 0.058,
+    "SSL_sens_spec_threshold": 0.003
+  },
+  "Irregularly irregular": {
+    "SL_sens_spec_threshold": 0.1,
+    "SSL_sens_spec_threshold": 0.007
+  },
+  "Afib": {
+    "SL_sens_spec_threshold": 0.074,
+    "SSL_sens_spec_threshold": 0.004
+  },
+  "Premature ventricular complex": {
+    "SL_sens_spec_threshold": 0.049,
+    "SSL_sens_spec_threshold": 0.019
+  },
+  "Premature atrial complex": {
+    "SL_sens_spec_threshold": 0.037,
+    "SSL_sens_spec_threshold": 0.003
+  },
+  "CONDUCTION": {
+    "SL_sens_spec_threshold": 0.033,
+    "SSL_sens_spec_threshold": 0.002
+  },
+  "Left anterior fascicular block": {
+    "SL_sens_spec_threshold": 0.037,
+    "SSL_sens_spec_threshold": 0.003
+  },
+  "Delta wave": {
+    "SL_sens_spec_threshold": 0.001,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "2nd degree AV block - mobitz 2": {
+    "SL_sens_spec_threshold": 0.012,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Left bundle branch block": {
+    "SL_sens_spec_threshold": 0.068,
+    "SSL_sens_spec_threshold": 0.006
+  },
+  "Right bundle branch block": {
+    "SL_sens_spec_threshold": 0.126,
+    "SSL_sens_spec_threshold": 0.044
+  },
+  "Left axis deviation": {
+    "SL_sens_spec_threshold": 0.154,
+    "SSL_sens_spec_threshold": 0.031
+  },
+  "Atrial paced": {
+    "SL_sens_spec_threshold": 0.018,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Right axis deviation": {
+    "SL_sens_spec_threshold": 0.017,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Left posterior fascicular block": {
+    "SL_sens_spec_threshold": 0.004,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "1st degree AV block": {
+    "SL_sens_spec_threshold": 0.071,
+    "SSL_sens_spec_threshold": 0.01
+  },
+  "Right superior axis": {
+    "SL_sens_spec_threshold": 0.002,
+    "SSL_sens_spec_threshold": 0.003
+  },
+  "Nonspecific intraventricular conduction delay": {
+    "SL_sens_spec_threshold": 0.022,
+    "SSL_sens_spec_threshold": 0.003
+  },
+  "Third Degree AV Block": {
+    "SL_sens_spec_threshold": 0.002,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "2nd degree AV block - mobitz 1": {
+    "SL_sens_spec_threshold": 0.006,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Prolonged QT": {
+    "SL_sens_spec_threshold": 0.039,
+    "SSL_sens_spec_threshold": 0.002
+  },
+  "U wave": {
+    "SL_sens_spec_threshold": 0.006,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "LV pacing": {
+    "SL_sens_spec_threshold": 0.003,
+    "SSL_sens_spec_threshold": 0.002
+  },
+  "Ventricular paced": {
+    "SL_sens_spec_threshold": 0.052,
+    "SSL_sens_spec_threshold": 0.009
+  },
+  "CHAMBER ENLARGEMENT": {
+    "SL_sens_spec_threshold": 0.019,
+    "SSL_sens_spec_threshold": 0.003
+  },
+  "Bi-atrial enlargement": {
+    "SL_sens_spec_threshold": 0.001,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Left atrial enlargement": {
+    "SL_sens_spec_threshold": 0.019,
+    "SSL_sens_spec_threshold": 0.003
+  },
+  "Right atrial enlargement": {
+    "SL_sens_spec_threshold": 0.001,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Left ventricular hypertrophy": {
+    "SL_sens_spec_threshold": 0.063,
+    "SSL_sens_spec_threshold": 0.035
+  },
+  "Right ventricular hypertrophy": {
+    "SL_sens_spec_threshold": 0.006,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "PERICARDITIS": {
+    "SL_sens_spec_threshold": 0.004,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "INFARCT, ISCHEMIA": {
+    "SL_sens_spec_threshold": 0.021,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Q wave (septal- V1-V2)": {
+    "SL_sens_spec_threshold": 0.033,
+    "SSL_sens_spec_threshold": 0.003
+  },
+  "ST elevation (anterior - V3-V4)": {
+    "SL_sens_spec_threshold": 0.01,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Q wave (posterior - V7-V9)": {
+    "SL_sens_spec_threshold": 0.003,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Q wave (inferior - II, III, aVF)": {
+    "SL_sens_spec_threshold": 0.116,
+    "SSL_sens_spec_threshold": 0.017
+  },
+  "Q wave (anterior - V3-V4)": {
+    "SL_sens_spec_threshold": 0.042,
+    "SSL_sens_spec_threshold": 0.003
+  },
+  "ST elevation (lateral - I, aVL, V5-V6)": {
+    "SL_sens_spec_threshold": 0.006,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Q wave (lateral- I, aVL, V5-V6)": {
+    "SL_sens_spec_threshold": 0.018,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "ST depression (lateral - I, avL, V5-V6)": {
+    "SL_sens_spec_threshold": 0.026,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Acute MI": {
+    "SL_sens_spec_threshold": 0.009,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "ST elevation (septal - V1-V2)": {
+    "SL_sens_spec_threshold": 0.008,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "ST elevation (inferior - II, III, aVF)": {
+    "SL_sens_spec_threshold": 0.01,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "ST elevation (posterior - V7-V8-V9)": {
+    "SL_sens_spec_threshold": 0.002,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "ST depression (inferior - II, III, aVF)": {
+    "SL_sens_spec_threshold": 0.012,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "ST depression (anterior - V3-V4)": {
+    "SL_sens_spec_threshold": 0.008,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "OTHER": {
+    "SL_sens_spec_threshold": 0.086,
+    "SSL_sens_spec_threshold": 0.005
+  },
+  "ST downslopping": {
+    "SL_sens_spec_threshold": 0.066,
+    "SSL_sens_spec_threshold": 0.009
+  },
+  "ST depression (septal- V1-V2)": {
+    "SL_sens_spec_threshold": 0.002,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "R/S ratio in V1-V2 >1": {
+    "SL_sens_spec_threshold": 0.025,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "RV1 + SV6 > 11 mm": {
+    "SL_sens_spec_threshold": 0.008,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "Polymorph": {
+    "SL_sens_spec_threshold": 0.02,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "rSR' in V1-V2": {
+    "SL_sens_spec_threshold": 0.035,
+    "SSL_sens_spec_threshold": 0.002
+  },
+  "QRS complex negative in III": {
+    "SL_sens_spec_threshold": 0.144,
+    "SSL_sens_spec_threshold": 0.01
+  },
+  "qRS in V5-V6-I, aVL": {
+    "SL_sens_spec_threshold": 0.014,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "QS complex in V1-V2-V3": {
+    "SL_sens_spec_threshold": 0.035,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "R complex in V5-V6": {
+    "SL_sens_spec_threshold": 0.078,
+    "SSL_sens_spec_threshold": 0.006
+  },
+  "RaVL > 11 mm": {
+    "SL_sens_spec_threshold": 0.05,
+    "SSL_sens_spec_threshold": 0.002
+  },
+  "T wave inversion (septal- V1-V2)": {
+    "SL_sens_spec_threshold": 0.107,
+    "SSL_sens_spec_threshold": 0.006
+  },
+  "SV1 + RV5 or RV6 > 35 mm": {
+    "SL_sens_spec_threshold": 0.023,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "T wave inversion (inferior - II, III, aVF)": {
+    "SL_sens_spec_threshold": 0.198,
+    "SSL_sens_spec_threshold": 0.035
+  },
+  "Monomorph": {
+    "SL_sens_spec_threshold": 0.938,
+    "SSL_sens_spec_threshold": 0.95
+  },
+  "T wave inversion (anterior - V3-V4)": {
+    "SL_sens_spec_threshold": 0.077,
+    "SSL_sens_spec_threshold": 0.005
+  },
+  "T wave inversion (lateral -I, aVL, V5-V6)": {
+    "SL_sens_spec_threshold": 0.17,
+    "SSL_sens_spec_threshold": 0.019
+  },
+  "Low voltage": {
+    "SL_sens_spec_threshold": 0.058,
+    "SSL_sens_spec_threshold": 0.003
+  },
+  "Lead misplacement": {
+    "SL_sens_spec_threshold": 0.029,
+    "SSL_sens_spec_threshold": 0.439
+  },
+  "Early repolarization": {
+    "SL_sens_spec_threshold": 0.004,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "ST upslopping": {
+    "SL_sens_spec_threshold": 0.011,
+    "SSL_sens_spec_threshold": 0.001
+  },
+  "no_qrs": {
+    "SL_sens_spec_threshold": 0.005,
+    "SSL_sens_spec_threshold": 0.65
+  },
+  "OVERALL": {
+    "SL_sens_spec_threshold": 0.062,
+    "SSL_sens_spec_threshold": 0.005
+  }
+}
