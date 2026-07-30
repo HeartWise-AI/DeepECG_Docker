@@ -170,9 +170,11 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
 | BERT Classifier | 77 classes | Available (77 labels) | Manual tuning | `utils/constants.py` → `BERT_THRESHOLDS` |
 | WCR | 77 classes | Available (76 labels, Brugada N/A) | MHI training data (Youden index) | `utils/constants.py` → `WCR_THRESHOLDS`, `thresholds/wcr_77_classes_ecg_machine_diagnosis.json` |
 | EfficientNetV2 | 77 classes | **Missing** | — | — |
-| WCR | LVEF <= 40% | **Missing** | — | — |
-| WCR | LVEF < 50% | **Missing** | — | — |
-| WCR | AFIB 5Y | **Missing** | — | — |
+| WCR | LVEF <= 40% | Available | MHI training data | [—](https://github.com/HeartWise-AI/DeepECG_Docker/blob/main/thresholds/digital_biomarker_final.json) |
+| WCR | LVEF < 50% | Available | MHI training data | [—](https://github.com/HeartWise-AI/DeepECG_Docker/blob/main/thresholds/digital_biomarker_final.json) |
+| WCR | AFIB 5Y | Available | MHI training data | [—](https://github.com/HeartWise-AI/DeepECG_Docker/blob/main/thresholds/digital_biomarker_final.json) |
+| WCR | LQTS | Available | MHI training data | [—](https://github.com/HeartWise-AI/DeepECG_Docker/blob/main/thresholds/digital_biomarker_final.json) |
+| WCR | LQTS TYPE | Available | MHI training data | [—](https://github.com/HeartWise-AI/DeepECG_Docker/blob/main/thresholds/digital_biomarker_final.json) |
 | EfficientNetV2 | LVEF <= 40% | **Missing** | — | — |
 | EfficientNetV2 | LVEF < 50% | **Missing** | — | — |
 | EfficientNetV2 | AFIB 5Y | **Missing** | — | — |
