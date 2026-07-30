@@ -178,6 +178,8 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
 | EfficientNetV2 | LVEF <= 40% | **Missing** | — | — |
 | EfficientNetV2 | LVEF < 50% | **Missing** | — | — |
 | EfficientNetV2 | AFIB 5Y | **Missing** | — | — |
+| EfficientNetV2 | LQTS | **Missing** | — | — |
+| EfficientNetV2 | LQTS TYPE | **Missing** | — | — |
 
 ### Notes
 - **WCR 77-class thresholds** were computed on the MHI training set using the Youden index (maximizing sensitivity + specificity - 1). The full JSON includes per-label AUC, AUPRC, F1, threshold, and prevalence metrics.
