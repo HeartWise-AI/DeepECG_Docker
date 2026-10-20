@@ -92,9 +92,8 @@ def label_windows(ann, starts, size, fs, rules=RULES):
     hr = np.full(n, np.nan)
     rhythm = np.full(n, '', dtype=object)  # whole-window rhythm: 'N_RHYTHM', 'AFIB', 'AFL' or ''
 
-    if ann is None:  # no .atr: every label unknown
-        return pd.DataFrame({**counts, 'q_fraction': np.nan, 'hr_bpm': hr, 'rhythm': rhythm,
-                             'clean_sinus': False, **rows})
+    if ann is None:  # no .atr: every label, beat count and clean-sinus flag unknown (NA, not 0 / False)
+        return _frame(counts, np.full(n, np.nan), hr, rhythm, np.zeros(n, dtype=bool), rows, known=False)
 
     ann = _sorted(ann)
     # Rhythm: whole-window coverage, and any overlap with AF or flutter.
@@ -127,7 +126,7 @@ def label_windows(ann, starts, size, fs, rules=RULES):
 
         if len(seq) >= rules['rate_min_beats']:
             rr = np.diff(bt[lo[i]:hi[i]]) / fs
-            if rr.max() <= rules['rate_max_rr_s'] and np.median(rr) > 0:  # 0: duplicate beat marks
+            if rr.max() <= rules['rate_max_rr_s'] and rr.min() > 0:  # a 0 gap = duplicate beat marks
                 hr[i] = 60.0 / np.median(rr)
 
         clean[i] = whole_n[i] and len(seq) > 0 and not has_v and not has_s
@@ -157,5 +156,13 @@ def label_windows(ann, starts, size, fs, rules=RULES):
 
     total = sum(counts.values())
     q_frac = np.where(total > 0, counts['n_Q'] / np.maximum(total, 1), np.nan)
-    return pd.DataFrame({**counts, 'q_fraction': q_frac, 'hr_bpm': hr, 'rhythm': rhythm,
-                         'clean_sinus': clean, **rows})
+    return _frame(counts, q_frac, hr, rhythm, clean, rows, known=True)
+
+
+def _frame(counts, q_frac, hr, rhythm, clean, rows, known):
+    """Window table with one set of column types for every segment: beat counts as nullable Int32 and
+    clean_sinus as nullable boolean, all NA when the segment has no annotations (known=False)."""
+    mask = np.full(len(hr), not known)
+    typed = {k: pd.arrays.IntegerArray(v.astype(np.int32), mask.copy()) for k, v in counts.items()}
+    return pd.DataFrame({**typed, 'q_fraction': q_frac, 'hr_bpm': hr, 'rhythm': rhythm,
+                         'clean_sinus': pd.arrays.BooleanArray(clean.astype(bool), mask.copy()), **rows})

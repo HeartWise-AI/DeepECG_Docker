@@ -49,11 +49,12 @@ python -m ingestion.run --data <root> --lead 12 --mapping configs/icentia_mappin
 | `--data` | Dataset root, laid out as `p00/p00000/p00000_s00.{hea,dat,atr}`. Only read. |
 | `--lead` | `12` copies the lead into all 12 positions (default for Icentia). A lead name (`I`, `II`, …, `V6`) puts it in that one position and leaves the others at zero. |
 | `--mapping` | CSV `dataset_label,deepecg_class`. `A\|B` in `deepecg_class` scores one task from two outputs as 1 − (1 − p_A)(1 − p_B). Class names are checked against the model's 77. |
-| `--patients` | `p00000-p00009`, `p00000,p00020`, or a mix. Missing patients are logged and skipped. |
-| `--out` | Output folder. Must not be `--data` or inside it (symlinks are resolved). |
-| `--thresholds` | CSV `task,threshold`, used for sensitivity and specificity. Task names must match the mapping's tasks (an unknown name is an error; a missing one gives a warning). Without it, only AUROC and AUPRC are reported. |
+| `--patients` | `p00000-p00009`, `p00000,p00020`, or a mix. Only `pNNNNN` IDs are accepted; a patient listed twice is processed once. Missing patients are logged and skipped. |
+| `--out` | Output folder. Must be empty, and must not be `--data` or inside it (symlinks are resolved). |
+| `--overwrite` | Reuse a non-empty `--out`. Once the model has loaded, this pipeline's own output files there are deleted (other files are kept); the previous results are then gone even if the new run fails. Don't start two runs on the same folder at once. |
+| `--thresholds` | CSV `task,threshold`, used for sensitivity and specificity. Values must be numbers between 0 and 1, each task listed once, and task names must match the mapping's tasks (an unknown name is an error; a missing one gives a warning). Without it, only AUROC and AUPRC are reported. |
 | `--bootstrap` | Patient-bootstrap resamples for the 95% CIs (default 1000, 0 = none). |
-| `--batch-size`, `--device` | Inference settings (defaults 512, `cuda:0`). |
+| `--batch-size`, `--device` | Inference settings (defaults 512, `cuda:0`). The GPU computes slightly differently per batch size (probabilities move by up to about 6e-4), so keep 512 to reproduce earlier runs. |
 | `--labels-only` | Stop after the labels: no model, no metrics. |
 | `--save-example-input` | Save one 12 × 2500 model input per patient, to check `--lead`. |
 
@@ -94,12 +95,12 @@ marker ends there.
 
 | File | Contents |
 |---|---|
-| `<patient>_windows.parquet` | One row per window: segment, start sample, skip reason, flat flag, beat counts, heart rate, the 8 dataset labels and the mapped ground truth (`gt::<task>`). |
+| `<patient>_windows.parquet` | One row per window: segment, start sample, skip reason, flat flag, beat counts, heart rate, the 8 dataset labels and the mapped ground truth (`gt::<task>`). In segments without annotations, beat counts and `clean_sinus` are missing (NA), not 0 / False. |
 | `<patient>_probs.npy` | float32 `[n_windows, 77]` model probabilities in `ECG_PATTERNS` order; NaN for skipped windows. |
 | `label_summary.csv` | Positive / negative / unknown counts per label and task. |
-| `metrics.csv`, `metrics.json` | Pooled per task: counts, AUROC, AUPRC, sensitivity, specificity, bootstrap CIs. |
+| `metrics.csv`, `metrics.json` | Pooled per task: counts, AUROC, AUPRC, sensitivity, specificity, bootstrap CIs. `metrics.json` is strict JSON: values that can't be computed are `null`. |
 | `metrics_per_patient.csv` | The same per patient (one row per patient and task). |
-| `run_manifest.json` | Arguments, lead slots, mapping, thresholds, label rules, git commit, skipped/flat windows, segments without annotations, missing patients, unreadable segments, timings. |
+| `run_manifest.json` | Written first with `"complete": false` and rewritten with `"complete": true` at the end, so an interrupted run is visible. Arguments, lead slots, mapping, thresholds, label rules, git commit, skipped/flat windows, segments without annotations, missing patients, unreadable segments, timings. |
 
 AUROC and AUPRC need both positive and negative windows, so they are blank for a patient (or a set of
 patients) with no positives, e.g. AF on patients who never have AF.

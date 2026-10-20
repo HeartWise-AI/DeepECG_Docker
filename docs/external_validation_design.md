@@ -110,7 +110,7 @@ All in `ingestion/`. Each step is a small module so another dataset only needs i
 - **What it reads:** WFDB `.hea`/`.dat`/`.atr`, with plain numpy (no wfdb dependency).
 - **Signal:** 1 lead, 250 Hz, format 16 (little-endian int16), converted to mV with the header gain. A `.dat` whose length doesn't match the header is an error.
 - **Annotations:** MIT format. The SKIP field is a **signed** 32-bit value (reading it unsigned shifts annotations by 2³²). Beat codes N=1, S=9 (PAC), V=5 (PVC), Q=13 (unclassified); rhythm changes are code 28 with aux text `(N`, `(AFIB`, `(AFL` or `)`.
-- **Missing annotations:** a segment without `.atr` gets every label unknown (e.g. p00008_s49).
+- **Missing annotations:** a segment without `.atr` gets every label unknown, and its beat counts and clean-sinus flag are missing (NA) rather than 0 / False (e.g. p00008_s49).
 
 ### 4.2 Windowing: `windows.py`
 - **Windows:** non-overlapping 2500-sample (10 s) windows, 419 per Icentia segment; a trailing partial window is dropped. No resampling.
@@ -183,7 +183,7 @@ Every other window is left out of that task; unlabelled time is never used as a 
 - **Rhythm intervals:** built from `(X` … `)` markers. Annotations are put in time order first. A new `(X` while one is open closes the open one there; an interval never closed runs to the end of the segment. Zero-length `(N)` markers are ignored. (The last two cases don't occur in the 800 segments checked.)
 - **Whole-window tolerance:** an interval may start or end up to **2 samples** inside the window (see "The 2-sample tolerance" above). This reproduces the reference counts exactly on every patient checked; the reason is unknown.
 - **"No AF"** (a condition in the PVC and PAC rules, not a label): the window doesn't overlap any AF/flutter interval, so a PVC or PAC in unannotated time counts as positive. Confirmed by the reference counts: this reading matches all 30 PVC/PAC patient counts checked; requiring confirmed normal rhythm instead matches only 8 (e.g. p00009: 116 of the 296 reference PVC windows are in unannotated time).
-- **Heart rate:** 60 / median gap between consecutive beats (any type), only if the window has ≥ 4 beats and no gap > 3 s; otherwise unknown. Zero gaps (duplicate marks) leave it unknown.
+- **Heart rate:** 60 / median gap between consecutive beats (any type), only if the window has ≥ 4 beats and no gap > 3 s; otherwise unknown. Any zero gap (duplicate marks) leaves it unknown.
 
 ### 4.4 Inference: `infer.py`
 - **Model:** `wcr_77_classes`, loaded through the existing `HeartWiseModelFactory` (same Hugging Face weights). The token is only read if the weights aren't cached, and never logged.
@@ -203,7 +203,7 @@ A threshold turns a probability into yes/no, needed for sensitivity and specific
 
 ### 4.7 Driver and outputs: `run.py`
 For each patient: read every segment → windows → labels → ground truth → 12-lead input → model. Then it pools all patients for metrics.
-- **Robustness:** a missing patient folder, or a segment that can't be read (bad header, truncated `.dat`, sampling rate ≠ 250 Hz), is logged and skipped, not fatal. `--out` equal to or inside `--data` is refused (symlinks resolved).
+- **Robustness:** only `pNNNNN` patient IDs are accepted (no path tricks); `--out` must be empty unless `--overwrite`, which first deletes only this pipeline's own files there; `run_manifest.json` is written first with `"complete": false` and rewritten with `true` at the end. A missing patient folder, or a segment that can't be read (bad header, truncated `.dat`, sampling rate ≠ 250 Hz), is logged and skipped, not fatal. `--out` equal to or inside `--data` is refused (symlinks resolved).
 - **`--labels-only`:** stops before the model (no torch needed). Inference is the default.
 - **Output files** (in `--out`):
   - `<patient>_windows.parquet`: one row per window with metadata, beat counts, heart rate, labels and ground truth.
@@ -250,7 +250,7 @@ For each patient: read every segment → windows → labels → ground truth →
 
 | Check | Result |
 |---|---|
-| **Unit tests** (`tests_ingestion/`, synthetic data only) | 16 pass on the host and in the image: `.atr` signed skip, header/signal, windows and skip reasons, both `--lead` options, labelling rules on a hand-built segment, bigeminy runs, mapping file, combined score, unsorted annotations, reopened/unclosed rhythm, duplicate beats, threshold-file checks, per-patient grouping, and the CLI end to end (missing patient, unreadable and wrong-rate segments, `--out` inside `--data`). |
+| **Unit tests** (`tests_ingestion/`, synthetic data only) | 29 pass on the host and in the image: `.atr` signed skip, header/signal, windows and skip reasons, both `--lead` options, labelling rules on a hand-built segment, bigeminy runs, mapping file, combined score, unsorted annotations, reopened/unclosed rhythm, duplicate beats, threshold-file checks, per-patient grouping, the CLI end to end (missing patient, unreadable and wrong-rate segments, `--out` inside `--data`), and the PR-review fixes (patient-ID validation, non-empty `--out` / `--overwrite`, interrupted-run manifest, bad threshold values, a single zero RR gap, missing annotations as NA, `--batch-size` reaching the model and strict `metrics.json`, via a fake model). |
 | **Labels vs reference**, p00000–p00009 (9 in the reference; p00002 was a tuning patient) | All 126 per-patient window counts identical. |
 | **Metrics vs reference**, same 9 patients, same thresholds | 156 values within 0.0016. |
 | **AF patients vs reference**: p00020, p00084, p00237, p00239, p00765, p05104 | Window counts identical for all 7 tasks; AF/flutter and sinus AUROC identical to 4 decimals. |
@@ -275,6 +275,20 @@ For each patient: read every segment → windows → labels → ground truth →
 10. −32768 reported as "saturated", and an unreachable "nan" reason → "invalid", dead code removed.
 
 None of the data cases behind 1, 4, 5, 7 and 10 occur in the 800 real segments checked, so these fixes don't change any label matched against the reference.
+
+### PR review bots
+Sourcery and a Cursor automation reviewed the PR and found 7 more issues; all were fixed, each with a test that fails on the old code:
+1. patient IDs could contain path components (`../`) → only `pNNNNN` IDs and ranges;
+2. runs sharing `--out`, or an interrupted run, could mix outputs → `--out` must be empty unless `--overwrite` (which deletes only this pipeline's files), and the manifest's `"complete"` flag marks finished runs;
+3. blank, non-numeric or out-of-range thresholds were accepted → must be numbers in 0–1, each task once;
+4. one zero RR gap among normal ones still gave a heart rate → any zero gap leaves it unknown;
+5. segments without annotations showed beat counts 0 and clean sinus False → missing (NA);
+6. `metrics.json` contained non-standard `NaN` → `null`;
+7. `--batch-size` was recorded but never passed to the model → passed.
+
+Re-run on p00008 (has the segment without annotations) and p00084: labels, heart rates and counts identical; at the default batch size, probabilities and per-patient metrics are bit-identical to before. A different batch size moves probabilities by up to 6e-4 and per-patient metrics by up to 6e-6 (GPU kernels differ by batch size).
+
+A second `/code-review` (all findings) on these fixes found 9 more; 8 were fixed with tests: a patient listed twice was counted twice; `--overwrite` used glob patterns (broke on `[` in the path, and matched non-`pNNNNN` names); old outputs were deleted before the model loaded; an `--out` that is a file gave a traceback; `metrics.json` serialisation missed pandas/numpy types; the column typing was duplicated; and the wiki was out of date. Not changed: masking with the nullable `clean_sinus` column, which works in pandas 1.3.5 and 2.3.3 (NA counts as False). Two runs started on the same folder at the same moment are not guarded against.
 
 ---
 

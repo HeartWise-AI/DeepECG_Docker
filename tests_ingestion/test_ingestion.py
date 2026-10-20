@@ -223,3 +223,175 @@ def test_per_patient_groups_match_naive():
         assert r.n_pos == (y[m] == 1).sum() and r.auroc == pytest.approx(
             metrics.roc_auc_score(y[m], s[m]))
     assert got.patient.tolist() == ['p0', 'p1', 'p2']
+
+
+# --- PR #81 review fixes --------------------------------------------------------------------------
+
+def _one_patient(tmp_path, pid='p00000'):
+    pdir = tmp_path / 'data' / pid[:3] / pid
+    pdir.mkdir(parents=True)
+    ev = [(0, 28, '(N')] + [(s, 1, '') for s in range(100, 5000, 250)] + [(5000, 28, ')')]
+    _write_segment(pdir, f'{pid}_s00', 2500 * 2, ev)
+    return tmp_path / 'data'
+
+
+def test_parse_patients_only_accepts_patient_ids():
+    from ingestion import run
+    assert run.parse_patients('p00000-p00002,p00020') == ['p00000', 'p00001', 'p00002', 'p00020']
+    for bad in ['../etc', 'p0000', 'p00001-../p00009', 'p00005-p00001', 'p00001-p00002-p00003', 'p00001/x']:
+        with pytest.raises(ValueError):
+            run.parse_patients(bad)
+
+
+def test_out_must_be_empty_or_overwrite(tmp_path):
+    import json
+    from ingestion import run
+    data, out = _one_patient(tmp_path), tmp_path / 'out'
+    args = ['--data', str(data), '--lead', '12', '--mapping', 'configs/icentia_mapping.csv',
+            '--patients', 'p00000', '--out', str(out), '--labels-only']
+    run.main(args)
+    (out / 'p00099_windows.parquet').write_text('stale output of an earlier run')
+    (out / 'notes.txt').write_text('not ours')
+    with pytest.raises(SystemExit, match='not empty'):
+        run.main(args)
+    run.main(args + ['--overwrite'])
+    assert not (out / 'p00099_windows.parquet').exists() and (out / 'notes.txt').exists()
+    assert json.loads((out / 'run_manifest.json').read_text())['complete'] is True
+
+
+def test_interrupted_run_leaves_incomplete_manifest(tmp_path, monkeypatch):
+    import json
+    from ingestion import run
+    data, out = _one_patient(tmp_path), tmp_path / 'out'
+
+    def boom(*a, **k):
+        raise RuntimeError('interrupted')
+    monkeypatch.setattr(run, 'process_patient', boom)
+    with pytest.raises(RuntimeError):
+        run.main(['--data', str(data), '--lead', '12', '--mapping', 'configs/icentia_mapping.csv',
+                  '--patients', 'p00000', '--out', str(out), '--labels-only'])
+    assert json.loads((out / 'run_manifest.json').read_text())['complete'] is False
+
+
+@pytest.mark.parametrize('value', ['', 'abc', '1.5', '-0.1', 'inf', 'nan'])
+def test_bad_threshold_values_rejected(tmp_path, value):
+    from ingestion import run
+    p = tmp_path / 't.csv'
+    p.write_text(f'task,threshold\nSinusal,{value}\n')
+    with pytest.raises(ValueError, match='between 0 and 1'):
+        run.load_thresholds(str(p), ['Sinusal'])
+
+
+def test_duplicate_threshold_rows_rejected(tmp_path):
+    from ingestion import run
+    p = tmp_path / 't.csv'
+    p.write_text('task,threshold\nSinusal,0.5\nSinusal,0.6\n')
+    with pytest.raises(ValueError, match='more than once'):
+        run.load_thresholds(str(p), ['Sinusal'])
+
+
+def test_any_zero_rr_gap_leaves_rate_unknown():
+    beats = [100, 400, 700, 700, 1000, 1300, 1600]  # one duplicate mark; median gap is still 300
+    ev = [(0, 28, '(N')] + [(s, 1, '') for s in beats] + [(2500, 28, ')')]
+    lab = labels.label_windows(_ann(ev), np.array([0]), 2500, 250)
+    assert np.isnan(lab.hr_bpm[0]) and np.isnan(lab.BRADY[0]) and np.isnan(lab.TACHY[0])
+
+
+def test_missing_annotations_are_unknown_not_zero():
+    lab = labels.label_windows(None, np.array([0, 2500]), 2500, 250)
+    assert lab.n_N.isna().all() and lab.n_V.isna().all() and lab.clean_sinus.isna().all()
+    assert lab.PVC.isna().all() and lab.AFIB.isna().all()
+
+
+def test_inference_path_batch_size_and_strict_json(tmp_path, monkeypatch):
+    """Fake model (no torch): --batch-size reaches the scorer, metrics.json has null, not NaN."""
+    import json
+    import sys
+    import types
+    from ingestion import run
+    seen = []
+
+    class FakeScorer:
+        def __init__(self, device):
+            pass
+
+        def __call__(self, x, batch_size=512):
+            seen.append(batch_size)
+            return np.random.default_rng(0).random((x.shape[0], 77)).astype(np.float32)
+    monkeypatch.setitem(sys.modules, 'ingestion.infer',
+                        types.SimpleNamespace(WCRScorer=FakeScorer, MODEL_NAME='fake'))
+    data, out = _one_patient(tmp_path), tmp_path / 'out'
+    run.main(['--data', str(data), '--lead', '12', '--mapping', 'configs/icentia_mapping.csv',
+              '--patients', 'p00000', '--out', str(out), '--batch-size', '7', '--bootstrap', '0'])
+    assert seen == [7]
+    text = (out / 'metrics.json').read_text()
+    assert 'NaN' not in text
+    m = {r['task']: r for r in json.loads(text)}
+    assert m['Sinusal']['n_pos'] == 2 and m['Sinusal']['auroc'] is None  # no negatives -> null
+    with pytest.raises(SystemExit, match='batch-size'):
+        run.main(['--data', str(data), '--lead', '12', '--mapping', 'configs/icentia_mapping.csv',
+                  '--patients', 'p00000', '--out', str(tmp_path / 'o2'), '--batch-size', '0'])
+
+
+# --- second code review of the PR #81 fixes -------------------------------------------------------
+
+def test_overlapping_patient_specs_count_each_patient_once():
+    from ingestion import run
+    assert run.parse_patients('p00000-p00002,p00001,p00002-p00003') == ['p00000', 'p00001', 'p00002', 'p00003']
+
+
+def test_overwrite_deletes_only_exact_outputs_even_with_glob_characters(tmp_path):
+    from ingestion import run
+    data, out = _one_patient(tmp_path), tmp_path / 'run[batch1]'
+    args = ['--data', str(data), '--lead', '12', '--mapping', 'configs/icentia_mapping.csv',
+            '--patients', 'p00000', '--out', str(out), '--labels-only']
+    run.main(args)
+    (out / 'p00099_windows.parquet').write_text('stale')
+    (out / 'pilot_probs.npy').write_text('a user file shaped like an output')
+    run.main(args + ['--overwrite'])
+    assert not (out / 'p00099_windows.parquet').exists() and (out / 'pilot_probs.npy').exists()
+
+
+def test_out_that_is_a_file_is_refused(tmp_path):
+    from ingestion import run
+    data = _one_patient(tmp_path)
+    (tmp_path / 'f').write_text('x')
+    with pytest.raises(SystemExit, match='not a folder'):
+        run.main(['--data', str(data), '--lead', '12', '--mapping', 'configs/icentia_mapping.csv',
+                  '--patients', 'p00000', '--out', str(tmp_path / 'f'), '--labels-only'])
+
+
+def test_failed_model_load_keeps_previous_results(tmp_path, monkeypatch):
+    import sys
+    import types
+    from ingestion import run
+    data, out = _one_patient(tmp_path), tmp_path / 'out'
+    args = ['--data', str(data), '--lead', '12', '--mapping', 'configs/icentia_mapping.csv',
+            '--patients', 'p00000', '--out', str(out)]
+    run.main(args + ['--labels-only'])
+    before = sorted(p.name for p in out.iterdir())
+
+    class Broken:
+        def __init__(self, device):
+            raise RuntimeError('no such device')
+    monkeypatch.setitem(sys.modules, 'ingestion.infer', types.SimpleNamespace(WCRScorer=Broken, MODEL_NAME='x'))
+    with pytest.raises(RuntimeError):
+        run.main(args + ['--overwrite'])
+    assert sorted(p.name for p in out.iterdir()) == before
+
+
+def test_json_safe_handles_numpy_and_pandas_values():
+    import json
+    from ingestion import run
+    x = {'a': np.nan, 'b': pd.NA, 'c': np.bool_(True), 'd': np.arange(2), 'e': (np.float32(0.5), np.inf), 'f': None}
+    assert json.loads(json.dumps(run._json_safe(x), allow_nan=False)) == \
+        {'a': None, 'b': None, 'c': True, 'd': [0, 1], 'e': [0.5, None], 'f': None}
+
+
+def test_window_table_column_types_match_with_and_without_annotations():
+    ev = [(0, 28, '(N')] + [(s, 1, '') for s in range(100, 2500, 250)] + [(2500, 28, ')')]
+    a = labels.label_windows(_ann(ev), np.array([0]), 2500, 250)
+    b = labels.label_windows(None, np.array([0]), 2500, 250)
+    assert a.dtypes.equals(b.dtypes) and a.n_N[0] == 10 and bool(a.clean_sinus[0])
+    both = pd.concat([a, b], ignore_index=True)
+    assert both[both.clean_sinus.fillna(False)].shape[0] == 1
