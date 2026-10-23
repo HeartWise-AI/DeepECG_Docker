@@ -29,6 +29,7 @@ class HearWiseArgs:
         parser.add_argument('--hugging_face_api_key_path', help='Path to the Hugging Face API key', type=str, required=True)
         parser.add_argument('--use_wcr', help='Use WCR for signal processing', type=HearWiseArgs.str2bool, required=True)
         parser.add_argument('--use_efficientnet', help='Use EfficientNet for signal processing', type=HearWiseArgs.str2bool, required=True)
+        parser.add_argument('--use_deepecg_png', help='Use DeepECG-PNG on ECG page images (PNG)', type=HearWiseArgs.str2bool, default=False)
         parser.add_argument('--ecg_signals_path', help='Path to the ECG signals files', type=str, required=True)
         parser.add_argument('--mode', help='Mode of the script', type=str, required=True)
         parser.add_argument('--preprocessing_folder', help='Path to the preprocessing folder', type=str, required=True)

@@ -1,0 +1,3 @@
+png_path,shd,lvef_40,lvef_50,afib_5y,ecg_machine_diagnosis
+example_ecg_1.png,,,,,
+example_ecg_2.png,1,0,1,0,Normal sinus rhythm

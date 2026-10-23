@@ -31,3 +31,6 @@ notebooks/outputs
 *.ipynb_checkpoints
 *.ipynb_meta
 *.ipynb_checkpoints
+
+# cloned by the dockerfile / for local runs
+fairseq-signals/

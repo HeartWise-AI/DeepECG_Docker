@@ -26,11 +26,16 @@ RUN git clone https://github.com/HeartWise-AI/fairseq-signals && \
 COPY data/ data/
 COPY models/ models/
 COPY utils/ utils/
+COPY thresholds/ thresholds/
 COPY api_key.json api_key.json
 COPY heartwise.config heartwise.config
 COPY main.py main.py
 COPY models_setup.py models_setup.py
 COPY run_pipeline.bash run_pipeline.bash
+
+# DeepECG-PNG weights are not baked in: mount the exported folder (tools/export_deepecg_png.py)
+# at /app/weights/deepecg_png, or point DEEPECG_PNG_WEIGHTS_DIR to it.
+ENV DEEPECG_PNG_WEIGHTS_DIR=/app/weights/deepecg_png
 
 # Make the bash script executable
 RUN chmod +x run_pipeline.bash

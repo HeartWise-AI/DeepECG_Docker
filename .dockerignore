@@ -4,3 +4,4 @@ weights/
 deploy-venv/
 outputs/
 fairseq-signals/
+venv/

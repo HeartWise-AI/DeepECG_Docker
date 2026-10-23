@@ -10,6 +10,9 @@ hugging_face_api_key = read_api_key('api_key.json')['HUGGING_FACE_API_KEY']
 for model_class in models.__all__:
     try:
         cls = getattr(models, model_class)
+        if getattr(cls, 'uses_local_weights', False):
+            logger.info("Skipping %s: weights are local (mounted), nothing to download", cls.name)
+            continue
         logger.info("Loading model class: %s", cls.name)
         HeartWiseModelFactory.create_model(
             model_config={

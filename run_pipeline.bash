@@ -22,6 +22,8 @@ output_folder=$(get_param "output_folder")
 hugging_face_api_key_path=$(get_param "hugging_face_api_key_path")
 use_wcr=$(get_param "use_wcr")
 use_efficientnet=$(get_param "use_efficientnet")
+use_deepecg_png=$(get_param "use_deepecg_png")
+use_deepecg_png=${use_deepecg_png:-False}
 ecg_signals_path=$(get_param "ecg_signals_path")
 mode=$(get_param "mode")
 preprocessing_folder=$(get_param "preprocessing_folder")
@@ -76,6 +78,7 @@ run_pipeline() {
         --hugging_face_api_key_path $hugging_face_api_key_path \
         --use_wcr $use_wcr \
         --use_efficientnet $use_efficientnet \
+        --use_deepecg_png $use_deepecg_png \
         --ecg_signals_path $ecg_signals_path \
         --mode $run_mode \
         --preprocessing_folder $preprocessing_folder \

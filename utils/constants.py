@@ -15,33 +15,66 @@ from models.wcr_ecg_transformer import (
     WCR_LVEF_Under_50
 )
 from models.bert_classifier import BertClassifier_En_Fr
+from models.deepecg_png import (
+    DeepECGPNG_77_classes,
+    DeepECGPNG_AFIB_5Y,
+    DeepECGPNG_LVEF_Equal_Under_40,
+    DeepECGPNG_LVEF_Under_50,
+    DeepECGPNG_SHD
+)
 
 DIAGNOSIS_TO_FILE_COLUMNS = {
     'ecg_machine_diagnosis': '77_classes_ecg_file_name',
     'afib_5y': 'afib_ecg_file_name',
     'lvef_40': 'lvef_40_ecg_file_name',
-    'lvef_50': 'lvef_50_ecg_file_name'
+    'lvef_50': 'lvef_50_ecg_file_name',
+    'shd': 'shd_ecg_file_name'
+}
+
+# Image inputs (DeepECG-PNG). A CSV may give one `png_path` per row instead of the per-task
+# file columns: it is used for every task, and missing label columns are added empty.
+PNG_PATH_COLUMN = 'png_path'
+IMAGE_EXTENSIONS = ('.png',)
+# other image formats: not supported by any model, and never sent to the signal preprocessing
+UNSUPPORTED_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.webp')
+
+# DeepECG-PNG binary outputs per task, for the combined one-row-per-image CSV
+DEEPECG_PNG_OUTPUTS = {
+    'shd': 'SHD',
+    'lvef_40': 'LVEF_le40',
+    'lvef_50': 'LVEF_lt50',
+    'afib_5y': 'iAFib5'
 }
 
 MODEL_MAPPING = {
     'ecg_machine_diagnosis': {
         'efficientnet': EfficientNetV2_77_classes.name,
         'wcr': WCR_77_classes.name,
+        'deepecg_png': DeepECGPNG_77_classes.name,
         'bert': BertClassifier_En_Fr.name
     },
     'afib_5y': {
         'efficientnet': EfficientNetV2_AFIB_5Y.name,
         'wcr': WCR_AFIB_5Y.name,
+        'deepecg_png': DeepECGPNG_AFIB_5Y.name,
         'bert': None
     },
     'lvef_40': {
         'efficientnet': EfficientNetV2_LVEF_Equal_Under_40.name,
         'wcr': WCR_LVEF_Equal_Under_40.name,
+        'deepecg_png': DeepECGPNG_LVEF_Equal_Under_40.name,
         'bert': None
     },
     'lvef_50': {
         'efficientnet': EfficientNetV2_LVEF_Under_50.name,
         'wcr': WCR_LVEF_Under_50.name,
+        'deepecg_png': DeepECGPNG_LVEF_Under_50.name,
+        'bert': None
+    },
+    'shd': {
+        'efficientnet': None,
+        'wcr': None,
+        'deepecg_png': DeepECGPNG_SHD.name,
         'bert': None
     }
 }
