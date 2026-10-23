@@ -15,7 +15,8 @@ RUN pip install uv
 COPY requirements.txt .
 
 # Install required libraries using uv
-RUN uv pip install --system --extra-index-url https://download.pytorch.org/whl/cu118 -r requirements.txt
+# (torch 2.8.0 is not built for CUDA 11.8: the cu118 index stops at 2.7, so use CUDA 12.8)
+RUN uv pip install --system --extra-index-url https://download.pytorch.org/whl/cu128 -r requirements.txt
 
 # Clone the fairseq-signals repository and install it
 RUN git clone https://github.com/HeartWise-AI/fairseq-signals && \
