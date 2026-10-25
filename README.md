@@ -52,7 +52,7 @@ This pipeline offers 3 modes of processing:
    - Add your API key in the following format in the `api_key.json` file in the root directory:
      ```json
      {
-       "huggingface_api_key": "your_api_key_here"
+       "HUGGING_FACE_API_KEY": "your_api_key_here"
      }
      ```
 3. 📄 Populate a csv file containing the data to be processed, example: inputs/data_rows_template.csv (see [Usage](#usage) for more details)
@@ -68,7 +68,7 @@ This pipeline offers 3 modes of processing:
 
 5. 🚀 Run the docker container: (see [Docker](#docker) for more details)
    ```
-   docker run --gpus all -v $(pwd)/inputs:/app/inputs -v $(pwd)/outputs:/app/outputs -v $(pwd)/ecg_signals:/app/ecg_signals:ro -v $(pwd)/preprocessing:/app/preprocessing -i deepecg-docker
+   docker run --gpus all -v $(pwd)/api_key.json:/app/api_key.json:ro -v $(pwd)/inputs:/app/inputs -v $(pwd)/outputs:/app/outputs -v $(pwd)/ecg_signals:/app/ecg_signals:ro -v $(pwd)/preprocessing:/app/preprocessing -i deepecg-docker
    ```
 
 6. Connect to the container
@@ -230,7 +230,87 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
 3. Notes:
    - **Single ECG processing**: When running the pipeline with only one ECG file, metrics computation (AUC, F1, etc.) is automatically skipped since these metrics require multiple samples. Predictions are still generated and saved normally.
 
+## Testing
+
+Run the complete pipeline once, including BERT and all eight signal models, on
+50 approved de-identified XML ECGs and compare with saved reference predictions:
+
+```bash
+python scripts/test_ecg_reproducibility.py \
+  --ecg-dir /path/to/approved/ecgs \
+  --input-csv "$PWD/inputs/data_rows_reproducibility_50.csv" \
+  --reference "$PWD/inputs/data_rows_reproducibility_50.reference.json" \
+  --api-key-file "$PWD/api_key.json" \
+  --work-dir /path/to/new/private/test-results \
+  --gpu 0
+```
+
+The work directory must be new. Omit `--gpu` to use CPU. The test builds once with
+`--pull --no-cache` from a source-only context, downloads BERT and the eight
+signal models at the reference's Hugging Face commit revisions, verifies their
+file hashes, then runs the actual `main.py --mode full_run` pipeline once with
+network disabled. The run starts with empty preprocessing and output folders;
+the source ECG directory and downloaded model weights are mounted read-only.
+No ECG data or API keys are copied into the image.
+
+The test requires every ECG in every model output, finite probabilities in
+`[0, 1]`, successful preprocessing reports, identical preprocessed signal hashes,
+and identical raw BERT and signal-model probabilities. It rejects missing or duplicate rows and missing
+model outputs. `--atol` explicitly permits an absolute probability tolerance;
+the default is zero. A nonzero exit means the test did not pass. The input CSV
+and ECG hashes must match the reference. Environment differences (package versions,
+fairseq commit, Python, CUDA, and GPU model) are reported separately.
+
+The fixed reference is `inputs/data_rows_reproducibility_50.reference.json`
+(the default for `--reference`). It contains raw predictions for all 50 ECGs:
+BERT's 77 probabilities, both signal models' 77 probabilities, and six binary
+model probabilities per ECG. It was saved from the validated full pipeline run.
+The test never regenerates or overwrites it. Keep it with the input CSV and ECG
+fixtures; replacing it requires reviewing and accepting new expected results.
+
+Artifacts include `report.json`, input/source hashes in `provenance.json`, model
+revisions and file hashes in `models.json`, package versions, the fairseq commit,
+image metadata, a copy of the reference, and logs and outputs under `run/`.
+`run/outputs/` contains the model CSVs; `report.json` contains overall pass/fail,
+the maximum absolute difference and count of differing values for each model,
+and preprocessing/environment comparisons. Keep the entire
+private work directory to preserve the evidence and downloaded snapshots.
+The test checks a fresh build against the saved results. Package
+versions and upstream Git repositories in the general Docker build are still
+floating; this is not yet a guarantee of identical results across future rebuilds
+or different hardware.
+
+The input CSV follows `inputs/data_rows_template_xml.csv`: diagnosis text,
+binary outcome labels, and the four corresponding filename columns. Each row
+must use the same ECG for every task. The prepared 50-record CSV contains XML
+diagnosis text and synthetic binary labels obtained by thresholding the saved
+WCR probabilities at 0.5. These labels are test inputs, not observed clinical
+outcomes. The pipeline calculates metrics as usual; metrics against synthetic
+labels must not be interpreted as clinical performance. The regression check
+compares raw probabilities, not metrics or thresholded predictions. Preprocessing
+scales signals using the whole cohort, so keep the same ECG selection when
+comparing results.
+
+Synthetic regression checks (run inside the image with `tests/` and `scripts/`
+mounted under `/app`) cover strict output validation, XML worker isolation, and
+evaluation mode:
+
+```bash
+python -m unittest discover -s tests -p test_reproducibility.py -v
+python tests/test_error_collector.py
+```
+
 ## 🐳 Docker
+
+API keys must be mounted at runtime; they are excluded from the build context.
+Create `api_key.json` using the case-sensitive `HUGGING_FACE_API_KEY` property
+shown in the installation instructions. Both container commands mount this file.
+For optional model preloading, use a BuildKit secret instead of copying the key:
+
+```bash
+docker build --build-arg RUN_MODELS_SETUP=true \
+  --secret id=hf_api_key,src=api_key.json -t deepecg-docker .
+```
 
 ### Interactive shell (recommended for Cursor / IDE terminals)
 
@@ -239,6 +319,7 @@ If `docker run -it ...` hangs or shows a blank screen in Cursor’s terminal, st
 **1. Start the container (no `-it`):**
 ```bash
 docker run -d --gpus all --name deepecg \
+  -v $(pwd)/api_key.json:/app/api_key.json:ro \
   -v $(pwd)/inputs:/app/inputs \
   -v $(pwd)/outputs:/app/outputs \
   -v $(pwd)/ecg_signals:/app/ecg_signals:ro \

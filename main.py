@@ -151,7 +151,7 @@ def validate_dataframe(df: pd.DataFrame, diagnosis_to_file_columns: dict) -> tup
         full_error_message = "\n".join(error_messages)
         raise ValueError(f"DataFrame validation failed:\n{full_error_message}")
         
-    return list(existing_diagnosis_columns), list(existing_file_columns)
+    return sorted(existing_diagnosis_columns), sorted(existing_file_columns)
 
 def create_preprocessing_dataframe(df: pd.DataFrame, existing_file_columns: list[str], ecg_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """

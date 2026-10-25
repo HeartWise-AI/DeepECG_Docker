@@ -28,7 +28,6 @@ COPY data/ data/
 COPY models/ models/
 COPY utils/ utils/
 COPY thresholds/ thresholds/
-COPY api_key.json api_key.json
 COPY heartwise.config heartwise.config
 COPY main.py main.py
 COPY models_setup.py models_setup.py
@@ -45,7 +44,8 @@ RUN chmod +x run_pipeline.bash
 ARG RUN_MODELS_SETUP=false
 
 # Conditionally run models_setup.py based on the build argument
-RUN if [ "$RUN_MODELS_SETUP" = "true" ]; \
+RUN --mount=type=secret,id=hf_api_key,target=/app/api_key.json \
+    if [ "$RUN_MODELS_SETUP" = "true" ]; \
     then echo "Running models_setup.py"; \
     python models_setup.py; \
     else echo "Skipping models_setup.py"; \
