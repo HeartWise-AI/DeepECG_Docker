@@ -358,6 +358,7 @@ class AnalysisPipeline:
             return None, None
 
     @staticmethod
+    @torch.no_grad()
     def _run_analysis_impl(
         df: pd.DataFrame,
         batch_size: int,
@@ -375,7 +376,8 @@ class AnalysisPipeline:
                 'hugging_face_api_key': hugging_face_api_key
             }
         )
-        
+        signal_processing_model.model.eval()
+
         if "77" in signal_processing_model_name:
             # Load models
             diagnosis_classifier_model = HeartWiseModelFactory.create_model(
@@ -385,6 +387,7 @@ class AnalysisPipeline:
                     'hugging_face_api_key': hugging_face_api_key
                 }
             )
+            diagnosis_classifier_model.model.eval()
             
             # Compute bert diagnoses predictions
             predictions = []

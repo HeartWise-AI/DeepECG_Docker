@@ -346,7 +346,8 @@ class XMLProcessor:
         xml_files = df['ecg_path'].tolist()
         ecgs = []
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
-            future_to_file = {executor.submit(self.process_single_file, file): (file, index) for index, file in enumerate(xml_files)}
+            # Each parser owns a mutable lead buffer; never share it across workers.
+            future_to_file = {executor.submit(XMLProcessor().process_single_file, file): (file, index) for index, file in enumerate(xml_files)}
             for future in tqdm(as_completed(future_to_file), total=len(xml_files), desc="Processing files"):
                 file, index = future_to_file[future]
                 try:
@@ -366,14 +367,16 @@ class XMLProcessor:
                         # store the lead array
                         new_path = os.path.join(preprocessing_folder, f"{file_id}.base64")
                         df.at[index, 'ecg_path'] = new_path
-                        ecgs.append([new_path, lead_array])
+                        ecgs.append([index, new_path, lead_array])
                     
                 except Exception as e:
                     logger.error("Failed to process file %s: %s", file, e)
                     file_id = os.path.splitext(os.path.basename(file))[0]
                     self.report.append((file_id, 'Unknown', 'Failed', str(e)))
         
-        return df, pd.DataFrame(ecgs, columns=['ecg_path', 'ecg_signal'])
+        # Floating-point cohort scaling must see the same order on every run.
+        ecgs.sort(key=lambda item: item[0])
+        return df, pd.DataFrame([item[1:] for item in ecgs], columns=['ecg_path', 'ecg_signal'])
 
     def _process_clsa_xml(self, data_dict: dict, file_id: str) -> None:
         try:            
