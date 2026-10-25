@@ -29,7 +29,9 @@ def prepare():
     token = json.loads(Path('/run/hf-key.json').read_text())['HUGGING_FACE_API_KEY']
     previous = json.loads(Path('/work/reference.json').read_text())['model_manifest']
     manifest = {}
-    names = {name for config in MODEL_MAPPING.values() for name in config.values() if name is not None}
+    # This XML test enables WCR and EfficientNet plus BERT, not image models.
+    names = {config[family] for config in MODEL_MAPPING.values()
+             for family in ('wcr', 'efficientnet', 'bert') if config[family] is not None}
     if names != set(previous):
         raise ValueError('Configured models do not match the reference')
     for name in sorted(names):
