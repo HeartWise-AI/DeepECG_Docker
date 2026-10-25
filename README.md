@@ -51,7 +51,7 @@ This pipeline offers 3 modes of processing:
    - Add your API key in the following format in the `api_key.json` file in the root directory:
      ```json
      {
-       "huggingface_api_key": "your_api_key_here"
+       "HUGGING_FACE_API_KEY": "your_api_key_here"
      }
      ```
 3. 📄 Populate a csv file containing the data to be processed, example: inputs/data_rows_template.csv (see [Usage](#usage) for more details)
@@ -301,6 +301,8 @@ python tests/test_error_collector.py
 ## 🐳 Docker
 
 API keys must be mounted at runtime; they are excluded from the build context.
+Create `api_key.json` using the case-sensitive `HUGGING_FACE_API_KEY` property
+shown in the installation instructions. Both container commands mount this file.
 For optional model preloading, use a BuildKit secret instead of copying the key:
 
 ```bash
