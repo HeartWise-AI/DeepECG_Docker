@@ -1,0 +1,8 @@
+{
+  "weights_dir": "/models/DeepECG_SSL_WCRv2_CLSA_CVD_v1/weights",
+  "base_checkpoint": "/models/wcr-v2/deepecg-ssl-v2-wcr-amp-preserved-encoder.pt",
+  "params_path": "clsa_cvd/model_params.json",
+  "format": "clsa",
+  "device": "cuda:0",
+  "batch_size": 32
+}

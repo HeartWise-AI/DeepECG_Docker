@@ -1,0 +1,46 @@
+{
+  "generator": {
+    "time": "arange(5000)/500",
+    "waveform_adc": "120*sin(2*pi*(1.1+j*0.1)*t+i*0.15)+30*sin(2*pi*17*t)",
+    "lead_index_i": "0..11 in standard lead order",
+    "sample_index_j": "0..2"
+  },
+  "source_format": "clsa",
+  "canonical_p_ecg": [
+    0.7313130497932434,
+    0.7136781215667725,
+    0.6921036839485168
+  ],
+  "full_precision_Aplus": [
+    0.3204362996779884,
+    0.4746536266651489,
+    0.5548871298934925
+  ],
+  "external": [
+    0.2852460210590603,
+    0.3616748561916765,
+    0.5305567222802191
+  ],
+  "canonical_ecg_max_abs_error": 5.960464477539063e-08,
+  "n": 3,
+  "real_cli_no_labels": true,
+  "clinical": {
+    "age": [
+      50,
+      65,
+      80
+    ],
+    "female": [
+      0,
+      1,
+      1
+    ],
+    "hypertension": [
+      0,
+      1,
+      0
+    ]
+  },
+  "encoder_sha256": "328ffcb198a3516512a3ea2a5d9a45984a6cfbc2c50160dfb11b8a7b11c4572b",
+  "params_sha256": "24cc42c4dd380193f79d173529e3574d63c45e322bfbfba33ca81bbaf83137b1"
+}
