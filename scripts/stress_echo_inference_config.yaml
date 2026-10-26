@@ -4,7 +4,7 @@
 
 model:
   base_checkpoint: /media/data1/models/DeepECG-SSL/wcr-v2/deepecg-ssl-v2-amp-preserved-ft77-best.pt
-  finetuned_checkpoint: /volume/DeepECG_Docker/checkpoints_stress_echo/sweep_3class/trial_04/best.pt
+  finetuned_checkpoint: /volume/DeepECG-HCM/winner_best.pt
   # Base-ssl is only a cfg placeholder (the ft77 state dict fully overwrites it).
   base_ssl_placeholder: /volume/DeepECG_Docker/weights/wcr_77_classes/base_ssl.pt
   hidden_dim: 768
