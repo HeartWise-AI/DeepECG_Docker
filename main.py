@@ -1,5 +1,11 @@
 import os
 import sys
+
+# Route the CVD task before importing legacy model/preprocessing dependencies.
+if __name__ == '__main__' and any(a == '--task' or a.startswith('--task=') for a in sys.argv[1:]):
+    from clsa_cvd.cli import main as clsa_cvd_main
+    raise SystemExit(clsa_cvd_main())
+
 import warnings
 import pandas as pd
 from datetime import datetime

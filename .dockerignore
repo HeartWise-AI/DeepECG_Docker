@@ -1,11 +1,15 @@
-# .dockerignore
-preprocessing/
+.git
+.git/
+__pycache__
+.pytest_cache
+*.pyc
+api_key.json
+*.pem
 weights/
-deploy-venv/
+ecg_signals/
 outputs/
 results/
-fairseq-signals/
-api_key.json
-.git/
 inputs/
-ecg_signals/
+preprocessing/
+deploy-venv/
+fairseq-signals/

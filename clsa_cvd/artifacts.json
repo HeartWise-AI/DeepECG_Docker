@@ -1,0 +1,12 @@
+{
+  "model": "DeepECG_SSL_WCRv2_CLSA_CVD_v1",
+  "sha256_by_filename": {
+    "deepecg-ssl-v2-wcr-amp-preserved-encoder.pt": "328ffcb198a3516512a3ea2a5d9a45984a6cfbc2c50160dfb11b8a7b11c4572b",
+    "model_params.json": "24cc42c4dd380193f79d173529e3574d63c45e322bfbfba33ca81bbaf83137b1",
+    "deepecg_ssl_clsa_cvd_fold0.safetensors": "690d1fbccd544856888c2d7792a8f565eb48c50c74b54a18fdd7f3c7241b9125",
+    "deepecg_ssl_clsa_cvd_fold1.safetensors": "ce9a2d8c2a9e6246b9702127d66bd04600bf0dfaffd20021469fae691d2a3256",
+    "deepecg_ssl_clsa_cvd_fold2.safetensors": "d67c869af8e4daa37e07e72dfa4242b7df597ae81df1baec4ab458295f2a908e",
+    "deepecg_ssl_clsa_cvd_fold3.safetensors": "8b9d7c86935fac9538f114ffdd6f6fef1609c357cc39cf65df7a0ad7bc59ed78",
+    "deepecg_ssl_clsa_cvd_fold4.safetensors": "d40afe8c7a4a33a923fca3df9cf48dd72ccdc08fc396f9ea70ad172c1b3ec0da"
+  }
+}

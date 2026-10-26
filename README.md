@@ -578,3 +578,86 @@ If you find this repository useful, please cite our work:
 
 ```
 
+
+## CLSA incident CVD (five-fold ensemble)
+
+This dedicated task preserves ECG amplitude and accepts baseline ECG NPY files
+plus `age` (years), `female` (0/1), and optional `hypertension` (0/1).
+`npy_path` is required. Outcome labels and a Hugging Face token are not required
+when the approved artifacts are mounted locally. CSV and Parquet are supported.
+
+```bash
+python main.py --task clsa_cvd --config clsa_cvd.example.json \
+  --input inputs/clsa_ecgs.parquet --out outputs/clsa_cvd.parquet
+```
+
+Set the config paths to the five final CLSA fold safetensors and matching WCRv2
+encoder. Paths are relative to the config file unless absolute. Choose `format`
+explicitly: `clsa` means 500-Hz CardioSoft ADC (multiply by 0.005 mV, polyphase
+resample); `muse` means 250-Hz MUSE ADC (multiply by 0.00488 mV); `mv250` means
+already-scaled millivolts at 250 Hz. The lead order must be I, II, III, aVR, aVL,
+aVF, V1–V6. This task bypasses the legacy batch spectral scaling and filtering.
+
+Outputs are `p_ecg` (calibrated Model A), `risk_Aplus` (when hypertension is
+provided), and `risk_ecg_age_sex` (the unrecalibrated MHI variant). The external
+variant uses the mean of *uncalibrated* fold probabilities; it is not Model A+.
+Rows with invalid/missing inputs retain their position and receive `ecg_ok=false`
+and an error; the command exits 2 if any row fails. Model loading/inference errors
+are fatal. Age checks accept 18–100 years; CLSA development ages were 45–85.
+
+Default `precision: "float32"` disables TF32 for reproducible single/batch
+inference. Historical saved predictions were computed with CUDA bfloat16,
+batch size 128. To reproduce them, set `precision: "bfloat16"` and
+`batch_size: 128`. These arithmetic modes differ slightly: in the protected
+3,906-ECG audit, IEEE float32 differed from historical calibrated ECG scores by
+up to 0.001780 and A+ by 0.000998. Historical bfloat16 mode matched within
+0.000000085. Do not claim identical outputs across precision modes. The
+full-precision logistic coefficients reproduce saved A+ equation outputs within
+2.3e-16 when supplied the stored ECG probabilities.
+
+The validated local environment used PyTorch NVIDIA 26.08 (CUDA 13.4) and
+fairseq-signals commit `f8f0ff1c788a82c2059cb452cd5462898867489e`.
+Container execution is still pending; the legacy Docker dependency stack has
+not been certified for this task. Mount model artifacts read-only. API keys are
+no longer copied into the image; existing tasks that need a key must mount their
+key file at runtime. No CVD weights, patient data or credentials are committed.
+
+Tests: `PYTHONPATH=. python -m pytest -q tests/`. Protected parity and benchmark
+scripts are maintained in the CLSA review workspace, with aggregate reports.
+
+The protected suite passed all 18 tests with local artifacts. The real-weight
+synthetic regression is skipped unless `CLSA_CVD_TEST_BUNDLE` and
+`CLSA_CVD_TEST_ENCODER` are set; it never downloads weights. The shareable
+synthetic generator and expected outputs are in `tests/fixtures/clsa_cvd_synthetic.json`.
+
+### Candidate CVD container build
+
+`Dockerfile.clsa-cvd` is a separate candidate that uses the validated NVIDIA
+26.08 Python/PyTorch/CUDA family and pins the actual Jwoo5 fairseq-signals commit.
+`requirements-clsa.txt` pins the observed direct runtime versions; their wheel
+metadata resolves successfully. This is not a completed container-build result.
+The image asserts Python 3.12, PyTorch 2.14 and CUDA 13.4 before accepting a build.
+
+On an approved Docker/GPU executor:
+
+```bash
+bash validate_cvd_container.bash \
+  /approved/models/DeepECG_SSL_WCRv2_CLSA_CVD_v1/weights \
+  /approved/models/wcr-v2/deepecg-ssl-v2-wcr-amp-preserved-encoder.pt \
+  /approved/output/clsa_container_validation
+```
+
+The runner checks the explicit local daemon, builds the image, records its immutable
+ID and base-image metadata, mounts all model inputs read-only, verifies all seven
+artifact hashes, and exercises synthetic single/batch inference. Proxy CA trust
+is mounted at build time via `CODEX_PROXY_CERT` when configured. The runner does
+not start/reconfigure a daemon, read API keys or publish the image. Once this
+passes, repeat the protected cohort parity check in the built image before
+claiming deployment validation. The present executor lacks Docker, its daemon
+socket, CAP_SYS_ADMIN and unprivileged user namespaces, so it cannot run this gate.
+
+For the legacy Dockerfile's optional `RUN_MODELS_SETUP=true` build, supply its
+key JSON with BuildKit, for example `--secret id=hf_api_key,src=/approved/key.json`.
+The temporary mount is available only to the setup step and is not copied into
+an image layer. The default setup-disabled build and the CVD candidate do not
+require that key. This build path still requires validation on a Docker executor.
