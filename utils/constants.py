@@ -6,9 +6,9 @@ from models.efficientnet_wrapper import (
     EfficientNetV2_LVEF_Under_50
 )
 from models.wcr_ecg_transformer import (
-    WCR_77_classes, 
-    WCR_AFIB_5Y, 
-    WCR_LVEF_Equal_Under_40, 
+    WCR_77_classes,
+    WCR_AFIB_5Y,
+    WCR_LVEF_Equal_Under_40,
     WCR_LVEF_Under_50
 )
 from models.bert_classifier import BertClassifier_En_Fr

@@ -30,3 +30,14 @@ notebooks/outputs
 *.ipynb_checkpoints
 *.ipynb_meta
 *.ipynb_checkpoints
+
+# Local experiment artefacts (added 2026-10-26 sync)
+checkpoints_acs_*/
+checkpoints_stress_echo
+DeepECG-HCM
+data/acs_png_*/
+finetune_data/
+outputs/
+wandb/
+fairseq-signals/
+.claude/scheduled_tasks.lock

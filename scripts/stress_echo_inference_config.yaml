@@ -1,0 +1,43 @@
+# Inference config for WCRv2 3-class stress-echo latent-obstruction model.
+# Trial 4 winner of the 2026-04-16 hyperparameter sweep.
+# Val macro AUROC 0.8966  |  Test macro AUROC 0.8713
+
+model:
+  base_checkpoint: /media/data1/models/DeepECG-SSL/wcr-v2/deepecg-ssl-v2-amp-preserved-ft77-best.pt
+  finetuned_checkpoint: /volume/DeepECG_Docker/checkpoints_stress_echo/sweep_3class/trial_04/best.pt
+  # Base-ssl is only a cfg placeholder (the ft77 state dict fully overwrites it).
+  base_ssl_placeholder: /volume/DeepECG_Docker/weights/wcr_77_classes/base_ssl.pt
+  hidden_dim: 768
+  num_classes: 3
+  head: "Sequential(Dropout(0.1), Linear(768, 3))"
+  class_names: [Other, HCM_no_latent, Latent_pos]
+
+input:
+  # 12-lead ECG, 250 Hz, 10 s. Per-sample NPY shape on disk: (2500, 12) or (2500, 12, 1).
+  # Model input (after transpose): (B, 12, 2500), float32.
+  shape: [12, 2500]
+  sample_rate_hz: 250
+  duration_s: 10
+  # MHI NPYs in this project are already in mV (equivalent to v2's scale: 0.00488 baked in at preprocessing).
+  # For other sources, pre-multiply before calling the model:
+  scale_by_source:
+    MHI: 1.0        # already mV in the cached NPYs
+    MHI_raw_adc: 0.00488
+    MIMIC_IV: 0.001
+    CODE15: 0.4694
+    UKBB: 1.0
+    CLSA: 1.0
+  normalization: none_post_scale   # no z-score, no PSA, no per-lead rescale
+
+inference:
+  device: cuda:3
+  batch_size: 64
+  output: softmax  # post-process model.get_logits(out) with softmax(dim=-1)
+
+data:
+  # Held-out test set used for the reported test metrics.
+  x_npy: /volume/DeepECG_Docker/finetune_data/stress_echo/cohort_3class/test_x.npy
+  y_npy: /volume/DeepECG_Docker/finetune_data/stress_echo/cohort_3class/test_y.npy
+  cohort_parquet: /volume/DeepECG_Docker/finetune_data/stress_echo/cohort_3class/cohort.parquet
+  test_rows: 1897
+  class_dist: {Other: 1770, HCM_no_latent: 100, Latent_pos: 27}
