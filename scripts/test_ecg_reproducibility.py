@@ -184,7 +184,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ecg-dir', type=Path, required=True)
     parser.add_argument('--input-csv', type=Path, required=True, help='CSV with diagnosis text, binary labels, and ECG filenames')
-    parser.add_argument('--reference', type=Path, default=Path(__file__).resolve().parents[1] / 'inputs/data_rows_reproducibility_50.reference.json', help='Saved expected outputs; never overwritten by the test')
+    parser.add_argument('--reference', type=Path, default=Path(__file__).resolve().parents[1] / 'tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json', help='Saved expected outputs; never overwritten by the test')
     parser.add_argument('--api-key-file', type=Path, required=True)
     parser.add_argument('--work-dir', type=Path, required=True, help='New private artifact directory')
     parser.add_argument('--count', type=int, default=50)

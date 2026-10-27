@@ -236,8 +236,8 @@ Run the complete pipeline once, including BERT and all eight signal models, on
 ```bash
 python scripts/test_ecg_reproducibility.py \
   --ecg-dir /path/to/approved/ecgs \
-  --input-csv "$PWD/inputs/data_rows_reproducibility_50.csv" \
-  --reference "$PWD/inputs/data_rows_reproducibility_50.reference.json" \
+  --input-csv "$PWD/tests/fixtures/reproducibility/data_rows_reproducibility_50.csv" \
+  --reference "$PWD/tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json" \
   --api-key-file "$PWD/api_key.json" \
   --work-dir /path/to/new/private/test-results \
   --gpu 0
@@ -259,12 +259,13 @@ the default is zero. A nonzero exit means the test did not pass. The input CSV
 and ECG hashes must match the reference. Environment differences (package versions,
 fairseq commit, Python, CUDA, and GPU model) are reported separately.
 
-The fixed reference is `inputs/data_rows_reproducibility_50.reference.json`
+The fixed reference is `tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json`
 (the default for `--reference`). It contains raw predictions for all 50 ECGs:
 BERT's 77 probabilities, both signal models' 77 probabilities, and six binary
 model probabilities per ECG. It was saved from the validated full pipeline run.
-The test never regenerates or overwrites it. Keep it with the input CSV and ECG
-fixtures; replacing it requires reviewing and accepting new expected results.
+The test never regenerates or overwrites it. The reference and input CSV live in
+`tests/fixtures/reproducibility/`; actual ECG files remain outside git. Replacing
+the reference requires reviewing and accepting new expected results.
 
 Artifacts include `report.json`, input/source hashes in `provenance.json`, model
 revisions and file hashes in `models.json`, package versions, the fairseq commit,
