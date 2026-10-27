@@ -197,8 +197,12 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
      'ecg_machine_diagnosis': '77_classes_ecg_file_name',
      'afib_5y': 'afib_ecg_file_name',
      'lvef_40': 'lvef_40_ecg_file_name',
-     'lvef_50': 'lvef_50_ecg_file_name'
+     'lvef_50': 'lvef_50_ecg_file_name',
+     'shd': 'shd_ecg_file_name'          # image models only
      ```
+   - A file column may list **signals** (`.xml`, `.npy`) or **ECG page images** (`.png`, `.jpg`, `.jpeg`), mixed
+     in the same CSV: the input type of each file is detected from its extension (there is no flag), and each
+     task runs the models selected in `heartwise.config` for that input type (see [DeepECG-PNG](#️-deepecg-png-ecg-images)).
    - `ecg_machine_diagnosis` (string): Diagnosis from the ECG machine
    - `77_classes_ecg_file_name` (string): The ECG signal **file names** machine ecg diagnosis
    - `afib_5y` (int): Binary classification of incident AFIB at 5 years
@@ -218,9 +222,9 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
      - `batch_size`: Defines the batch size for processing the data. Example: `32`.
      - `output_folder`: The directory where the output files will be saved. Example: `/app/outputs`.
      - `hugging_face_api_key_path`: The path to the file containing the HuggingFace API key. Example: `/app/api_key.json`.
-     - `use_efficientnet`: Boolean value to specify if the EfficientNet model should be used. Example: `True`.
-     - `use_wcr`: Boolean value to specify if the WCR model should be used. Example: `True`.
-     - `use_deepecg_png`: Boolean value to specify if the DeepECG-PNG image model should be used (PNG inputs, see [DeepECG-PNG](#️-deepecg-png-ecg-images)). Default: `False`.
+     - `signal_models`: Models run on signal files (`.xml`, `.npy`), comma-separated, among `efficientnet`, `wcr`. Example: `efficientnet,wcr`.
+     - `image_models`: Models run on ECG page images (`.png`, `.jpg`, `.jpeg`), among `deepecg_png`. Example: `deepecg_png`.
+     - Optional per-task choice, overriding the two lines above for one task: `<task>_signal_models` / `<task>_image_models`, with `<task>` one of `ecg_machine_diagnosis`, `afib_5y`, `lvef_40`, `lvef_50`, `shd`. Example: `lvef_40_signal_models: efficientnet`. An empty value runs no model for that task and input type; rows left without a model are reported as errors. (The former `use_efficientnet` / `use_wcr` options are still accepted by `main.py` but deprecated.)
      - `data_path`: The path to the input CSV file containing the data. Example: `/app/inputs/data_rows_template.csv`.
      - `mode`: The mode of the pipeline (overwriten by docker command line). Example: `analysis` | `preprocessing` | `full_run`.
      - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/app/ecg_signals`.
@@ -346,58 +350,51 @@ DeepECG-PNG reads ECG **page images (PNG)** instead of signals: a SigLIP-2 ViT-B
 at 5 years**. Images are preprocessed exactly as in training (grayscale, stretched to 224×224,
 CLIP normalization); it expects ECG pages rendered like the training images.
 
-**1. Weights (local, not downloaded).** Export them once on the machine with the DeepECG-PNG
-checkpoints (DeepECG-PNG's own Python environment):
+**1. Weights (Hugging Face).** Like every other model, the weights are downloaded from the private
+Hugging Face repository [`heartwise/deepecg_png`](https://huggingface.co/heartwise/deepecg_png) into
+`weights/deepecg_png/` (~340 MB: encoder, probes, validation thresholds, provenance), at build time
+with `RUN_MODELS_SETUP=true` or on first use; the five task models share it. To publish new weights,
+export them on the machine with the DeepECG-PNG checkpoints (DeepECG-PNG's own Python environment)
+and push them:
 ```bash
 /path/to/DeepECG-PNG/.venv/bin/python tools/export_deepecg_png.py \
-  --deepecg-png-repo /path/to/DeepECG-PNG --out weights/deepecg_png
+  --deepecg-png-repo /path/to/DeepECG-PNG --out weights/deepecg_png --push-to-hub
 ```
-This writes `weights/deepecg_png/` (~340 MB: encoder, probes, validation thresholds, provenance).
-Mount it at `/app/weights/deepecg_png` (or set `DEEPECG_PNG_WEIGHTS_DIR`).
 
-**2. Input CSV.** One PNG per row in a `png_path` column; label columns are optional
-(template: [inputs/data_rows_template_png.csv](inputs/data_rows_template_png.csv)):
+**2. Input CSV.** The same per-task CSV as for signals, with image file names in the file columns
+(template: [inputs/data_rows_template_png.csv](inputs/data_rows_template_png.csv)). Signals and images
+can be mixed in one CSV; images are never sent to the signal preprocessing.
 
 | column | content |
 |---|---|
-| `png_path` | PNG file name (relative to `ecg_signals_path`) or absolute path (with Docker: a path inside the container) |
-| `shd`, `lvef_40`, `lvef_50`, `afib_5y` | optional 0/1 labels (metrics are computed on labelled rows) |
-| `ecg_machine_diagnosis` | optional report text: 77-class ground truth through the BERT classifier (needs the Hugging Face key) |
+| `<task>_ecg_file_name` (e.g. `shd_ecg_file_name`) | image file name (relative to `ecg_signals_path`) or absolute path (with Docker: a path inside the container) |
+| `shd`, `lvef_40`, `lvef_50`, `afib_5y` | 0/1 labels, optional for images (metrics are computed on labelled rows) |
+| `ecg_machine_diagnosis` | report text, optional for images: 77-class ground truth through the BERT classifier |
 
-Every PNG goes through every task. Rows without labels get predictions only.
+Image rows without labels get predictions only. Labels may be 0/1, `true`/`false` or `yes`/`no`; any
+other value is treated as missing (with a warning). Images that are missing or cannot be decoded are
+skipped and listed (`missing_files_<ts>.csv`, `unreadable_images_<ts>.csv`); the other images still run.
+The image probes use the image only (no age or sex input).
 
-Labels may be 0/1, `true`/`false` or `yes`/`no`; any other value is treated as missing (with a warning).
-Images that are missing or cannot be decoded are skipped and listed (`missing_files_<ts>.csv`,
-`unreadable_images_<ts>.csv`); the other images still run.
-
-**3. Run.** Set `use_deepecg_png: True` in `heartwise.config` (and `use_wcr` / `use_efficientnet: False`
-for a PNG-only run), then:
+**3. Run.** `image_models: deepecg_png` is the default in `heartwise.config`; no other setting is needed:
 ```bash
 docker run -d --gpus all --name deepecg \
   -v $(pwd)/inputs:/app/inputs \
   -v $(pwd)/outputs:/app/outputs \
   -v /path/to/pngs:/app/ecg_signals:ro \
   -v $(pwd)/preprocessing:/app/preprocessing \
-  -v /path/to/weights/deepecg_png:/app/weights/deepecg_png:ro \
-  -v $(pwd)/heartwise.config:/app/heartwise.config:ro \
   deepecg-docker
 docker exec -it deepecg ./run_pipeline.bash --mode full_run --csv_file_name my_pngs.csv
 ```
 
-**4. Outputs** (in `output_folder`):
-- `deepecg_png_<ts>_all_tasks.csv`: one row per image — `SHD_prob`, `SHD_pred`, `LVEF_le40_prob`,
-  `LVEF_le40_pred`, `LVEF_lt50_prob`, `LVEF_lt50_pred`, `iAFib5_prob`, `iAFib5_pred` (0/1 at the
-  validation Youden threshold: SHD 0.5346, LVEF ≤ 40 0.1903, LVEF < 50 0.2751, iAFib5 0.1270) and the
-  77 `<class>_prob` (probabilities only; *Lead misplacement* and *Brugada* have no probe and stay empty);
-- per task, as for the other models, `<model>_<ts>_<task>_probabilities.csv` (e.g.
-  `deepecg_png_lvef_equal_under_40_<ts>_lvef_40_probabilities.csv`; binary tasks add a `prediction`
-  column) and the metrics `<model>_<ts>_<task>.json` / `.csv` (empty when the task has no labels).
+**4. Outputs** (in `output_folder`), as for the other models: per task,
+`<model>_<ts>_<task>_probabilities.csv` (e.g. `deepecg_png_lvef_equal_under_40_<ts>_lvef_40_probabilities.csv`,
+same columns as the signal models; for the 77 classes, *Lead misplacement* and *Brugada* have no probe
+and stay empty) and the metrics `<model>_<ts>_<task>.json` / `.csv` (empty when the task has no labels).
+The validation Youden thresholds of the binary probes are in `weights/deepecg_png/thresholds.json`.
 
-The weights are read-only for the container: if you run it as a non-root user, the exported files
-must be world-readable (the export writes them 0644). With a GPU (`signal_processing_device: cuda:0`)
-the encoder runs once per batch for all five tasks (features of up to 500k images are kept between
-tasks; for larger CSVs, split them to keep that speed-up). With `use_deepecg_png: True`, `shd` is a
-task column name: a CSV with a `shd` column also needs `shd_ecg_file_name` (or a `png_path` column).
+With a GPU (`signal_processing_device: cuda:0`) the encoder runs once per batch for all five tasks
+(features of up to 500k images are kept between tasks; for larger CSVs, split them to keep that speed-up).
 
 ## 📂 Output Folder Structure
 

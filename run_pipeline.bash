@@ -20,10 +20,9 @@ data_path=$(get_param "data_path")
 batch_size=$(get_param "batch_size")
 output_folder=$(get_param "output_folder")
 hugging_face_api_key_path=$(get_param "hugging_face_api_key_path")
-use_wcr=$(get_param "use_wcr")
-use_efficientnet=$(get_param "use_efficientnet")
-use_deepecg_png=$(get_param "use_deepecg_png")
-use_deepecg_png=${use_deepecg_png:-False}
+# Models per input type (signal_models, image_models) and optional per-task overrides
+# (<task>_signal_models, <task>_image_models), passed as "key:model,model;key:model"
+models=$(grep -E '^[a-z0-9_]+_models:' heartwise.config | sed 's/[[:space:]]//g' | paste -sd';' -)
 ecg_signals_path=$(get_param "ecg_signals_path")
 mode=$(get_param "mode")
 preprocessing_folder=$(get_param "preprocessing_folder")
@@ -76,9 +75,7 @@ run_pipeline() {
         --batch_size $batch_size \
         --output_folder $output_folder \
         --hugging_face_api_key_path $hugging_face_api_key_path \
-        --use_wcr $use_wcr \
-        --use_efficientnet $use_efficientnet \
-        --use_deepecg_png $use_deepecg_png \
+        --models "$models" \
         --ecg_signals_path $ecg_signals_path \
         --mode $run_mode \
         --preprocessing_folder $preprocessing_folder \

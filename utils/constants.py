@@ -31,52 +31,53 @@ DIAGNOSIS_TO_FILE_COLUMNS = {
     'shd': 'shd_ecg_file_name'
 }
 
-# Image inputs (DeepECG-PNG). A CSV may give one `png_path` per row instead of the per-task
-# file columns: it is used for every task, and missing label columns are added empty.
-PNG_PATH_COLUMN = 'png_path'
-IMAGE_EXTENSIONS = ('.png',)
-# other image formats: not supported by any model, and never sent to the signal preprocessing
-UNSUPPORTED_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.webp')
+# Input type of an ECG file, detected from its extension: images go to the image models
+# as they are; every other file (XML, NPY) is a signal and goes through the signal preprocessing.
+SIGNAL = 'signal'
+IMAGE = 'image'
+INPUT_TYPES = (SIGNAL, IMAGE)
+IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg')
 
-# DeepECG-PNG binary outputs per task, for the combined one-row-per-image CSV
-DEEPECG_PNG_OUTPUTS = {
-    'shd': 'SHD',
-    'lvef_40': 'LVEF_le40',
-    'lvef_50': 'LVEF_lt50',
-    'afib_5y': 'iAFib5'
-}
 
+def input_type_of(file_name) -> str:
+    """'image' for a .png/.jpg/.jpeg file name, 'signal' for anything else."""
+    return IMAGE if str(file_name).lower().endswith(IMAGE_EXTENSIONS) else SIGNAL
+
+
+# Models available per task and per input type. heartwise.config picks among them
+# (signal_models / image_models, optionally <task>_signal_models / <task>_image_models).
 MODEL_MAPPING = {
     'ecg_machine_diagnosis': {
-        'efficientnet': EfficientNetV2_77_classes.name,
-        'wcr': WCR_77_classes.name,
-        'deepecg_png': DeepECGPNG_77_classes.name,
+        SIGNAL: {'efficientnet': EfficientNetV2_77_classes.name, 'wcr': WCR_77_classes.name},
+        IMAGE: {'deepecg_png': DeepECGPNG_77_classes.name},
         'bert': BertClassifier_En_Fr.name
     },
     'afib_5y': {
-        'efficientnet': EfficientNetV2_AFIB_5Y.name,
-        'wcr': WCR_AFIB_5Y.name,
-        'deepecg_png': DeepECGPNG_AFIB_5Y.name,
+        SIGNAL: {'efficientnet': EfficientNetV2_AFIB_5Y.name, 'wcr': WCR_AFIB_5Y.name},
+        IMAGE: {'deepecg_png': DeepECGPNG_AFIB_5Y.name},
         'bert': None
     },
     'lvef_40': {
-        'efficientnet': EfficientNetV2_LVEF_Equal_Under_40.name,
-        'wcr': WCR_LVEF_Equal_Under_40.name,
-        'deepecg_png': DeepECGPNG_LVEF_Equal_Under_40.name,
+        SIGNAL: {'efficientnet': EfficientNetV2_LVEF_Equal_Under_40.name, 'wcr': WCR_LVEF_Equal_Under_40.name},
+        IMAGE: {'deepecg_png': DeepECGPNG_LVEF_Equal_Under_40.name},
         'bert': None
     },
     'lvef_50': {
-        'efficientnet': EfficientNetV2_LVEF_Under_50.name,
-        'wcr': WCR_LVEF_Under_50.name,
-        'deepecg_png': DeepECGPNG_LVEF_Under_50.name,
+        SIGNAL: {'efficientnet': EfficientNetV2_LVEF_Under_50.name, 'wcr': WCR_LVEF_Under_50.name},
+        IMAGE: {'deepecg_png': DeepECGPNG_LVEF_Under_50.name},
         'bert': None
     },
     'shd': {
-        'efficientnet': None,
-        'wcr': None,
-        'deepecg_png': DeepECGPNG_SHD.name,
+        SIGNAL: {},
+        IMAGE: {'deepecg_png': DeepECGPNG_SHD.name},
         'bert': None
     }
+}
+
+# Models run when heartwise.config does not choose
+DEFAULT_MODELS = {
+    SIGNAL: ['efficientnet', 'wcr'],
+    IMAGE: ['deepecg_png']
 }
 
 ECG_CATEGORIES = {

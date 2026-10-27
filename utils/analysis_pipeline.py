@@ -20,7 +20,9 @@ from utils.constants import (
     BERT_THRESHOLDS,
     WCR_THRESHOLDS,
     WCR_COLUMN_CONVERSION,
-    PTBXL_POWER_RATIO
+    PTBXL_POWER_RATIO,
+    SIGNAL,
+    IMAGE
 )
 from utils.ecg_signal_processor import ECGSignalProcessor
 from utils.log_config import get_logger
@@ -378,7 +380,7 @@ class AnalysisPipeline:
             }
         )
 
-        if getattr(signal_processing_model, 'input_kind', 'signal') == 'image':
+        if getattr(signal_processing_model, 'input_type', SIGNAL) == IMAGE:
             return AnalysisPipeline._run_image_analysis_impl(
                 model=signal_processing_model,
                 df=df,
@@ -497,15 +499,15 @@ class AnalysisPipeline:
         """
         Inference with an image model (DeepECG-PNG) on ECG page images.
 
-        Unlike the signal models, rows without a label are kept (inference only): every row
-        gets probabilities, binary tasks also a 0/1 `prediction` at the model's validation
-        threshold, and metrics are computed on the labelled rows only. For the 77 classes the
+        The outputs have the signal models' columns. Unlike the signal models, rows without a
+        label are kept (inference only): every row gets probabilities, and metrics are
+        computed on the labelled rows only. For the 77 classes the
         ground truth comes from the report text through the BERT classifier, as for the signal
         models; rows without report text get probabilities only (BERT is not loaded at all when
         no row has text).
 
         Args:
-            model: The image model (input_kind == 'image').
+            model: The image model (input_type == IMAGE).
             df: DataFrame with diagnosis, ecg_path (image) and file_name columns.
 
         Returns:
@@ -569,15 +571,8 @@ class AnalysisPipeline:
                 sig_prob = model(batch['ecg_signal']).detach().cpu().numpy()[:, 0]
                 labels = batch['diagnosis'].detach().cpu().numpy()
                 for i, file_name in enumerate(batch['file_name']):
-                    probabilities_rows.append([
-                        file_name,
-                        labels[i],
-                        float(sig_prob[i]),
-                        int(sig_prob[i] >= model.decision_threshold)
-                    ])
-        df_probabilities = pd.DataFrame(
-            probabilities_rows, columns=['file_name', 'ground_truth', 'predictions', 'prediction']
-        )
+                    probabilities_rows.append([file_name, labels[i], float(sig_prob[i])])
+        df_probabilities = pd.DataFrame(probabilities_rows, columns=['file_name', 'ground_truth', 'predictions'])
 
         labelled = df_probabilities[df_probabilities['ground_truth'].notna()]
         if len(labelled) <= 1:

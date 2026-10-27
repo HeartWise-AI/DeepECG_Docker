@@ -262,7 +262,7 @@ def main():
              image, '/checks/ecg_repro_worker.py', 'run', '--mode', 'full_run',
              '--data_path', '/input.csv', '--ecg_signals_path', '/ecgs',
              '--output_folder', '/run-output/outputs', '--preprocessing_folder', '/run-output/preprocessing',
-             '--hugging_face_api_key_path', '/run/hf-key.json', '--use_wcr', 'True', '--use_efficientnet', 'True',
+             '--hugging_face_api_key_path', '/run/hf-key.json', '--models', 'signal_models:wcr,efficientnet',
              '--batch_size', '8', '--preprocessing_n_workers', '4',
              '--signal_processing_device', device, '--diagnosis_classifier_device', device], folder / 'pipeline.log')
     if {p.name: sha256(p) for p in files} != provenance['ecgs']:

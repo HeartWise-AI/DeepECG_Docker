@@ -10,7 +10,11 @@ issue #215) and the Hugging Face cache of openai/clip-vit-base-patch16 (or netwo
     /path/to/DeepECG-PNG/.venv/bin/python tools/export_deepecg_png.py \\
         --deepecg-png-repo /path/to/DeepECG-PNG \\
         --config config/ecg_pdf/siglip2_probes.yaml \\
-        --out weights/deepecg_png
+        --out weights/deepecg_png --push-to-hub
+
+--push-to-hub uploads the exported folder to the private Hugging Face repository
+heartwise/deepecg_png (created if needed; token from `huggingface-cli login` or HF_TOKEN),
+from which the Docker image downloads it like every other model (models/deepecg_png.py).
 
 Writes to --out:
     encoder.safetensors   the CLIP vision tower (float32), keys relative to the tower
@@ -71,6 +75,9 @@ def main():
                     help="cached validation features of the encoder (for --reference-out)")
     ap.add_argument("--reference-out", default=None)
     ap.add_argument("--reference-n", type=int, default=128)
+    ap.add_argument("--push-to-hub", action="store_true",
+                    help="upload the exported folder to --hub-repo (private) after the export")
+    ap.add_argument("--hub-repo", default="heartwise/deepecg_png")
     args = ap.parse_args()
 
     # absolute BEFORE the chdir below (relative paths are meant from the caller's directory)
@@ -108,6 +115,8 @@ def main():
         shutil.rmtree(out, ignore_errors=True)   # never leave a half-written temporary folder
         raise
     print(f"exported to {final_out}: " + ", ".join(sorted(os.listdir(final_out))))
+    if args.push_to_hub:
+        push_to_hub(final_out, args.hub_repo)
     if reference_out:
         write_reference(bank, args.features_root, args.reference_n, reference_out)
 
@@ -175,6 +184,20 @@ def write_export(out, final_out, bank, tower, vc, rope, grid, head_dim, repo, EC
         os.chmod(os.path.join(out, name), 0o644)
         os.replace(os.path.join(out, name), os.path.join(final_out, name))
     os.rmdir(out)
+
+
+def push_to_hub(folder, repo_id):
+    """Upload the exported weights to a private Hugging Face model repository. Only the
+    exported files are sent (never the --reference-out file, which lists patient PNG paths)."""
+    from huggingface_hub import HfApi
+    files = ("encoder.safetensors", "config.json", "heads.safetensors", "heads.json",
+             "thresholds.json", "provenance.json")
+    api = HfApi()
+    api.create_repo(repo_id=repo_id, repo_type="model", private=True, exist_ok=True)
+    commit = api.upload_folder(repo_id=repo_id, repo_type="model", folder_path=folder,
+                               allow_patterns=list(files),
+                               commit_message=f"DeepECG-PNG export {datetime.date.today().isoformat()}")
+    print(f"uploaded {', '.join(files)} to https://huggingface.co/{repo_id} ({commit.oid})")
 
 
 def write_reference(bank, features_root, n, reference_out):

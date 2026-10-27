@@ -1,9 +1,10 @@
 """DeepECG-PNG: an image model for ECG pages (PNG).
 
 A SigLIP-2 ViT-B/16 image encoder (DeepECG-PNG run ux5uajqm) and the linear probes fitted
-on its frozen 768-d features. The weights are read from a local folder written by
-``tools/export_deepecg_png.py`` (default ``weights/deepecg_png``; override with the
-``DEEPECG_PNG_WEIGHTS_DIR`` environment variable). Nothing is downloaded:
+on its frozen 768-d features. Like the other models, the weights are downloaded from the
+Hugging Face repository ``heartwise/deepecg_png`` into ``weights/deepecg_png`` (by
+models_setup.py at build time, or on first use). The repository holds the folder written by
+``tools/export_deepecg_png.py --push-to-hub``; the five task models share it:
 
 * ``encoder.safetensors`` + ``config.json``: the CLIP vision tower, its config, the 2D axial
   RoPE it was trained with and the image preprocessing (grayscale, 224x224, CLIP mean/std);
@@ -27,18 +28,24 @@ from safetensors.torch import load_file
 from transformers import CLIPVisionConfig, CLIPVisionModel
 
 from models.heartwise_model_factory import HeartWiseModelFactory
+from utils.huggingface_wrapper import HuggingFaceWrapper
 from utils.log_config import get_logger
 
 logger = get_logger(__name__)
 
-WEIGHTS_DIR_ENV = "DEEPECG_PNG_WEIGHTS_DIR"
-DEFAULT_WEIGHTS_DIR = os.path.join("weights", "deepecg_png")
+WEIGHTS_NAME = "deepecg_png"
+HF_REPO_ID = f"heartwise/{WEIGHTS_NAME}"
+WEIGHTS_DIR = os.path.join("weights", WEIGHTS_NAME)
 ALL_77 = "77_classes"   # pseudo output: every 77-class label, in ECG_PATTERNS order
 
 
-def weights_dir() -> str:
-    """The folder holding the exported DeepECG-PNG weights."""
-    return os.environ.get(WEIGHTS_DIR_ENV, DEFAULT_WEIGHTS_DIR)
+def download_weights(hugging_face_api_key: str) -> str:
+    """The folder holding the DeepECG-PNG weights, downloaded from Hugging Face if absent."""
+    return HuggingFaceWrapper.get_model(
+        repo_id=HF_REPO_ID,
+        local_dir=WEIGHTS_DIR,
+        hugging_face_api_key=hugging_face_api_key
+    )
 
 
 # ---------------------------------------------------------------------------- encoder
@@ -161,8 +168,8 @@ class _DeepECGPNGBank:
         for name in ("config.json", "encoder.safetensors", "heads.json", "heads.safetensors", "thresholds.json"):
             if not os.path.exists(os.path.join(folder, name)):
                 raise FileNotFoundError(
-                    f"DeepECG-PNG weights not found: {os.path.join(folder, name)} (mount the exported "
-                    f"folder at {DEFAULT_WEIGHTS_DIR} or set {WEIGHTS_DIR_ENV})")
+                    f"DeepECG-PNG weights not found: {os.path.join(folder, name)} (expected from the "
+                    f"Hugging Face repository {HF_REPO_ID}; delete {folder} to download it again)")
         with open(os.path.join(folder, "config.json")) as f:
             self.config = json.load(f)
         with open(os.path.join(folder, "heads.json")) as f:
@@ -236,8 +243,8 @@ class _DeepECGPNGBank:
 _BANKS = {}
 
 
-def _get_bank(device: torch.device) -> _DeepECGPNGBank:
-    folder = os.path.abspath(weights_dir())
+def _get_bank(device: torch.device, hugging_face_api_key: str) -> _DeepECGPNGBank:
+    folder = os.path.abspath(download_weights(hugging_face_api_key))
     key = (folder, str(device))
     if key not in _BANKS:
         _BANKS[key] = _DeepECGPNGBank(folder, device)
@@ -250,8 +257,7 @@ class DeepECGPNGWrapper(HeartWiseModelFactory):
     """Base of the DeepECG-PNG task models. Inputs are images, not signals."""
 
     name = 'deepecg_png'
-    input_kind = 'image'          # the analysis pipeline feeds preprocessed PNG pages
-    uses_local_weights = True     # nothing to download (models_setup.py skips it)
+    input_type = 'image'          # utils.constants.IMAGE: fed ECG page images, not signals
     outputs = ()
 
     def __init__(
@@ -264,10 +270,10 @@ class DeepECGPNGWrapper(HeartWiseModelFactory):
             raise RuntimeError(f"{model_name} is the DeepECG-PNG base class; use one of its task models")
         self.device = map_location
         try:
-            self.bank = _get_bank(map_location)
+            self.bank = _get_bank(map_location, hugging_face_api_key)
         except ValueError as e:
             # e.g. a corrupt json: HeartWiseModelFactory would swallow a ValueError as "model not found"
-            raise RuntimeError(f"invalid DeepECG-PNG weights in {os.path.abspath(weights_dir())}: "
+            raise RuntimeError(f"invalid DeepECG-PNG weights in {os.path.abspath(WEIGHTS_DIR)}: "
                                f"{type(e).__name__}: {e}") from e
         self.output_names = list(self.bank.labels_77) if self.outputs == (ALL_77,) else list(self.outputs)
         if self.outputs == (ALL_77,):
@@ -275,9 +281,9 @@ class DeepECGPNGWrapper(HeartWiseModelFactory):
         else:
             missing = [o for o in self.output_names if o not in self.bank.where]
         if missing:
-            raise RuntimeError(f"{model_name}: no probe for {missing} in {weights_dir()}")
-        # validation Youden threshold of a binary task: the 0/1 prediction written next to
-        # the probability (None for the 77 classes, which are reported as probabilities)
+            raise RuntimeError(f"{model_name}: no probe for {missing} in {HF_REPO_ID}")
+        # validation Youden threshold of a binary task, from the weights' thresholds.json
+        # (None for the 77 classes, which are reported as probabilities)
         self.decision_threshold = (self.bank.thresholds[self.output_names[0]]
                                    if len(self.output_names) == 1 else None)
         self.preprocessing = self.bank.config["preprocessing"]

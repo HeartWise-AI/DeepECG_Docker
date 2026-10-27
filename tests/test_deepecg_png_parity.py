@@ -1,6 +1,6 @@
 """Parity of the Docker DeepECG-PNG model with the DeepECG-PNG code it was exported from.
 
-Needs the exported weights (weights/deepecg_png or $DEEPECG_PNG_WEIGHTS_DIR) and the reference
+Needs the weights downloaded from Hugging Face (weights/deepecg_png) and the reference
 file written by `tools/export_deepecg_png.py --reference-out FILE` ($DEEPECG_PNG_REFERENCE): real
 validation PNGs with the features and probabilities computed by the training code. Skipped when
 either is missing.
@@ -27,8 +27,8 @@ from utils.image_preprocessing import load_ecg_image  # noqa: E402
 REFERENCE = os.environ.get("DEEPECG_PNG_REFERENCE", "")
 pytestmark = pytest.mark.skipif(
     not (REFERENCE and os.path.exists(REFERENCE)
-         and os.path.exists(os.path.join(deepecg_png.weights_dir(), "encoder.safetensors"))),
-    reason="needs exported weights and $DEEPECG_PNG_REFERENCE")
+         and os.path.exists(os.path.join(deepecg_png.WEIGHTS_DIR, "encoder.safetensors"))),
+    reason="needs weights/deepecg_png (from heartwise/deepecg_png) and $DEEPECG_PNG_REFERENCE")
 
 
 @pytest.fixture(scope="module")
@@ -38,7 +38,7 @@ def ref():
 
 @pytest.fixture(scope="module")
 def bank():
-    return deepecg_png._get_bank(torch.device("cpu"))
+    return deepecg_png._get_bank(torch.device("cpu"), "")
 
 
 @pytest.fixture(scope="module")
