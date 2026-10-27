@@ -50,8 +50,8 @@ python -m ingestion.run --data <root> --lead 12 --mapping configs/icentia_mappin
 | `--lead` | `12` copies the lead into all 12 positions (default for Icentia). A lead name (`I`, `II`, …, `V6`) puts it in that one position and leaves the others at zero. |
 | `--mapping` | CSV `dataset_label,deepecg_class`. `A\|B` in `deepecg_class` scores one task from two outputs as 1 − (1 − p_A)(1 − p_B). Class names are checked against the model's 77. |
 | `--patients` | `p00000-p00009`, `p00000,p00020`, or a mix. Only `pNNNNN` IDs are accepted; a patient listed twice is processed once. Missing patients are logged and skipped. |
-| `--out` | Output folder. Must be empty, and must not be `--data` or inside it (symlinks are resolved). |
-| `--overwrite` | Reuse a non-empty `--out`. Once the model has loaded, this pipeline's own output files there are deleted (other files are kept); the previous results are then gone even if the new run fails. Don't start two runs on the same folder at once. |
+| `--out` | Output folder. Must be empty, and must not be `--data` or inside it (symlinks are resolved). A run holds `.ingestion.lock` in it until it ends, so a second run on the same folder stops at once; if a run is killed (e.g. `kill -9`) the lock stays, and the next run says to delete it. |
+| `--overwrite` | Reuse a non-empty `--out`. Once the model has loaded, this pipeline's own output files there are deleted (other files are kept); the previous results are then gone even if the new run fails. |
 | `--thresholds` | CSV `task,threshold`, used for sensitivity and specificity. Values must be numbers between 0 and 1, each task listed once, and task names must match the mapping's tasks (an unknown name is an error; a missing one gives a warning). Without it, only AUROC and AUPRC are reported. |
 | `--bootstrap` | Patient-bootstrap resamples for the 95% CIs (default 1000, 0 = none). |
 | `--batch-size`, `--device` | Inference settings (defaults 512, `cuda:0`). The GPU computes slightly differently per batch size (probabilities move by up to about 6e-4), so keep 512 to reproduce earlier runs. |

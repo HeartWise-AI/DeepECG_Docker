@@ -395,3 +395,27 @@ def test_window_table_column_types_match_with_and_without_annotations():
     assert a.dtypes.equals(b.dtypes) and a.n_N[0] == 10 and bool(a.clean_sinus[0])
     both = pd.concat([a, b], ignore_index=True)
     assert both[both.clean_sinus.fillna(False)].shape[0] == 1
+
+
+# --- PR #81 review: two runs sharing --out ---------------------------------------------------------
+
+def test_out_is_locked_while_a_run_uses_it(tmp_path, monkeypatch):
+    from ingestion import run
+    data, out = _one_patient(tmp_path), tmp_path / 'out'
+    args = ['--data', str(data), '--lead', '12', '--mapping', 'configs/icentia_mapping.csv',
+            '--patients', 'p00000', '--out', str(out), '--labels-only']
+    run.main(args)
+    assert not (out / run.LOCK_FILE).exists()  # released after a normal run
+
+    def second_run(*a, **k):  # a second run starts while the first is still processing
+        with pytest.raises(SystemExit, match='in use by another run'):
+            run.main(args + ['--overwrite'])
+        raise RuntimeError('first run interrupted')
+    monkeypatch.setattr(run, 'process_patient', second_run)
+    with pytest.raises(RuntimeError):
+        run.main(args + ['--overwrite'])
+    assert not (out / run.LOCK_FILE).exists()  # released after a failed run too
+
+    (out / run.LOCK_FILE).write_text('left by a killed run')
+    with pytest.raises(SystemExit, match='delete that file'):
+        run.main(args + ['--overwrite'])

@@ -3,8 +3,8 @@
 By default it runs wcr_77_classes (needs torch, i.e. the DeepECG Docker image; see run_icentia.sh) and
 writes metrics. --labels-only stops after the labels (no torch needed). The dataset is only read.
 Missing patients and unreadable segments are logged in run_manifest.json and skipped. --out must be
-empty (or --overwrite); run_manifest.json is written first with "complete": false and rewritten with
-"complete": true at the end, so an interrupted run is visible.
+empty (or --overwrite) and is locked while a run uses it (.ingestion.lock); run_manifest.json is written
+first with "complete": false and rewritten with "complete": true at the end, so an interrupted run is visible.
 
     python -m ingestion.run --data <icentia root> --lead 12 --mapping configs/icentia_mapping.csv \
         --patients p00000-p00009 --out <out dir> \
@@ -29,11 +29,25 @@ PATIENT_ID = re.compile(r'p\d{5}')
 OUTPUT_FILE = re.compile(r'p\d{5}_(windows\.parquet|probs\.npy|example_input\.npy)'
                          r'|label_summary\.csv|metrics\.csv|metrics_per_patient\.csv|metrics\.json'
                          r'|run_manifest\.json')
+LOCK_FILE = '.ingestion.lock'  # held for the whole run, so two runs can't share --out
 
 
 def own_outputs(out):
     """Names of this pipeline's output files in --out (exact matches, no glob)."""
     return sorted(f for f in os.listdir(out) if OUTPUT_FILE.fullmatch(f))
+
+
+def acquire_lock(out):
+    """Create --out/.ingestion.lock, failing if it exists (O_EXCL is atomic, so only one run gets it)."""
+    path = os.path.join(out, LOCK_FILE)
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        raise SystemExit(f'--out {out} is in use by another run ({path} exists); if no run is using it '
+                         f'(e.g. a previous run was killed), delete that file and retry')
+    with os.fdopen(fd, 'w') as f:
+        f.write(f'pid {os.getpid()} started {time.strftime("%Y-%m-%dT%H:%M:%S")}\n')
+    return path
 
 
 def parse_patients(spec):
@@ -172,16 +186,22 @@ def main(argv=None):
     thresholds = load_thresholds(a.thresholds, class_map)
     if os.path.exists(out) and not os.path.isdir(out):
         raise SystemExit(f'--out {out} exists and is not a folder')
-    if os.path.isdir(out) and os.listdir(out) and not a.overwrite:
-        raise SystemExit(f'--out {out} is not empty; use another folder or --overwrite')
-    # Not guarded against two runs started on the same folder at the same moment.
+    os.makedirs(out, exist_ok=True)
+    lock = acquire_lock(out)  # before the emptiness check, so a second run always stops here
+    try:
+        if [f for f in os.listdir(out) if f != LOCK_FILE] and not a.overwrite:
+            raise SystemExit(f'--out {out} is not empty; use another folder or --overwrite')
+        _run(a, out, patient_ids, slots, class_map, thresholds)
+    finally:
+        os.remove(lock)
 
+
+def _run(a, out, patient_ids, slots, class_map, thresholds):
     infer = not a.labels_only
     scorer = None
     if infer:  # load the model before touching --out, so a bad --device or missing weights deletes nothing
         from ingestion.infer import WCRScorer, MODEL_NAME
         scorer = WCRScorer(a.device)
-    os.makedirs(out, exist_ok=True)
     for f in own_outputs(out):  # only reached with --overwrite (or an empty folder)
         os.remove(os.path.join(out, f))
     _write_manifest(out, {'complete': False, 'args': vars(a), 'started': time.strftime('%Y-%m-%dT%H:%M:%S')})
