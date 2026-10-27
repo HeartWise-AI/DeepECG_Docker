@@ -3,14 +3,15 @@
 By default it runs wcr_77_classes (needs torch, i.e. the DeepECG Docker image; see run_icentia.sh) and
 writes metrics. --labels-only stops after the labels (no torch needed). The dataset is only read.
 Missing patients and unreadable segments are logged in run_manifest.json and skipped. --out must be
-empty (or --overwrite) and is locked while a run uses it (.ingestion.lock); run_manifest.json is written
-first with "complete": false and rewritten with "complete": true at the end, so an interrupted run is visible.
+empty (or --overwrite) and is locked while a run uses it, so a second run on it stops; run_manifest.json is
+written first with "complete": false and rewritten with "complete": true at the end, so an interrupted run is visible.
 
     python -m ingestion.run --data <icentia root> --lead 12 --mapping configs/icentia_mapping.csv \
         --patients p00000-p00009 --out <out dir> \
         [--thresholds <thresholds.csv> --device cuda:0] [--labels-only]
 """
 import argparse
+import fcntl
 import json
 import math
 import os
@@ -29,7 +30,6 @@ PATIENT_ID = re.compile(r'p\d{5}')
 OUTPUT_FILE = re.compile(r'p\d{5}_(windows\.parquet|probs\.npy|example_input\.npy)'
                          r'|label_summary\.csv|metrics\.csv|metrics_per_patient\.csv|metrics\.json'
                          r'|run_manifest\.json')
-LOCK_FILE = '.ingestion.lock'  # held for the whole run, so two runs can't share --out
 
 
 def own_outputs(out):
@@ -37,17 +37,20 @@ def own_outputs(out):
     return sorted(f for f in os.listdir(out) if OUTPUT_FILE.fullmatch(f))
 
 
-def acquire_lock(out):
-    """Create --out/.ingestion.lock, failing if it exists (O_EXCL is atomic, so only one run gets it)."""
-    path = os.path.join(out, LOCK_FILE)
+def lock_out(out):
+    """Exclusive flock on the --out folder itself, held until the returned fd is closed.
+
+    No lock file: there is nothing to delete by mistake, and the OS releases the lock when the process
+    exits (even on kill -9), so it never goes stale. Works on local filesystems and Docker bind mounts;
+    on NFS, flock may not be honoured across machines.
+    """
+    fd = os.open(out, os.O_RDONLY)
     try:
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        raise SystemExit(f'--out {out} is in use by another run ({path} exists); if no run is using it '
-                         f'(e.g. a previous run was killed), delete that file and retry')
-    with os.fdopen(fd, 'w') as f:
-        f.write(f'pid {os.getpid()} started {time.strftime("%Y-%m-%dT%H:%M:%S")}\n')
-    return path
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise SystemExit(f'--out {out} is in use by another run; wait for it to finish or use another folder')
+    return fd
 
 
 def parse_patients(spec):
@@ -187,13 +190,13 @@ def main(argv=None):
     if os.path.exists(out) and not os.path.isdir(out):
         raise SystemExit(f'--out {out} exists and is not a folder')
     os.makedirs(out, exist_ok=True)
-    lock = acquire_lock(out)  # before the emptiness check, so a second run always stops here
+    lock = lock_out(out)  # before the emptiness check, so a second run always stops here
     try:
-        if [f for f in os.listdir(out) if f != LOCK_FILE] and not a.overwrite:
+        if os.listdir(out) and not a.overwrite:
             raise SystemExit(f'--out {out} is not empty; use another folder or --overwrite')
         _run(a, out, patient_ids, slots, class_map, thresholds)
     finally:
-        os.remove(lock)
+        os.close(lock)
 
 
 def _run(a, out, patient_ids, slots, class_map, thresholds):

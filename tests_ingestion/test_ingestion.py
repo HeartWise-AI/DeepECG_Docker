@@ -405,7 +405,7 @@ def test_out_is_locked_while_a_run_uses_it(tmp_path, monkeypatch):
     args = ['--data', str(data), '--lead', '12', '--mapping', 'configs/icentia_mapping.csv',
             '--patients', 'p00000', '--out', str(out), '--labels-only']
     run.main(args)
-    assert not (out / run.LOCK_FILE).exists()  # released after a normal run
+    run.main(args + ['--overwrite'])  # released after a normal run
 
     def second_run(*a, **k):  # a second run starts while the first is still processing
         with pytest.raises(SystemExit, match='in use by another run'):
@@ -414,8 +414,32 @@ def test_out_is_locked_while_a_run_uses_it(tmp_path, monkeypatch):
     monkeypatch.setattr(run, 'process_patient', second_run)
     with pytest.raises(RuntimeError):
         run.main(args + ['--overwrite'])
-    assert not (out / run.LOCK_FILE).exists()  # released after a failed run too
+    monkeypatch.undo()
+    run.main(args + ['--overwrite'])  # released after a failed run too
+    assert not [f for f in out.iterdir() if 'lock' in f.name]  # no lock file left in --out
 
-    (out / run.LOCK_FILE).write_text('left by a killed run')
-    with pytest.raises(SystemExit, match='delete that file'):
-        run.main(args + ['--overwrite'])
+
+def test_lock_is_released_when_the_holder_is_killed(tmp_path):
+    import signal
+    import subprocess
+    import sys
+    from ingestion import run
+    data, out = _one_patient(tmp_path), tmp_path / 'out'
+    out.mkdir()
+    holder = subprocess.Popen([sys.executable, '-c',
+                               'import fcntl, os, sys, time; fd = os.open(sys.argv[1], os.O_RDONLY); '
+                               'fcntl.flock(fd, fcntl.LOCK_EX); print("locked", flush=True); time.sleep(60)',
+                               str(out)], stdout=subprocess.PIPE, text=True)
+    try:
+        assert holder.stdout.readline().strip() == 'locked'
+        args = ['--data', str(data), '--lead', '12', '--mapping', 'configs/icentia_mapping.csv',
+                '--patients', 'p00000', '--out', str(out), '--labels-only']
+        with pytest.raises(SystemExit, match='in use by another run'):
+            run.main(args)
+        holder.send_signal(signal.SIGKILL)  # like kill -9: no cleanup code runs
+        holder.wait()
+        run.main(args)  # the OS released the lock; nothing to delete by hand
+    finally:
+        if holder.poll() is None:
+            holder.kill()
+            holder.wait()
