@@ -92,7 +92,9 @@ DeepECG_Docker/
 │   └── resnet_wrapper.py
 │
 ├── inputs/
-│   └── data_rows_template.csv
+│   ├── data_rows_template.csv          # Mixed NPY/XML example
+│   ├── data_rows_template_npy.csv      # NPY-only example
+│   └── data_rows_template_xml.csv      # XML-only example
 │
 ├── outputs/
 │   ├── batch_1/                    # Preprocessing reports per batch
@@ -189,9 +191,23 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
 
 ## 📄 Usage
 
+You can run XML inputs alone, NPY inputs alone, or both formats together in one
+CSV and one pipeline run. Choose the corresponding template:
+
+| Input formats | Template |
+| --- | --- |
+| NPY and XML together | [data_rows_template.csv](inputs/data_rows_template.csv) — first row NPY, second row XML |
+| NPY only | [data_rows_template_npy.csv](inputs/data_rows_template_npy.csv) |
+| XML only | [data_rows_template_xml.csv](inputs/data_rows_template_xml.csv) |
+
+The pipeline chooses each file's decoder from its extension; no format flag is
+needed. XML and NPY signals are processed together, with one combined probabilities
+CSV and metrics JSON/CSV per selected model and task.
+
 1. Prepare your input data:
-   - Create a CSV file with the following template in [inputs/data_rows_template.csv](inputs/data_rows_template.csv):
-   - For each model, add two columns with the following format:
+   - Copy the appropriate template and replace the example filenames, diagnosis text, and binary labels with your own data. The example labels are placeholders, and the dummy ECG files are not included.
+   - Use distinct filename stems for different ECGs: `dummy_npy.npy` and `dummy_xml.xml` can coexist, but `dummy.npy` and `dummy.xml` would both map to `dummy.base64` and are rejected.
+   - For each task, add two columns with the following format:
      ```
      'ecg_machine_diagnosis': '77_classes_ecg_file_name',
      'afib_5y': 'afib_ecg_file_name',
@@ -207,7 +223,7 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
    - `lvef_50` (int): Binary classification of LVEF < 50%
    - `lvef_50_ecg_file_name` (string): The ECG signal **file names** LVEF < 50%
    - Place your input CSV file in the `inputs/` directory
-   - Change the `data_rows_template.csv` filename in the `heartwise.config` file
+   - Select your CSV with `--csv_file_name`, for example: `bash run_pipeline.bash --mode full_run --csv_file_name data_rows_template.csv`. Use `data_rows_template_npy.csv` or `data_rows_template_xml.csv` to run either format alone.
 
 2. Pipeline configuration:
    - When using docker, you only need to change the actual csv filename. Edit the [heartwise.config](heartwise.config) file to set the desired configuration:
@@ -285,7 +301,7 @@ versions and upstream Git repositories in the general Docker build are still
 floating; this is not yet a guarantee of identical results across future rebuilds
 or different hardware.
 
-The input CSV follows `inputs/data_rows_template_xml.csv`: diagnosis text,
+The input CSV follows `inputs/data_rows_template.csv`: diagnosis text,
 binary outcome labels, and the four corresponding filename columns. Each row
 must use the same ECG for every task. The prepared 50-record CSV contains XML
 diagnosis text and synthetic binary labels obtained by thresholding the saved

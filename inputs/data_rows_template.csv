@@ -1,0 +1,3 @@
+ecg_machine_diagnosis,77_classes_ecg_file_name,afib_5y,afib_ecg_file_name,lvef_40,lvef_40_ecg_file_name,lvef_50,lvef_50_ecg_file_name
+Synthetic example diagnosis,dummy_npy.npy,0,dummy_npy.npy,0,dummy_npy.npy,0,dummy_npy.npy
+Synthetic example diagnosis,dummy_xml.xml,1,dummy_xml.xml,1,dummy_xml.xml,1,dummy_xml.xml
