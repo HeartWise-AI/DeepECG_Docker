@@ -195,6 +195,22 @@ class ECGFileHandler:
         return [os.path.join(directory_path, f) for f in os.listdir(directory_path) if os.path.isfile(os.path.join(directory_path, f))]
 
 
+def validate_signal_paths(paths) -> None:
+    """Reject unsupported formats and distinct sources sharing an output basename."""
+    destinations = {}
+    for path in paths:
+        if os.path.splitext(path)[1].lower() not in {'.xml', '.npy'}:
+            raise ValueError(f"Unsupported signal extension: {path}. Expected .xml or .npy.")
+        name = os.path.splitext(os.path.basename(path))[0] + '.base64'
+        source = os.path.abspath(path)
+        if name in destinations and destinations[name] != source:
+            raise ValueError(
+                f"Ambiguous preprocessing filename {name}: distinct ECGs share a basename. "
+                "Give each source ECG a unique basename before running the pipeline."
+            )
+        destinations[name] = source
+
+
 class NPYProcessor:
     """Load and validate NPY ECG files, producing normalized lead arrays."""
 
@@ -236,7 +252,7 @@ class NPYProcessor:
             return (file_id, 'Failed', str(e)), file_id, None
 
     def process_batch(self, df: pd.DataFrame, num_workers: int = 32, preprocessing_folder: str = './tmp') -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Process all NPY paths in df; return updated df and a DataFrame of (ecg_path, ecg_signal)."""
+        """Return successful metadata and signals, preserving their input indexes/order."""
         npy_files = df['ecg_path'].tolist()
         ecgs = []
 
@@ -246,10 +262,13 @@ class NPYProcessor:
 
             if lead_array is not None:
                 new_path = os.path.join(preprocessing_folder, f"{file_id}.base64")
-                df.at[index, 'ecg_path'] = new_path
-                ecgs.append([new_path, lead_array])
+                df.iloc[index, df.columns.get_loc('ecg_path')] = new_path
+                ecgs.append([index, new_path, lead_array])
 
-        return df, pd.DataFrame(ecgs, columns=['ecg_path', 'ecg_signal'])
+        successful = df.iloc[[item[0] for item in ecgs]].copy()
+        return successful, pd.DataFrame(
+            [item[1:] for item in ecgs], columns=['ecg_path', 'ecg_signal'], index=successful.index
+        )
 
     def save_report(self, output_folder: str) -> None:
         """Write detailed and summary CSV reports for the processed NPY batch to output_folder."""
@@ -342,7 +361,7 @@ class XMLProcessor:
             return (file_id, 'Unknown', 'Failed', str(e)), file_id, None
 
     def process_batch(self, df: pd.DataFrame, num_workers: int = 32, preprocessing_folder: str = './tmp') -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Process all XML paths in df in parallel; return updated df and a DataFrame of (ecg_path, ecg_signal)."""
+        """Parse XML in parallel; return successful metadata/signals in input order."""
         xml_files = df['ecg_path'].tolist()
         ecgs = []
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
@@ -352,13 +371,13 @@ class XMLProcessor:
                 file, index = future_to_file[future]
                 try:
                     report_entry, file_id, lead_array = future.result()
-                    self.report.append(report_entry)
                     if lead_array is not None:
                         if lead_array.shape[0] == self.expected_shape[1]: # if is (12, X) then transpose it to (X, 12)
                             lead_array = lead_array.transpose(1, 0)
                         if lead_array.shape[0] != self.expected_shape[0]: # if X != 2500 then resize it
                             if lead_array.shape[0] < self.expected_shape[0]:
                                 logger.warning("Skipping %s: lead array length %d < 2500", file_id, lead_array.shape[0])
+                                self.report.append((file_id, report_entry[1], 'Failed', 'Signal too short'))
                                 continue
                             else: # if X > 2500 then resize it
                                 step = lead_array.shape[0] // self.expected_shape[0]
@@ -366,8 +385,9 @@ class XMLProcessor:
                         
                         # store the lead array
                         new_path = os.path.join(preprocessing_folder, f"{file_id}.base64")
-                        df.at[index, 'ecg_path'] = new_path
+                        df.iloc[index, df.columns.get_loc('ecg_path')] = new_path
                         ecgs.append([index, new_path, lead_array])
+                    self.report.append(report_entry)
                     
                 except Exception as e:
                     logger.error("Failed to process file %s: %s", file, e)
@@ -376,7 +396,10 @@ class XMLProcessor:
         
         # Floating-point cohort scaling must see the same order on every run.
         ecgs.sort(key=lambda item: item[0])
-        return df, pd.DataFrame([item[1:] for item in ecgs], columns=['ecg_path', 'ecg_signal'])
+        successful = df.iloc[[item[0] for item in ecgs]].copy()
+        return successful, pd.DataFrame(
+            [item[1:] for item in ecgs], columns=['ecg_path', 'ecg_signal'], index=successful.index
+        )
 
     def _process_clsa_xml(self, data_dict: dict, file_id: str) -> None:
         try:            

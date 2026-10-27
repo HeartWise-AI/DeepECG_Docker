@@ -50,6 +50,19 @@ class ComparisonTests(unittest.TestCase):
         self.assertTrue(result['pass'])
         self.assertEqual(len(result['models']), 9)
 
+    def test_mixed_format_preprocessing_reports_are_checked_together(self):
+        batch = self.runs[1] / 'outputs/batch_1'
+        (batch / 'ecg_processing_detailed_report.csv').unlink()
+        for extension, file_id in [('xml', 'synthetic_1'), ('npy', 'synthetic_2')]:
+            (batch / extension).mkdir()
+            (batch / extension / 'ecg_processing_detailed_report.csv').write_text(
+                f'file_id,status\n{file_id},Success\n'
+            )
+        self.assertTrue(repro.compare_reference(self.reference, self.runs[1], self.names)['pass'])
+        (batch / 'npy/ecg_processing_detailed_report.csv').unlink()
+        with self.assertRaisesRegex(ValueError, 'Incomplete or failed preprocessing report'):
+            repro.compare_reference(self.reference, self.runs[1], self.names)
+
     def test_probability_drift_fails(self):
         path = next((self.runs[1] / 'outputs').glob('*afib*probabilities.csv'))
         path.write_text(path.read_text().replace('0.25', '0.26'))
@@ -120,6 +133,52 @@ class ComparisonTests(unittest.TestCase):
 
 
 class InputTests(unittest.TestCase):
+    def test_mixed_formats_are_accepted_without_relaxing_filename_checks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / 'input.csv'
+            fields = [c for task, (name, _, _) in repro.TASKS.items() for c in (task, name)]
+
+            def write(names):
+                with path.open('w', newline='') as stream:
+                    writer = csv.DictWriter(stream, fieldnames=fields)
+                    writer.writeheader()
+                    for name in names:
+                        row = {c: name for c in fields}
+                        row.update(ecg_machine_diagnosis='Synthetic diagnosis', afib_5y='0', lvef_40='0', lvef_50='1')
+                        writer.writerow(row)
+
+            names = ['synthetic_a.xml', 'synthetic_b.NPY']
+            for name in names:
+                (root / name).write_bytes(b'synthetic input-validation fixture')
+            write(names)
+            self.assertEqual(repro.validate_input_csv(path, root, 2), [root / n for n in names])
+            for invalid in ['synthetic.txt', '../synthetic.npy', 'nested/synthetic.npy']:
+                write([invalid])
+                with self.assertRaisesRegex(ValueError, 'XML or NPY basenames'):
+                    repro.validate_input_csv(path, root, 1)
+            (root / 'synthetic_a.npy').write_bytes(b'synthetic')
+            write(['synthetic_a.xml', 'synthetic_a.npy'])
+            with self.assertRaisesRegex(ValueError, 'unique ECGs'):
+                repro.validate_input_csv(path, root, 2)
+            (root / 'alias.npy').symlink_to(root / 'synthetic_a.npy')
+            write(['alias.npy'])
+            with self.assertRaisesRegex(ValueError, 'missing ECG or a symlink'):
+                repro.validate_input_csv(path, root, 1)
+
+    def test_committed_mixed_fixture_matches_reference_inputs(self):
+        fixtures = ROOT / 'tests/fixtures/reproducibility'
+        path = fixtures / 'data_rows_reproducibility_50.csv'
+        reference = json.loads((fixtures / 'data_rows_reproducibility_50.reference.json').read_text())
+        with path.open(newline='') as stream:
+            rows = list(csv.DictReader(stream))
+        names = [row['77_classes_ecg_file_name'] for row in rows]
+        self.assertEqual(len(rows), 50)
+        self.assertEqual(sum(Path(n).suffix.lower() == '.xml' for n in names), 25)
+        self.assertEqual(sum(Path(n).suffix.lower() == '.npy' for n in names), 25)
+        self.assertEqual(repro.sha256(path), reference['input_csv_sha256'])
+        self.assertEqual(set(names), set(reference['ecgs']))
+
     def test_normal_template_is_required(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

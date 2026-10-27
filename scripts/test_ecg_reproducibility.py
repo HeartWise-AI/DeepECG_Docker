@@ -77,8 +77,8 @@ def validate_input_csv(path, ecgs, count):
         if not (row.get('ecg_machine_diagnosis') or '').strip():
             raise ValueError('Input CSV has an empty diagnosis')
         filename = row['77_classes_ecg_file_name']
-        if not filename or Path(filename).name != filename or Path(filename).suffix.lower() != '.xml':
-            raise ValueError('ECG filenames must be XML basenames')
+        if not filename or Path(filename).name != filename or Path(filename).suffix.lower() not in {'.xml', '.npy'}:
+            raise ValueError('ECG filenames must be XML or NPY basenames')
         for task, (column, _, _) in TASKS.items():
             if row[column] != filename:
                 raise ValueError('All tasks must use the same ECG in each row')
@@ -104,7 +104,7 @@ def capture_run(folder, names):
         raise ValueError('Expected predictions from all eight signal models')
     if list((folder / 'outputs').glob('missing_files_*.csv')):
         raise ValueError('Pipeline reported missing ECGs')
-    reports = list((folder / 'outputs').glob('batch_*/ecg_processing_detailed_report.csv'))
+    reports = list((folder / 'outputs').glob('batch_*/**/ecg_processing_detailed_report.csv'))
     if not reports:
         raise ValueError('Missing preprocessing reports')
     statuses = []
@@ -182,9 +182,10 @@ def command(args, log):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--ecg-dir', type=Path, required=True)
+    parser.add_argument('--ecg-dir', type=Path, default=Path('/mnt/data1/datasets/unit_tests/ECGs'),
+                        help='Test ECG folder (default: /mnt/data1/datasets/unit_tests/ECGs)')
     parser.add_argument('--input-csv', type=Path, required=True, help='CSV with diagnosis text, binary labels, and ECG filenames')
-    parser.add_argument('--reference', type=Path, default=Path(__file__).resolve().parents[1] / 'inputs/data_rows_reproducibility_50.reference.json', help='Saved expected outputs; never overwritten by the test')
+    parser.add_argument('--reference', type=Path, default=Path(__file__).resolve().parents[1] / 'tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json', help='Saved expected outputs; never overwritten by the test')
     parser.add_argument('--api-key-file', type=Path, required=True)
     parser.add_argument('--work-dir', type=Path, required=True, help='New private artifact directory')
     parser.add_argument('--count', type=int, default=50)
