@@ -231,17 +231,23 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
 ## Testing
 
 Run the complete pipeline once, including BERT and all eight signal models, on
-50 approved de-identified XML ECGs and compare with saved reference predictions:
+50 approved de-identified ECGs (25 XML and 25 equivalent decoded NPY files) and
+compare with saved reference predictions:
 
 ```bash
 python scripts/test_ecg_reproducibility.py \
-  --ecg-dir /path/to/approved/ecgs \
+  --ecg-dir /mnt/data1/datasets/unit_tests/ECGs \
   --input-csv "$PWD/tests/fixtures/reproducibility/data_rows_reproducibility_50.csv" \
   --reference "$PWD/tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json" \
   --api-key-file "$PWD/api_key.json" \
   --work-dir /path/to/new/private/test-results \
   --gpu 0
 ```
+
+The default ECG folder is `/mnt/data1/datasets/unit_tests/ECGs`; use `--ecg-dir`
+to override it on another machine. The CSV selects exactly 25 XMLs and 25 NPYs;
+extra files in that folder are not included. The NPYs contain the same decoded
+signals as their original XMLs, before shared scaling and cleaning.
 
 The work directory must be new. Omit `--gpu` to use CPU. The test builds once with
 `--pull --no-cache` from a source-only context, downloads BERT and the eight
