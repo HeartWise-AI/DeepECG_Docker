@@ -200,13 +200,16 @@ CSV and one pipeline run. Choose the corresponding template:
 | NPY only | [data_rows_template_npy.csv](inputs/data_rows_template_npy.csv) |
 | XML only | [data_rows_template_xml.csv](inputs/data_rows_template_xml.csv) |
 
+The combined template contains the exact rows from the NPY-only and XML-only
+templates, preserving their filenames, diagnosis text, and outcome labels.
+
 The pipeline chooses each file's decoder from its extension; no format flag is
 needed. XML and NPY signals are processed together, with one combined probabilities
 CSV and metrics JSON/CSV per selected model and task.
 
 1. Prepare your input data:
-   - Copy the appropriate template and replace the example filenames, diagnosis text, and binary labels with your own data. The example labels are placeholders, and the dummy ECG files are not included.
-   - Use distinct filename stems for different ECGs: `dummy_npy.npy` and `dummy_xml.xml` can coexist, but `dummy.npy` and `dummy.xml` would both map to `dummy.base64` and are rejected.
+   - Copy the appropriate template and use each row with its matching ECG file, diagnosis text, and outcome labels. When substituting another ECG, update those values together.
+   - The supplied rows use `dummy_ecg.npy` and `dummy_ecg.xml`. These share a filename stem, so the current pipeline rejects running them together: both would map to `dummy_ecg.base64`. To run this example as a mixed cohort, give the files distinct stems and update their corresponding CSV filenames, keeping each file's diagnosis and labels unchanged.
    - For each task, add two columns with the following format:
      ```
      'ecg_machine_diagnosis': '77_classes_ecg_file_name',
