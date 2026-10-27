@@ -19,6 +19,7 @@ from utils.files_handler import (
     read_api_key,
     save_df,
     load_df,
+    validate_signal_paths,
 )
 from utils.log_config import get_logger
 
@@ -179,7 +180,8 @@ def create_preprocessing_dataframe(df: pd.DataFrame, existing_file_columns: list
             
     return df_preprocessing, df_missing
 
-def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_column: str, preprocessing_folder: str) -> pd.DataFrame:
+def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_column: str,
+                              preprocessing_folder: str, processed_paths: set[str] | None = None) -> pd.DataFrame:
     """
     Build an analysis DataFrame with diagnosis and paths to preprocessed .base64 ECG files.
 
@@ -191,6 +193,7 @@ def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_
         diagnosis_column: Column name for diagnosis labels.
         ecg_file_column: Column name for ECG file names.
         preprocessing_folder: Directory where preprocessed .base64 files are stored.
+        processed_paths: In full_run, only use files successfully produced by this run.
 
     Returns:
         DataFrame with columns diagnosis and ecg_path.
@@ -207,6 +210,8 @@ def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_
         
     # Remove files that do not exist
     df_analysis = df_analysis[df_analysis['ecg_path'].apply(os.path.exists)]
+    if processed_paths is not None:
+        df_analysis = df_analysis[df_analysis['ecg_path'].isin(processed_paths)]
     # reset index to 0
     df_analysis = df_analysis.reset_index(drop=True)
     
@@ -235,9 +240,15 @@ def main(args: HearWiseArgs):
             df=df,
             diagnosis_to_file_columns=DIAGNOSIS_TO_FILE_COLUMNS
         )
+        # Include missing sources: their labels must not resolve to another ECG's output.
+        validate_signal_paths(
+            os.path.join(args.ecg_signals_path, name)
+            for name in df[existing_file_columns].stack()
+        )
         set_up_directories(args)
 
         preprocessing_failed = False
+        processed_paths = None
         if args.mode == Mode.PREPROCESSING or args.mode == Mode.FULL_RUN:
             logger.info("Preprocessing data...")
             logger.info("Creating preprocessing dataframe...")
@@ -258,6 +269,7 @@ def main(args: HearWiseArgs):
                 logger.warning("Preprocessing failed completely.")
                 preprocessing_failed = True
             else:
+                processed_paths = set(preprocessed_df['ecg_path'])
                 logger.info("Data preprocessed.")
 
         if (args.mode == Mode.ANALYSIS or args.mode == Mode.FULL_RUN) and not preprocessing_failed:
@@ -268,7 +280,8 @@ def main(args: HearWiseArgs):
                     df=df,
                     diagnosis_column=diagnosis_column,
                     ecg_file_column=ecg_file_column,
-                    preprocessing_folder=args.preprocessing_folder
+                    preprocessing_folder=args.preprocessing_folder,
+                    processed_paths=processed_paths
                 )
                 logger.info("Analysis dataframe created for %s.", diagnosis_column)
                 args.diagnosis_classifier_model_name = MODEL_MAPPING[diagnosis_column]['bert']

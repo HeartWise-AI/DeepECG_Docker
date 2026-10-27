@@ -341,9 +341,32 @@ When you’re done, exit the shell (`exit`) and stop the container: `docker stop
 
 After running the pipeline, the `outputs/` folder contains the following files:
 
+### Mixed XML and NPY inputs
+
+A task's file column can contain both XML and NPY paths, including uppercase
+extensions. Each file is decoded with its own loader. Within each batch of up to
+10,000 unique signal files, successful records are restored to their input order
+before shared scaling and cleaning. The batch size and cohort-dependent scaling
+are unchanged: changing the cohort or batch boundaries can change predictions.
+
+XML and NPY predictions are combined per model/task: one `*_probabilities.csv`,
+one metrics JSON, and one metrics CSV. Metrics cover the combined successfully
+analysed records. Failed files are reported, excluded from inference in `full_run`
+(even if old preprocessed files exist), and cause a nonzero exit status.
+
+Only `.xml` and `.npy` are accepted by signal preprocessing. Sources must have
+unique filename stems because preprocessed files retain the existing `<stem>.base64`
+naming. For example, `record.xml` and `record.npy` must be renamed to distinct
+stems; the pipeline rejects this collision before preprocessing rather than
+overwriting one signal.
+
 ### Preprocessing Reports (per batch)
 
 Located in `outputs/batch_X/` where X is the batch number:
+
+For batches containing both formats, reports are stored separately under
+`outputs/batch_X/xml/` and `outputs/batch_X/npy/`. Homogeneous batches retain the
+existing location. NPY reports have no `xml_type` column.
 
 **`ecg_processing_detailed_report.csv`** - Per-file processing status:
 

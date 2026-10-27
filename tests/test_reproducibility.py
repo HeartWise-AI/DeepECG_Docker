@@ -50,6 +50,19 @@ class ComparisonTests(unittest.TestCase):
         self.assertTrue(result['pass'])
         self.assertEqual(len(result['models']), 9)
 
+    def test_mixed_format_preprocessing_reports_are_checked_together(self):
+        batch = self.runs[1] / 'outputs/batch_1'
+        (batch / 'ecg_processing_detailed_report.csv').unlink()
+        for extension, file_id in [('xml', 'synthetic_1'), ('npy', 'synthetic_2')]:
+            (batch / extension).mkdir()
+            (batch / extension / 'ecg_processing_detailed_report.csv').write_text(
+                f'file_id,status\n{file_id},Success\n'
+            )
+        self.assertTrue(repro.compare_reference(self.reference, self.runs[1], self.names)['pass'])
+        (batch / 'npy/ecg_processing_detailed_report.csv').unlink()
+        with self.assertRaisesRegex(ValueError, 'Incomplete or failed preprocessing report'):
+            repro.compare_reference(self.reference, self.runs[1], self.names)
+
     def test_probability_drift_fails(self):
         path = next((self.runs[1] / 'outputs').glob('*afib*probabilities.csv'))
         path.write_text(path.read_text().replace('0.25', '0.26'))

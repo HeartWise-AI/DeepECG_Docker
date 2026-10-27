@@ -104,7 +104,7 @@ def capture_run(folder, names):
         raise ValueError('Expected predictions from all eight signal models')
     if list((folder / 'outputs').glob('missing_files_*.csv')):
         raise ValueError('Pipeline reported missing ECGs')
-    reports = list((folder / 'outputs').glob('batch_*/ecg_processing_detailed_report.csv'))
+    reports = list((folder / 'outputs').glob('batch_*/**/ecg_processing_detailed_report.csv'))
     if not reports:
         raise ValueError('Missing preprocessing reports')
     statuses = []
