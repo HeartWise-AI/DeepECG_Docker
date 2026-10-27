@@ -1,0 +1,75 @@
+name: Claude PR assistant
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened]
+
+jobs:
+  claude:
+    if: >-
+      !endsWith(github.actor, '[bot]') &&
+      ((github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+       (github.event_name == 'issues' &&
+         (contains(github.event.issue.title, '@claude') || contains(github.event.issue.body, '@claude'))) ||
+       (github.event_name == 'pull_request_review' &&
+         (github.event.review.state == 'changes_requested' || contains(github.event.review.body, '@claude'))))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: claude-${{ github.repository }}-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Check out the trusted base branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Reject fork PRs before loading Claude credentials
+        id: origin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.pull_request && github.event.issue.number || github.event.pull_request.number }}
+        run: |
+          if [ -n "$PR_NUMBER" ]; then
+            head_repo=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.repo.full_name')
+            if [ "$head_repo" != "$GITHUB_REPOSITORY" ]; then
+              echo 'eligible=false' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo 'eligible=true' >> "$GITHUB_OUTPUT"
+
+      - name: Respond to @claude
+        if: >-
+          steps.origin.outputs.eligible == 'true' &&
+          !(github.event_name == 'pull_request_review' && github.event.review.state == 'changes_requested')
+        uses: anthropics/claude-code-action@8041f1d17e0e7d2f2cfe35002962e9f26237c0bb # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: --max-turns 30
+
+      - name: Address a collaborator's requested changes
+        if: >-
+          steps.origin.outputs.eligible == 'true' &&
+          github.event_name == 'pull_request_review' && github.event.review.state == 'changes_requested'
+        uses: anthropics/claude-code-action@8041f1d17e0e7d2f2cfe35002962e9f26237c0bb # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Review the changes-requested review and all currently unresolved review threads
+            on this pull request. Address each actionable finding with the smallest safe change.
+            Run relevant tests and report their actual result. Commit and push fixes to this
+            same PR branch. For any finding you disagree with or cannot safely fix, explain
+            why in a PR comment. Post a concise per-comment summary with links to changes.
+            Do not merge, deploy, expose secrets, or include private data in comments/logs.
+          claude_args: --max-turns 40
