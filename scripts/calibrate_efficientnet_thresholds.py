@@ -57,6 +57,10 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--inference-batch-size", type=int, default=128)
     parser.add_argument("--preprocessing-workers", type=int, default=16)
     parser.add_argument("--torch-threads", type=int, default=max(1, min(16, os.cpu_count() or 1)))
+    parser.add_argument(
+        "--start-row", type=int, default=0,
+        help="Zero-based partition start; must align to the preprocessing batch size",
+    )
     parser.add_argument("--max-rows", type=int, help="Pilot-only row limit")
     parser.add_argument(
         "--api-key-file", type=Path,
@@ -131,6 +135,8 @@ def main() -> int:
         raise ValueError("Batch sizes must be positive.")
     if args.preprocessing_workers < 1 or args.torch_threads < 1:
         raise ValueError("Worker and thread counts must be positive.")
+    if args.start_row < 0 or args.start_row % args.preprocessing_batch_size:
+        raise ValueError("start_row must be non-negative and align to preprocessing_batch_size.")
     if args.max_rows is not None and args.max_rows < 1:
         raise ValueError("max_rows must be positive.")
 
@@ -143,9 +149,12 @@ def main() -> int:
     parquet = pq.ParquetFile(args.input)
     if args.path_column not in parquet.schema_arrow.names:
         raise ValueError(f"Path column {args.path_column!r} is missing from the parquet.")
+    if args.start_row >= parquet.metadata.num_rows:
+        raise ValueError("start_row must be smaller than the parquet row count.")
     label_mapping = resolve_label_columns(parquet.schema_arrow.names)
     path_maps = parse_path_maps(args.path_map)
-    rows_requested = min(parquet.metadata.num_rows, args.max_rows or parquet.metadata.num_rows)
+    rows_available = parquet.metadata.num_rows - args.start_row
+    rows_requested = min(rows_available, args.max_rows or rows_available)
     model_info = model_entry(MODEL_REPOSITORY)
     run_manifest = {
         "schema_version": SCHEMA_VERSION,
@@ -153,6 +162,8 @@ def main() -> int:
             "sha256": sha256(args.input),
             "rows_available": parquet.metadata.num_rows,
             "rows_requested": rows_requested,
+            "start_row": args.start_row,
+            "end_row_exclusive": args.start_row + rows_requested,
             "path_column": args.path_column,
             "label_columns": label_mapping,
         },
@@ -199,26 +210,40 @@ def main() -> int:
     processed_rows = successful_rows = failed_rows = 0
     started = time.monotonic()
     completed_paths: list[Path] = []
-    for batch_index, record_batch in enumerate(parquet.iter_batches(
+    source_row = 0
+    output_batch_index = 0
+    for record_batch in parquet.iter_batches(
         batch_size=args.preprocessing_batch_size,
         columns=selected_columns,
         use_threads=True,
-    )):
+    ):
+        batch_start = source_row
+        source_row += record_batch.num_rows
+        if source_row <= args.start_row:
+            continue
+        if batch_start < args.start_row:
+            record_batch = record_batch.slice(args.start_row - batch_start)
         if processed_rows >= rows_requested:
             break
         remaining = rows_requested - processed_rows
         if record_batch.num_rows > remaining:
             record_batch = record_batch.slice(0, remaining)
         rows = record_batch.num_rows
-        output = shard_path(args.output_dir, batch_index)
+        output = shard_path(args.output_dir, output_batch_index)
         completed_paths.append(output)
-        if args.resume and output.exists() and valid_shard(output, processed_rows, rows):
+        global_start = args.start_row + processed_rows
+        if args.resume and output.exists() and valid_shard(output, global_start, rows):
             probabilities = pq.read_table(output, columns=[probability_column(0)])[probability_column(0)]
             succeeded = int(np.isfinite(probabilities.to_numpy(zero_copy_only=False)).sum())
             successful_rows += succeeded
             failed_rows += rows - succeeded
             processed_rows += rows
-            print(f"batch={batch_index + 1} rows={processed_rows}/{rows_requested} resumed=true", flush=True)
+            print(
+                f"batch={output_batch_index + 1} rows={processed_rows}/{rows_requested} "
+                "resumed=true",
+                flush=True,
+            )
+            output_batch_index += 1
             continue
 
         paths = [
@@ -241,7 +266,7 @@ def main() -> int:
             model, cleaned, args.inference_batch_size, device="cpu"
         )
         output.parent.mkdir(parents=True, exist_ok=True)
-        write_shard(output, processed_rows, labels, probabilities)
+        write_shard(output, global_start, labels, probabilities)
 
         succeeded = len(positions)
         successful_rows += succeeded
@@ -250,10 +275,11 @@ def main() -> int:
         elapsed = time.monotonic() - started
         rate = processed_rows / elapsed if elapsed else 0
         print(
-            f"batch={batch_index + 1} rows={processed_rows}/{rows_requested} "
+            f"batch={output_batch_index + 1} rows={processed_rows}/{rows_requested} "
             f"successful={successful_rows} failed={failed_rows} rows_per_second={rate:.2f}",
             flush=True,
         )
+        output_batch_index += 1
         del labels, probabilities, positions, cleaned, report, record_batch
 
     run_manifest["result"] = {

@@ -8,6 +8,7 @@ import pyarrow.parquet as pq
 import pytest
 import torch
 
+from scripts.aggregate_efficientnet_thresholds import collect_partition_shards
 from scripts.calibrate_efficientnet_thresholds import (
     load_checkpoint_matrices,
     valid_shard,
@@ -145,3 +146,50 @@ def test_checkpoint_shard_has_no_source_paths_and_round_trips(tmp_path):
     np.testing.assert_array_equal(actual_labels, labels)
     np.testing.assert_array_equal(actual_probabilities, probabilities)
     assert probability_column(0) in pq.read_schema(path).names
+
+
+def test_partition_aggregation_requires_complete_contiguous_rows(tmp_path):
+    labels = np.zeros((2, len(ECG_PATTERNS)), dtype=np.uint8)
+    probabilities = np.full((2, len(ECG_PATTERNS)), 0.25, dtype=np.float32)
+    directories = []
+    for part, start in enumerate((0, 2)):
+        directory = tmp_path / f"part_{part}"
+        (directory / "predictions").mkdir(parents=True)
+        write_shard(
+            directory / "predictions" / "batch_000000.parquet",
+            start=start,
+            labels=labels,
+            probabilities=probabilities,
+        )
+        manifest = {
+            "schema_version": 1,
+            "input": {
+                "sha256": "synthetic",
+                "rows_available": 4,
+                "rows_requested": 2,
+                "start_row": start,
+                "end_row_exclusive": start + 2,
+            },
+            "model": {"repository": "synthetic", "revision": "1"},
+            "preprocessing": {"batch_size": 2},
+            "inference": {"batch_size": 1},
+            "result": {
+                "rows_processed": 2,
+                "rows_successful": 2,
+                "rows_failed": 0,
+                "elapsed_seconds": 1,
+            },
+        }
+        (directory / "manifest.json").write_text(json.dumps(manifest))
+        directories.append(directory)
+
+    shards, summary = collect_partition_shards(directories)
+    assert len(shards) == 2
+    assert summary["rows_processed"] == summary["rows_successful"] == 4
+
+    broken = json.loads((directories[1] / "manifest.json").read_text())
+    broken["input"]["start_row"] = 3
+    broken["input"]["end_row_exclusive"] = 5
+    (directories[1] / "manifest.json").write_text(json.dumps(broken))
+    with pytest.raises(ValueError, match="contiguous"):
+        collect_partition_shards(directories)

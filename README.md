@@ -224,6 +224,18 @@ position, binary labels and model probabilities; source paths and report text ar
 written. Keep all calibration outputs private and commit only reviewed aggregate
 threshold metrics.
 
+Large CPU runs may be split across containers with `--start-row` and `--max-rows`.
+Every start row must be a multiple of the 10,000-record preprocessing batch size so
+cohort scaling remains unchanged. Add `--skip-final-metrics` to each partition, then
+verify complete contiguous coverage and calculate the single aggregate artifact:
+
+```bash
+python scripts/aggregate_efficientnet_thresholds.py \
+  --partition-dir /output/part_0 \
+  --partition-dir /output/part_1 \
+  --output /output/efficientnetv2_77_classes_thresholds.json
+```
+
 ## 📄 Usage
 
 You can run XML inputs alone, NPY inputs alone, or both formats together in one
