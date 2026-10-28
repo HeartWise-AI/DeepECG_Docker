@@ -25,6 +25,10 @@
       "repository": "heartwise/efficientnetv2_lvef_under_50",
       "revision": "f3d8d94e703c0172be43f1267611d14a36b464eb"
     },
+    "siglip2_base_encoder": {
+      "repository": "heartwise/SigLIP-2_BaseEncoder",
+      "revision": "3f135079f6d288512c6b434f8bebbf749d9be79e"
+    },
     "siglip2_77_classes": {
       "repository": "heartwise/SigLIP2_77_classes",
       "revision": "d88e23eca7e934a5d473fb62bf411c24b30d9a6a"
