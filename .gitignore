@@ -34,3 +34,9 @@ notebooks/outputs
 *.ipynb_checkpoints
 *.ipynb_meta
 *.ipynb_checkpoints
+
+# Public CVD specification and non-secret example configuration
+!clsa_cvd/model_params.json
+!clsa_cvd.example.json
+!tests/fixtures/clsa_cvd_synthetic.json
+!clsa_cvd/artifacts.json

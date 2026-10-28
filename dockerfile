@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.10
 
 # Set the working directory
@@ -27,6 +28,7 @@ COPY data/ data/
 COPY models/ models/
 COPY utils/ utils/
 COPY thresholds/ thresholds/
+COPY clsa_cvd/ clsa_cvd/
 COPY heartwise.config heartwise.config
 COPY main.py main.py
 COPY models_setup.py models_setup.py
@@ -42,6 +44,7 @@ ARG RUN_MODELS_SETUP=false
 RUN --mount=type=secret,id=hf_api_key,target=/app/api_key.json \
     if [ "$RUN_MODELS_SETUP" = "true" ]; \
     then echo "Running models_setup.py"; \
+    test -r /app/api_key.json || { echo "RUN_MODELS_SETUP=true requires --secret id=hf_api_key,src=PATH_TO_KEY_JSON" >&2; exit 1; }; \
     python models_setup.py; \
     else echo "Skipping models_setup.py"; \
     fi
