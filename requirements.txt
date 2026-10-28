@@ -8,6 +8,6 @@ fastparquet
 tqdm
 statsmodels
 torchmetrics
-pillow==12.3.0
+pillow==13.0.0
 safetensors==0.8.0
 git+https://github.com/HeartWise-AI/HeartWise_StatPlots.git
