@@ -362,7 +362,9 @@ this same manifest. The nine reproducibility models retain the revisions in the
 saved reference; the legacy BERT model has its own pinned revision.
 
 Snapshots are stored under `weights/<model>/<owner>--<repository>/<commit>/`.
-A completion marker is written only after download succeeds. Cache hits check
+Before publishing a completion marker, setup fetches the pinned repository file
+list and verifies that every file is present with the expected size. An offline
+fallback to a partial download cannot become a complete cache. Cache hits check
 that all recorded files exist with the expected sizes; the reproducibility test
 additionally verifies their SHA-256 hashes against the reference. Concurrent
 downloads are locked, interrupted downloads can be retried, and changing a

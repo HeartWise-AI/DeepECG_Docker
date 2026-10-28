@@ -36,7 +36,12 @@ class HuggingFaceWrapper:
             with FileLock(str(folder) + '.lock'):
                 if _complete(folder, marker, entry):
                     return str(folder)
-                repair = marker.exists()
+                repair = folder.exists()
+                info = HfApi().model_info(repo_id, revision=revision, token=token, files_metadata=True)
+                expected = {file.rfilename: file.size for file in (info.siblings or [])}
+                if (info.sha != revision or not expected
+                        or any(not isinstance(size, int) or size < 0 for size in expected.values())):
+                    raise ModelPreparationError(f'{repo_id}: cannot verify the pinned repository file inventory.')
                 marker.unlink(missing_ok=True)
                 logger.info("Downloading %s at %s", repo_id, revision)
                 snapshot_download(repo_id=repo_id, revision=revision, local_dir=str(folder),
@@ -45,10 +50,12 @@ class HuggingFaceWrapper:
                          for p in folder.rglob('*') if p.is_file()
                          and '.cache' not in p.relative_to(folder).parts
                          and p.name not in {marker.name, marker.name + '.tmp'}}
-                if not files:
-                    raise ModelPreparationError(f'{repo_id}: downloaded snapshot is empty.')
+                if files != expected:
+                    raise ModelPreparationError(
+                        f'{repo_id}: incomplete snapshot; files do not match the pinned repository inventory. Retry the download.'
+                    )
                 temporary = marker.with_name(marker.name + '.tmp')
-                temporary.write_text(json.dumps({**entry, 'files': files}, sort_keys=True))
+                temporary.write_text(json.dumps({**entry, 'schema_version': 1, 'files': expected}, sort_keys=True))
                 temporary.replace(marker)
         except ModelPreparationError:
             raise
@@ -99,7 +106,7 @@ def _complete(folder, marker, entry):
     """Check publication metadata and every file's presence/size, including read-only caches."""
     try:
         saved = json.loads(marker.read_text())
-        if any(saved.get(key) != value for key, value in entry.items()):
+        if saved.get('schema_version') != 1 or any(saved.get(key) != value for key, value in entry.items()):
             return False
         files = saved['files']
         return bool(files) and all(
