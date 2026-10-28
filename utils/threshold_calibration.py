@@ -165,9 +165,10 @@ def preprocess_npy_batch(
     previous_disabled = file_logger.disabled
     file_logger.disabled = True
     try:
-        decoded = _thread_map_in_order(
-            processor.process_single_file, paths, preprocessing_workers
-        )
+        # File latency varies independently; fine-grained scheduling keeps all I/O
+        # workers busy. CPU-heavy transforms below use a few ordered chunks instead.
+        with ThreadPoolExecutor(max_workers=preprocessing_workers) as executor:
+            decoded = list(executor.map(processor.process_single_file, paths))
     finally:
         file_logger.disabled = previous_disabled
     processor.report.extend(item[0] for item in decoded)
