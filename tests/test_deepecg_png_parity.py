@@ -1,6 +1,7 @@
 """Parity of the Docker DeepECG-PNG model with the DeepECG-PNG code it was exported from.
 
-Needs the weights downloaded from Hugging Face (weights/deepecg_png) and the reference
+Needs the pinned weights snapshot downloaded from Hugging Face
+(weights/deepecg_png/heartwise--deepecg_png/<commit>, models/manifest.json) and the reference
 file written by `tools/export_deepecg_png.py --reference-out FILE` ($DEEPECG_PNG_REFERENCE): real
 validation PNGs with the features and probabilities computed by the training code. Skipped when
 either is missing.
@@ -23,12 +24,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from models import deepecg_png  # noqa: E402
 from utils.image_preprocessing import load_ecg_image  # noqa: E402
+from utils.model_manifest import ModelPreparationError, model_entry  # noqa: E402
+
+
+def _pinned_weights():
+    """The pinned snapshot folder of heartwise/deepecg_png, or '' if the manifest has no entry."""
+    try:
+        revision = model_entry(deepecg_png.HF_REPO_ID)['revision']
+    except ModelPreparationError:
+        return ''
+    return os.path.join(deepecg_png.WEIGHTS_DIR, deepecg_png.HF_REPO_ID.replace('/', '--'), revision)
+
 
 REFERENCE = os.environ.get("DEEPECG_PNG_REFERENCE", "")
 pytestmark = pytest.mark.skipif(
     not (REFERENCE and os.path.exists(REFERENCE)
-         and os.path.exists(os.path.join(deepecg_png.WEIGHTS_DIR, "encoder.safetensors"))),
-    reason="needs weights/deepecg_png (from heartwise/deepecg_png) and $DEEPECG_PNG_REFERENCE")
+         and os.path.exists(os.path.join(_pinned_weights(), "encoder.safetensors"))),
+    reason="needs the pinned heartwise/deepecg_png snapshot and $DEEPECG_PNG_REFERENCE")
 
 
 @pytest.fixture(scope="module")

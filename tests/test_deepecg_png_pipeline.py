@@ -442,8 +442,8 @@ def test_feature_cache_drops_the_oldest_batches(world, monkeypatch):
 
 
 # ---------------------------------------------------------------------------- image header checks
-# Pillow 12.3 has CVEs in several decoders (fixed in Pillow 13, which needs Python 3.11): every
-# image is opened with its own format's decoder only, after a header check (open_ecg_image).
+# Only Pillow's PNG and JPEG decoders are ever reached: every image is opened with its own
+# format's decoder only, after a header check (open_ecg_image).
 import struct  # noqa: E402
 import zlib  # noqa: E402
 

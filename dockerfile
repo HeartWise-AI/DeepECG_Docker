@@ -38,6 +38,9 @@ COPY main.py main.py
 COPY models_setup.py models_setup.py
 COPY run_pipeline.bash run_pipeline.bash
 
+# Create an empty credential file; real keys are supplied only through secret mounts.
+RUN python -m utils.credentials
+
 # Make the bash script executable
 RUN chmod +x run_pipeline.bash
 
