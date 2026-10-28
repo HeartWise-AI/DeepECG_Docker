@@ -31,6 +31,7 @@ COPY heartwise.config heartwise.config
 COPY main.py main.py
 COPY models_setup.py models_setup.py
 COPY run_pipeline.bash run_pipeline.bash
+COPY scripts/calibrate_efficientnet_thresholds.py scripts/calibrate_efficientnet_thresholds.py
 
 # Create an empty credential file; real keys are supplied only through secret mounts.
 RUN python -m utils.credentials

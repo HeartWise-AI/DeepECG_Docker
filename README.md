@@ -191,6 +191,34 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
 - During WCR 77-class inference, the pipeline logs the number of predictions exceeding each label's threshold for monitoring purposes.
 - Binary models (LVEF, AFIB 5Y) compute thresholds dynamically at evaluation time using the Youden index when ground truth is available.
 
+### EfficientNetV2 77-class calibration
+
+The CPU calibration runner reuses the Docker's NPY decoder, cohort-level scaling,
+signal cleaning and pinned EfficientNetV2 model. It preprocesses 10,000 ECGs together
+to preserve the production scaling boundary, performs inference in smaller in-memory
+minibatches, and writes de-identified parquet checkpoints instead of one persistent
+Base64 file per ECG. The input parquet must contain `npy_path` and the 77 binary label
+columns named in `utils/constants.py`.
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v /mnt/data1:/mnt/data1:ro \
+  -v "$PWD/calibration-output:/output" \
+  -v "$PWD/weights:/app/weights" \
+  deepecg-docker \
+  python scripts/calibrate_efficientnet_thresholds.py \
+    --input /mnt/data1/datasets/DeepECG/SSL_pretraining/split/mhi/train_trial_v1.1.parquet \
+    --output-dir /output \
+    --path-map /media/data1=/mnt/data1 \
+    --resume
+```
+
+Use `--max-rows 10000` for a pilot. Checkpoints contain only a numeric source-row
+position, binary labels and model probabilities; source paths and report text are not
+written. Keep all calibration outputs private and commit only reviewed aggregate
+threshold metrics.
+
 ## 📄 Usage
 
 You can run XML inputs alone, NPY inputs alone, or both formats together in one
