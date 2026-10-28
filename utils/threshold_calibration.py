@@ -31,6 +31,25 @@ LABEL_COLUMN_PREFIX = "label__"
 PROBABILITY_COLUMN_PREFIX = "probability__"
 
 
+def _thread_map_in_order(function, values: Sequence, max_workers: int) -> list:
+    """Apply ``function`` in a few ordered chunks instead of one future per ECG."""
+    if len(values) == 0:
+        return []
+    chunk_size = math.ceil(len(values) / max_workers)
+    ranges = [
+        (start, min(start + chunk_size, len(values)))
+        for start in range(0, len(values), chunk_size)
+    ]
+
+    def process_range(bounds: tuple[int, int]) -> list:
+        start, end = bounds
+        return [function(values[index]) for index in range(start, end)]
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        chunks = executor.map(process_range, ranges)
+        return [item for chunk in chunks for item in chunk]
+
+
 class CalibrationECGSignalProcessor(ECGSignalProcessor):
     """Exact production preprocessing with cohort-wide NumPy work parallelized.
 
@@ -47,8 +66,9 @@ class CalibrationECGSignalProcessor(ECGSignalProcessor):
 
     def plot_mean_spectrum(self, signals: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         signals = signals.astype(np.float32)
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            spectra = list(executor.map(self.compute_magnitude_spectrum, signals))
+        spectra = _thread_map_in_order(
+            self.compute_magnitude_spectrum, signals, self.max_workers
+        )
         if not spectra:
             raise ValueError("Cannot calculate a spectrum for an empty ECG batch.")
         fft_freq = spectra[-1][0]
@@ -60,14 +80,27 @@ class CalibrationECGSignalProcessor(ECGSignalProcessor):
             np.array(df["ecg_signal"].tolist())[:, :, 0]
         )
         factor = power_ratio / self.compute_average_spectral_power(mean_magnitude_spectrum)
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            scaled = list(executor.map(
-                lambda signal: self.adjust_spectral_power(signal, factor),
-                df["ecg_signal"].tolist(),
-            ))
+        scaled = _thread_map_in_order(
+            lambda signal: self.adjust_spectral_power(signal, factor),
+            df["ecg_signal"].tolist(),
+            self.max_workers,
+        )
         result = df.copy()
         result["ecg_signal"] = scaled
         return result
+
+    def process_signals_parallel(
+        self,
+        signals: np.ndarray,
+        flatten_ranges: list[tuple[float, float]] = [(59.5, 60.5), (69.5, 70.5)],
+        max_workers: int = 4,
+    ) -> np.ndarray:
+        cleaned = _thread_map_in_order(
+            lambda signal: self.flatten_fft_peak(signal, flatten_ranges),
+            signals,
+            max_workers,
+        )
+        return np.array(cleaned)
 
 
 def normalized_name(value: str) -> str:
@@ -132,8 +165,9 @@ def preprocess_npy_batch(
     previous_disabled = file_logger.disabled
     file_logger.disabled = True
     try:
-        with ThreadPoolExecutor(max_workers=preprocessing_workers) as executor:
-            decoded = list(executor.map(processor.process_single_file, paths))
+        decoded = _thread_map_in_order(
+            processor.process_single_file, paths, preprocessing_workers
+        )
     finally:
         file_logger.disabled = previous_disabled
     processor.report.extend(item[0] for item in decoded)

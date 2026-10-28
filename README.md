@@ -205,6 +205,7 @@ docker run --rm \
   --cpus 8 \
   --user "$(id -u):$(id -g)" \
   -e MPLCONFIGDIR=/tmp/matplotlib \
+  -e XDG_CACHE_HOME=/tmp/cache \
   -v /mnt/data1:/mnt/data1:ro \
   -v "$PWD/calibration-output:/output" \
   -v "$PWD/weights:/app/weights" \

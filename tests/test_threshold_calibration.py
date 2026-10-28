@@ -96,6 +96,15 @@ def test_parallel_cohort_operations_match_production_implementation():
     for expected, actual in zip(expected_scaled["ecg_signal"], actual_scaled["ecg_signal"]):
         np.testing.assert_array_equal(actual, expected)
 
+    ranges = [(59.5, 60.5)]
+    expected_cleaned = production.process_signals_parallel(
+        np.stack(arrays)[:, :, 0].astype(np.float32), ranges, max_workers=4
+    )
+    actual_cleaned = calibration.process_signals_parallel(
+        np.stack(arrays)[:, :, 0].astype(np.float32), ranges, max_workers=4
+    )
+    np.testing.assert_array_equal(actual_cleaned, expected_cleaned)
+
 
 def test_metrics_are_json_safe_and_leave_single_class_threshold_unavailable():
     labels = np.zeros((4, len(ECG_PATTERNS)), dtype=np.uint8)
