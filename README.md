@@ -202,7 +202,9 @@ columns named in `utils/constants.py`.
 
 ```bash
 docker run --rm \
+  --cpus 8 \
   --user "$(id -u):$(id -g)" \
+  -e MPLCONFIGDIR=/tmp/matplotlib \
   -v /mnt/data1:/mnt/data1:ro \
   -v "$PWD/calibration-output:/output" \
   -v "$PWD/weights:/app/weights" \
@@ -211,6 +213,8 @@ docker run --rm \
     --input /mnt/data1/datasets/DeepECG/SSL_pretraining/split/mhi/train_trial_v1.1.parquet \
     --output-dir /output \
     --path-map /media/data1=/mnt/data1 \
+    --preprocessing-workers 8 \
+    --torch-threads 8 \
     --resume
 ```
 

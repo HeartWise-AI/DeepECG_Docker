@@ -3,6 +3,7 @@
 import json
 
 import numpy as np
+import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 import torch
@@ -15,6 +16,7 @@ from scripts.calibrate_efficientnet_thresholds import (
 from utils.constants import ECG_PATTERNS
 from utils.ecg_signal_processor import ECGSignalProcessor
 from utils.threshold_calibration import (
+    CalibrationECGSignalProcessor,
     compute_calibration_metrics,
     infer_minibatches,
     parse_path_maps,
@@ -56,6 +58,43 @@ def test_inference_minibatch_size_does_not_change_per_sample_results():
     one = infer_minibatches(SyntheticModel(), signals, 1)
     four = infer_minibatches(SyntheticModel(), signals, 4)
     np.testing.assert_array_equal(one, four)
+
+
+def test_inference_rejects_invalid_probabilities():
+    class InvalidModel:
+        model = torch.nn.Identity()
+
+        def __call__(self, tensor):
+            return torch.full((len(tensor), len(ECG_PATTERNS)), float("nan"))
+
+    signals = [np.zeros((2500, 12), dtype=np.float32)]
+    with pytest.raises(ValueError, match="non-finite"):
+        infer_minibatches(InvalidModel(), signals, 1)
+
+
+def test_parallel_cohort_operations_match_production_implementation():
+    rng = np.random.default_rng(20261028)
+    arrays = [rng.normal(size=(2500, 12)).astype(np.float64) for _ in range(8)]
+    original = pd.DataFrame({
+        "ecg_path": [str(index) for index in range(len(arrays))],
+        "ecg_signal": arrays,
+    })
+    production = ECGSignalProcessor()
+    calibration = CalibrationECGSignalProcessor(max_workers=4)
+
+    expected_freq, expected_spectrum = production.plot_mean_spectrum(
+        np.stack(arrays)[:, :, 0]
+    )
+    actual_freq, actual_spectrum = calibration.plot_mean_spectrum(
+        np.stack(arrays)[:, :, 0]
+    )
+    np.testing.assert_array_equal(actual_freq, expected_freq)
+    np.testing.assert_array_equal(actual_spectrum, expected_spectrum)
+
+    expected_scaled = production.scale_ecg_signals(original.copy(), power_ratio=2.5)
+    actual_scaled = calibration.scale_ecg_signals(original.copy(), power_ratio=2.5)
+    for expected, actual in zip(expected_scaled["ecg_signal"], actual_scaled["ecg_signal"]):
+        np.testing.assert_array_equal(actual, expected)
 
 
 def test_metrics_are_json_safe_and_leave_single_class_threshold_unavailable():

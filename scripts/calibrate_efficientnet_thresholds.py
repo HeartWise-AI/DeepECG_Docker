@@ -129,6 +129,8 @@ def main() -> int:
     args = arguments()
     if args.preprocessing_batch_size < 1 or args.inference_batch_size < 1:
         raise ValueError("Batch sizes must be positive.")
+    if args.preprocessing_workers < 1 or args.torch_threads < 1:
+        raise ValueError("Worker and thread counts must be positive.")
     if args.max_rows is not None and args.max_rows < 1:
         raise ValueError("max_rows must be positive.")
 
@@ -156,6 +158,7 @@ def main() -> int:
         },
         "model": model_info,
         "preprocessing": {
+            "implementation": "in_memory_parallel_order_preserving",
             "batch_size": args.preprocessing_batch_size,
             "workers": args.preprocessing_workers,
             "path_maps": [{"source": source, "destination": destination} for source, destination in path_maps],

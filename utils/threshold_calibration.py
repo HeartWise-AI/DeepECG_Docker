@@ -13,6 +13,7 @@ import logging
 import math
 import os
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -28,6 +29,45 @@ from utils.files_handler import NPYProcessor
 
 LABEL_COLUMN_PREFIX = "label__"
 PROBABILITY_COLUMN_PREFIX = "probability__"
+
+
+class CalibrationECGSignalProcessor(ECGSignalProcessor):
+    """Exact production preprocessing with cohort-wide NumPy work parallelized.
+
+    ``ECGSignalProcessor`` already parallelizes the final per-signal cleaning, but
+    computes every FFT used for cohort scaling and spectral-peak detection in a
+    serial loop.  Those FFTs are independent.  ``executor.map`` preserves their
+    order, so the subsequent NumPy mean and every downstream operation are the
+    same as the production implementation.
+    """
+
+    def __init__(self, max_workers: int, fs: int = 250):
+        super().__init__(fs=fs)
+        self.max_workers = max_workers
+
+    def plot_mean_spectrum(self, signals: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        signals = signals.astype(np.float32)
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            spectra = list(executor.map(self.compute_magnitude_spectrum, signals))
+        if not spectra:
+            raise ValueError("Cannot calculate a spectrum for an empty ECG batch.")
+        fft_freq = spectra[-1][0]
+        mean_magnitude_spectrum = np.mean([item[1] for item in spectra], axis=0)
+        return fft_freq, mean_magnitude_spectrum
+
+    def scale_ecg_signals(self, df: pd.DataFrame, power_ratio: float) -> pd.DataFrame:
+        _, mean_magnitude_spectrum = self.plot_mean_spectrum(
+            np.array(df["ecg_signal"].tolist())[:, :, 0]
+        )
+        factor = power_ratio / self.compute_average_spectral_power(mean_magnitude_spectrum)
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            scaled = list(executor.map(
+                lambda signal: self.adjust_spectral_power(signal, factor),
+                df["ecg_signal"].tolist(),
+            ))
+        result = df.copy()
+        result["ecg_signal"] = scaled
+        return result
 
 
 def normalized_name(value: str) -> str:
@@ -85,7 +125,6 @@ def preprocess_npy_batch(
     are returned for counting only and must not be persisted because file stems can
     be identifying.
     """
-    frame = pd.DataFrame({"ecg_path": list(paths)})
     processor = NPYProcessor()
     # NPYProcessor's general-purpose exception log includes the source path. Suppress
     # that logger for this protected cohort; only aggregate failure counts leave the run.
@@ -93,18 +132,26 @@ def preprocess_npy_batch(
     previous_disabled = file_logger.disabled
     file_logger.disabled = True
     try:
-        _, signals = processor.process_batch(
-            frame,
-            num_workers=preprocessing_workers,
-            preprocessing_folder="unused-in-memory",
-        )
+        with ThreadPoolExecutor(max_workers=preprocessing_workers) as executor:
+            decoded = list(executor.map(processor.process_single_file, paths))
     finally:
         file_logger.disabled = previous_disabled
-    if signals.empty:
+    processor.report.extend(item[0] for item in decoded)
+    successes = [
+        (position, item[2])
+        for position, item in enumerate(decoded)
+        if item[2] is not None
+    ]
+    if not successes:
         return np.empty(0, dtype=np.int64), [], processor.report
 
-    positions = signals.index.to_numpy(dtype=np.int64, copy=True)
-    signal_processor = ECGSignalProcessor()
+    positions = np.fromiter((item[0] for item in successes), dtype=np.int64)
+    # Positional placeholders avoid carrying protected source paths any further.
+    signals = pd.DataFrame({
+        "ecg_path": positions.astype(str),
+        "ecg_signal": [item[1] for item in successes],
+    })
+    signal_processor = CalibrationECGSignalProcessor(preprocessing_workers)
     scaled = signal_processor.scale_ecg_signals(signals, power_ratio=PTBXL_POWER_RATIO)
     cleaned = signal_processor.clean_and_process_ecg_leads(
         scaled,
@@ -131,11 +178,16 @@ def infer_minibatches(
         arrays = np.stack(cleaned_signals[start:start + inference_batch_size])
         tensor = torch.from_numpy(arrays).transpose(1, 2).float().to(device)
         probabilities = model(tensor).detach().cpu().numpy().astype(np.float32, copy=False)
-        if probabilities.ndim != 2 or probabilities.shape[1] != len(ECG_PATTERNS):
+        expected_shape = (len(arrays), len(ECG_PATTERNS))
+        if probabilities.shape != expected_shape:
             raise ValueError(
                 f"EfficientNet returned shape {probabilities.shape}; "
-                f"expected (batch, {len(ECG_PATTERNS)})."
+                f"expected {expected_shape}."
             )
+        if not np.isfinite(probabilities).all():
+            raise ValueError("EfficientNet returned non-finite probabilities.")
+        if np.any((probabilities < 0) | (probabilities > 1)):
+            raise ValueError("EfficientNet returned values outside the probability range [0, 1].")
         rows.append(probabilities)
     if not rows:
         return np.empty((0, len(ECG_PATTERNS)), dtype=np.float32)
