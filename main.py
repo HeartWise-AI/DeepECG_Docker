@@ -3,7 +3,6 @@ import sys
 import warnings
 import pandas as pd
 from datetime import datetime
-from PIL import Image
 
 warnings.filterwarnings("ignore", message=".*_register_pytree_node.*deprecated", category=FutureWarning)
 
@@ -26,6 +25,7 @@ from utils.files_handler import (
     save_df,
     load_df,
 )
+from utils.image_preprocessing import open_ecg_image
 from utils.log_config import get_logger
 
 logger = get_logger(__name__)
@@ -216,7 +216,9 @@ def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_
     )
         
     # Remove files that do not exist
-    df_analysis = df_analysis[df_analysis['ecg_path'].apply(os.path.exists)]
+    # astype(bool): on an empty frame apply() returns an object Series that pandas would read as
+    # a column selection (KeyError 'diagnosis') instead of a row mask
+    df_analysis = df_analysis[df_analysis['ecg_path'].apply(os.path.exists).astype(bool)]
     # reset index to 0
     df_analysis = df_analysis.reset_index(drop=True)
     
@@ -279,7 +281,7 @@ def image_error(path: str) -> str | None:
     """Decode the image once; return None if it reads, else the error (cached per path)."""
     if path not in UNREADABLE_IMAGES:
         try:
-            with Image.open(path) as image:
+            with open_ecg_image(path) as image:   # header checked, own decoder only, as the model reads it
                 image.load()
             UNREADABLE_IMAGES[path] = None
         except Exception as e:

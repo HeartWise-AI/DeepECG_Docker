@@ -376,9 +376,17 @@ other value is treated as missing (with a warning). Images that are missing or c
 skipped and listed (`missing_files_<ts>.csv`, `unreadable_images_<ts>.csv`); the other images still run.
 The image probes use the image only (no age or sex input).
 
+Each image is opened with its own format's decoder only, after a header check: a `.png` must be a real,
+non-animated PNG and a `.jpg` / `.jpeg` a real single-picture JPEG (no MPO), both at most 50 megapixels
+(ECG pages are ~1–3). Anything else, e.g. a TIFF renamed `.png`, is refused and listed as unreadable. This
+keeps Pillow 12's other decoders, which have known CVEs, out of reach until the image moves to Python 3.11 /
+Pillow 13. The model was trained on PNG renders: on JPEG copies of the same validation pages (quality 75–95)
+the binary-task probabilities moved by 0.002 on average (at most 0.019), and 1–3 of 192 calls flipped.
+
 **3. Run.** `image_models: deepecg_png` is the default in `heartwise.config`; no other setting is needed:
 ```bash
 docker run -d --gpus all --name deepecg \
+  -v $(pwd)/api_key.json:/app/api_key.json:ro \
   -v $(pwd)/inputs:/app/inputs \
   -v $(pwd)/outputs:/app/outputs \
   -v /path/to/pngs:/app/ecg_signals:ro \
