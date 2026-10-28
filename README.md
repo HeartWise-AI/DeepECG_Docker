@@ -44,16 +44,17 @@ This pipeline offers 3 modes of processing:
    cd DeepECG_Docker
    ```
 
-2. 🔑 Set up your HuggingFace API key:
-   - Create a HuggingFace account if you don't have one yet
-   - Ask for access to the DeepECG models needed in the [heartwise-ai/DeepECG](https://huggingface.co/collections/heartwise/deepecg-models-66ce09c7d620749ad819fa0d) repository
-   - Create an API key in the HuggingFace website in `User Settings` -> `API Keys` -> `Create API Key` -> `Read`
-   - Add your API key in the following format in the `api_key.json` file in the root directory:
-     ```json
-     {
-       "HUGGING_FACE_API_KEY": "your_api_key_here"
-     }
-     ```
+2. 🔑 Initialize the local credential file (Python 3):
+   ```bash
+   python -m utils.credentials
+   ```
+   This creates an ignored `api_key.json` with an empty `HUGGING_FACE_API_KEY`
+   and preserves an existing file. `api_key.example.json` is the tracked template.
+   Public, ungated models work with the key left empty. For private or gated
+   models, obtain read access on Hugging Face and enter your token in the local
+   `api_key.json`. Never commit this file. Setup and inference also create an empty
+   file automatically when the configured path is missing.
+
 3. 📄 Populate a csv file containing the data to be processed, example: inputs/data_rows_template.csv (see [Usage](#usage) for more details)
    - If using DICOMs, update the root path in [extract_metada_from_dicoms.py](utils/extract_metada_from_dicoms.py) then run the script to extract the metadata from the DICOMs
       ```
@@ -86,6 +87,7 @@ This pipeline offers 3 modes of processing:
 DeepECG_Docker/
 │
 ├── models/
+│   ├── manifest.json                 # Pinned Hugging Face revisions
 │   ├── bert_classifier.py
 │   ├── efficientnet_wrapper.py
 │   ├── heartwise_models_factory.py
@@ -317,24 +319,68 @@ comparing results.
 
 Synthetic regression checks (run inside the image with `tests/` and `scripts/`
 mounted under `/app`) cover strict output validation, XML worker isolation, and
-evaluation mode:
+evaluation mode. Credential and download tests use synthetic snapshots:
 
 ```bash
 python -m unittest discover -s tests -p test_reproducibility.py -v
 python tests/test_error_collector.py
+python -m unittest discover -s tests -p test_model_downloads.py -v
 ```
 
 ## 🐳 Docker
 
-API keys must be mounted at runtime; they are excluded from the build context.
-Create `api_key.json` using the case-sensitive `HUGGING_FACE_API_KEY` property
-shown in the installation instructions. Both container commands mount this file.
-For optional model preloading, use a BuildKit secret instead of copying the key:
+The image contains an empty `api_key.json`. Public models can run without a
+credential mount. To use a token, initialize the host file as described above,
+then mount it read-only as shown below. Actual credentials are excluded from the
+build context and must never be copied into the image.
+
+Optional preloading downloads the pinned model files during the build. Without a key:
+
+```bash
+docker build --build-arg RUN_MODELS_SETUP=true -t deepecg-docker .
+```
+
+To preload models requiring access, pass the local key as a temporary BuildKit secret:
 
 ```bash
 docker build --build-arg RUN_MODELS_SETUP=true \
   --secret id=hf_api_key,src=api_key.json -t deepecg-docker .
 ```
+
+Preloading prints each model's availability and a summary. Denied access,
+unavailable revisions, and download failures are reported without blocking the
+image build. It downloads files without instantiating the models. Runtime inference
+loads only models selected by the CSV tasks and the model settings. An unavailable
+unselected model does not block inference; a selected model that cannot be downloaded
+or loaded produces an error and a nonzero exit status.
+
+### Pinned models and cached downloads
+
+`models/manifest.json` records each registered model's Hugging Face repository
+and exact 40-character commit SHA. Docker preloading and runtime downloads use
+this same manifest. The nine reproducibility models retain the revisions in the
+saved reference; the legacy BERT model has its own pinned revision.
+
+Snapshots are stored under `weights/<model>/<owner>--<repository>/<commit>/`.
+A completion marker is written only after download succeeds. Cache hits check
+that all recorded files exist with the expected sizes; the reproducibility test
+additionally verifies their SHA-256 hashes against the reference. Concurrent
+downloads are locked, interrupted downloads can be retried, and changing a
+revision uses a separate directory. Old unversioned `weights/<model>/` files are
+left untouched and are not trusted or reused automatically. Mount `/app/weights`
+to a persistent host directory if downloads should survive container removal.
+
+An empty key explicitly uses anonymous access. If access fails, the message
+explains whether to supply credentials/check permissions, verify a revision,
+or check connectivity/cache permissions. Hugging Face may hide private repositories
+as unavailable, so an anonymous failure does not prove that a repository is missing.
+
+To update a model, obtain its exact Hugging Face commit SHA, change its entry in
+`models/manifest.json`, and review the resulting predictions. The reproducibility
+test rejects a manifest revision that differs from its reference. For an intentional
+model update, separately review and approve new reference files and expected
+probabilities; the test never overwrites the reference automatically. A model
+revision change does not pin Python packages, CUDA, or other image dependencies.
 
 ### Interactive shell (recommended for Cursor / IDE terminals)
 
