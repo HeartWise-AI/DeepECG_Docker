@@ -186,7 +186,8 @@ def main():
                         help='Test ECG folder (default: /mnt/data1/datasets/unit_tests/ECGs)')
     parser.add_argument('--input-csv', type=Path, required=True, help='CSV with diagnosis text, binary labels, and ECG filenames')
     parser.add_argument('--reference', type=Path, default=Path(__file__).resolve().parents[1] / 'tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json', help='Saved expected outputs; never overwritten by the test')
-    parser.add_argument('--api-key-file', type=Path, required=True)
+    parser.add_argument('--api-key-file', type=Path, default=Path('api_key.json'),
+                        help='Optional API-key JSON; created empty when missing')
     parser.add_argument('--work-dir', type=Path, required=True, help='New private artifact directory')
     parser.add_argument('--count', type=int, default=50)
     parser.add_argument('--gpu', help='Host GPU index; omit for CPU')
@@ -196,6 +197,9 @@ def main():
         parser.error('count must be positive and atol finite and nonnegative')
     source = Path(__file__).resolve().parents[1]
     ecgs = args.ecg_dir.resolve(strict=True)
+    sys.path.insert(0, str(source))
+    from utils.credentials import read_api_key
+    read_api_key(args.api_key_file)
     key = args.api_key_file.resolve(strict=True)
     input_csv = args.input_csv.resolve(strict=True)
     files = validate_input_csv(input_csv, ecgs, args.count)

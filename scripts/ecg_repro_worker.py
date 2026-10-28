@@ -23,10 +23,12 @@ def _digest(stream):
 
 
 def prepare():
-    from huggingface_hub import snapshot_download
+    from utils.huggingface_wrapper import HuggingFaceWrapper
+    from utils.credentials import read_api_key
+    from utils.model_manifest import model_entry
     from utils.constants import MODEL_MAPPING
 
-    token = json.loads(Path('/run/hf-key.json').read_text())['HUGGING_FACE_API_KEY']
+    token = read_api_key('/run/hf-key.json')['HUGGING_FACE_API_KEY']
     previous = json.loads(Path('/work/reference.json').read_text())['model_manifest']
     manifest = {}
     names = {name for config in MODEL_MAPPING.values() for name in config.values() if name is not None}
@@ -35,13 +37,15 @@ def prepare():
     for name in sorted(names):
         repo = f'heartwise/{name}'
         revision = previous[name]['revision']
-        folder = Path('/app/weights') / name
-        snapshot_download(repo, revision=revision, local_dir=folder, token=token)
+        if model_entry(repo)['revision'] != revision:
+            raise ValueError(f'Manifest revision differs from the reference for {name}')
+        folder = Path(HuggingFaceWrapper.get_model(repo, Path('/app/weights') / name, token))
         manifest[name] = {
             'repository': repo, 'revision': revision,
             'files': {str(p.relative_to(folder)): digest(p)
                       for p in sorted(folder.rglob('*'))
-                      if p.is_file() and '.cache' not in p.relative_to(folder).parts},
+                      if p.is_file() and '.cache' not in p.relative_to(folder).parts
+                      and p.name != '.deepecg-complete.json'},
         }
         if manifest[name] != previous[name]:
             raise ValueError(f'Downloaded files do not match the reference for {name}')

@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from utils.credentials import read_api_key
 from utils.parser import HearWiseArgs
 from utils.log_config import get_logger
 
@@ -156,11 +157,6 @@ def save_json(data: dict, path: str) -> None:
     with open(path, 'w') as f:
         json.dump(data, f, indent=4)
 
-def read_api_key(path: str) -> dict[str, str]:
-    """Load API keys from a JSON file (e.g. containing HUGGING_FACE_API_KEY)."""
-    with open(path) as f:
-        api_key = json.load(f)
-    return api_key
 
 
 class ECGFileHandler:

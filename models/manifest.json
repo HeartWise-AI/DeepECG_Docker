@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "models": {
+    "Bert_diagnosis2classification": {
+      "repository": "heartwise/Bert_diagnosis2classification",
+      "revision": "363b6daede9d15484c58182783e4f5fd413fdcff"
+    },
+    "Bert_diagnosis2classification_En_Fr": {
+      "repository": "heartwise/Bert_diagnosis2classification_En_Fr",
+      "revision": "1d69ddd61fe1497f6272262fb2dd33becc79c567"
+    },
+    "efficientnetv2_77_classes": {
+      "repository": "heartwise/efficientnetv2_77_classes",
+      "revision": "82274f2e6da2414ab37f209fd9bbb8d480f9543a"
+    },
+    "efficientnetv2_afib_5y": {
+      "repository": "heartwise/efficientnetv2_afib_5y",
+      "revision": "0c410e854b60335c09c7e8ba13eb583311dd9600"
+    },
+    "efficientnetv2_lvef_equal_under_40": {
+      "repository": "heartwise/efficientnetv2_lvef_equal_under_40",
+      "revision": "973b356566b0397283fe5741b70342d1275d6016"
+    },
+    "efficientnetv2_lvef_under_50": {
+      "repository": "heartwise/efficientnetv2_lvef_under_50",
+      "revision": "f3d8d94e703c0172be43f1267611d14a36b464eb"
+    },
+    "wcr_77_classes": {
+      "repository": "heartwise/wcr_77_classes",
+      "revision": "1a29567e09e8ba38c6ad830e94b8e01f1057989f"
+    },
+    "wcr_afib_5y": {
+      "repository": "heartwise/wcr_afib_5y",
+      "revision": "c3051308bded0d94cd76b0e34c39f3dc8d63882a"
+    },
+    "wcr_lvef_equal_under_40": {
+      "repository": "heartwise/wcr_lvef_equal_under_40",
+      "revision": "ebd9ecc4400504088831e5263747ab2cc355b924"
+    },
+    "wcr_lvef_under_50": {
+      "repository": "heartwise/wcr_lvef_under_50",
+      "revision": "f279a3692c575cb13b35d03024557975fe6da7cf"
+    }
+  }
+}
