@@ -25,6 +25,26 @@
       "repository": "heartwise/efficientnetv2_lvef_under_50",
       "revision": "f3d8d94e703c0172be43f1267611d14a36b464eb"
     },
+    "siglip2_77_classes": {
+      "repository": "heartwise/SigLIP2_77_classes",
+      "revision": "d88e23eca7e934a5d473fb62bf411c24b30d9a6a"
+    },
+    "siglip2_afib_5y": {
+      "repository": "heartwise/SigLIP2_AFIB_5Y",
+      "revision": "5e73b16ee6b65d8238511b917963ab62e1253dc8"
+    },
+    "siglip2_lvef_equal_under_40": {
+      "repository": "heartwise/SigLIP2_LVEF_equal_under_40",
+      "revision": "18dc0447a88355fb779030425509e91122a1bc5b"
+    },
+    "siglip2_lvef_under_50": {
+      "repository": "heartwise/SigLIP2_LVEF_under_50",
+      "revision": "0ebb62f3c1a3025552b70191edb9caa594a2b889"
+    },
+    "siglip2_shd": {
+      "repository": "heartwise/SigLIP2_SHD",
+      "revision": "1b40ad7a056383386387ecfa32f31e2a4eb8a829"
+    },
     "wcr_77_classes": {
       "repository": "heartwise/wcr_77_classes",
       "revision": "1a29567e09e8ba38c6ad830e94b8e01f1057989f"
