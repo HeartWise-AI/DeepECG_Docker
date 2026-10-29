@@ -16,6 +16,13 @@ from models.efficientnet_wrapper import (
     EfficientNetV2_LVEF_Under_50,
     EfficientNetV2_AFIB_5Y
 )
+from models.siglip2_wrapper import (
+    DeepECG_SigLIP2_77_classes,
+    DeepECG_SigLIP2_AFIB_5Y,
+    DeepECG_SigLIP2_LVEF_Equal_Under_40,
+    DeepECG_SigLIP2_LVEF_Under_50,
+    DeepECG_SigLIP2_SHD
+)
 
 __all__ = [
     'BertClassifier',
@@ -28,5 +35,10 @@ __all__ = [
     'EfficientNetV2_LVEF_Equal_Under_40',
     'EfficientNetV2_LVEF_Under_50',
     'EfficientNetV2_AFIB_5Y',
+    'DeepECG_SigLIP2_77_classes',
+    'DeepECG_SigLIP2_AFIB_5Y',
+    'DeepECG_SigLIP2_LVEF_Equal_Under_40',
+    'DeepECG_SigLIP2_LVEF_Under_50',
+    'DeepECG_SigLIP2_SHD',
 ]
 

@@ -11,7 +11,8 @@ from sklearn.metrics import (
     roc_curve
 )
 from utils.files_handler import XMLProcessor, NPYProcessor, ECGFileHandler, validate_signal_paths
-from data.project_dataset import create_dataloader
+from data.ecg_signal_dataset import create_signal_dataloader
+from data.image_dataset import create_image_dataloader
 from models import HeartWiseModelFactory
 from utils.constants import (
     ECG_CATEGORIES,
@@ -19,7 +20,9 @@ from utils.constants import (
     BERT_THRESHOLDS,
     WCR_THRESHOLDS,
     WCR_COLUMN_CONVERSION,
-    PTBXL_POWER_RATIO
+    PTBXL_POWER_RATIO,
+    SIGNAL,
+    IMAGE
 )
 from utils.ecg_signal_processor import ECGSignalProcessor
 from utils.log_config import get_logger
@@ -397,6 +400,17 @@ class AnalysisPipeline:
                 'hugging_face_api_key': hugging_face_api_key
             }
         )
+
+        if getattr(signal_processing_model, 'input_type', SIGNAL) == IMAGE:
+            return AnalysisPipeline._run_image_analysis_impl(
+                model=signal_processing_model,
+                df=df,
+                batch_size=batch_size,
+                diagnosis_classifier_device=diagnosis_classifier_device,
+                model_name=signal_processing_model_name,
+                diagnosis_classifier_model_name=diagnosis_classifier_model_name,
+                hugging_face_api_key=hugging_face_api_key,
+            )
         signal_processing_model.model.eval()
 
         if "77" in signal_processing_model_name:
@@ -415,7 +429,7 @@ class AnalysisPipeline:
             ground_truth = []
             probabities_rows = []
             logger.info("Creating dataloader (batch_size=%d)...", batch_size)
-            dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
+            dataloader = create_signal_dataloader(df, batch_size=batch_size, shuffle=False)
                         
             for batch in tqdm(dataloader, total=len(dataloader)):
                 diagnosis = batch['diagnosis']
@@ -464,7 +478,7 @@ class AnalysisPipeline:
             ), df_probabilities
         
         else:
-            dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
+            dataloader = create_signal_dataloader(df, batch_size=batch_size, shuffle=False)
             predictions = []
             ground_truth = []
             probabilities_rows = []
@@ -492,3 +506,104 @@ class AnalysisPipeline:
                 df_gt=pd.DataFrame(ground_truth, columns=["ground_truth"]), 
                 df_pred=pd.DataFrame(predictions, columns=["predictions"])
             ), df_probabilities
+
+    @staticmethod
+    def _run_image_analysis_impl(
+        model,
+        df: pd.DataFrame,
+        batch_size: int,
+        diagnosis_classifier_device: int,
+        model_name: str,
+        diagnosis_classifier_model_name: str,
+        hugging_face_api_key: str,
+    ) -> tuple[dict, pd.DataFrame]:
+        """
+        Inference with an image model (DeepECG-PNG) on ECG page images.
+
+        The outputs have the signal models' columns. Unlike the signal models, rows without a
+        label are kept (inference only): every row gets probabilities, and metrics are
+        computed on the labelled rows only. For the 77 classes the
+        ground truth comes from the report text through the BERT classifier, as for the signal
+        models; rows without report text get probabilities only (BERT is not loaded at all when
+        no row has text).
+
+        Args:
+            model: The image model (input_type == IMAGE).
+            df: DataFrame with diagnosis, ecg_path (image) and file_name columns.
+
+        Returns:
+            (metrics, df_probabilities)
+        """
+        is_77 = "77" in model_name
+        dataloader = create_image_dataloader(
+            df, preprocessing=model.preprocessing, batch_size=batch_size, text_labels=is_77
+        )
+        logger.info("Running %s on %d images (batch_size=%d)...", model_name, len(df), batch_size)
+
+        if is_77:
+            if list(model.output_names) != list(ECG_PATTERNS):
+                raise ValueError(f"{model_name}: output labels differ from ECG_PATTERNS")
+            has_text = df['diagnosis'].notna() & df['diagnosis'].astype(str).str.strip().ne('')
+            diagnosis_classifier_model = None
+            if has_text.any():
+                diagnosis_classifier_model = HeartWiseModelFactory.create_model(
+                    {
+                        'model_name': diagnosis_classifier_model_name,
+                        'map_location': torch.device(diagnosis_classifier_device),
+                        'hugging_face_api_key': hugging_face_api_key
+                    }
+                )
+                # Match the signal pipeline: disable dropout before using BERT as
+                # deterministic 77-class ground truth for the image model.
+                if hasattr(diagnosis_classifier_model, 'model'):
+                    diagnosis_classifier_model.model.eval()
+            bert_thresholds = np.array([BERT_THRESHOLDS[pattern]['threshold'] for pattern in ECG_PATTERNS])
+            probabilities_rows, ground_truth, predictions = [], [], []
+            with torch.no_grad():
+                for batch in tqdm(dataloader, total=len(dataloader)):
+                    sig_prob = model(batch['ecg_signal']).detach().cpu().numpy()
+                    texts = list(batch['diagnosis'])
+                    bert_prob = np.full_like(sig_prob, np.nan)
+                    with_text = [i for i, text in enumerate(texts) if text.strip()]
+                    if diagnosis_classifier_model is not None and with_text:
+                        diag_prob = diagnosis_classifier_model([texts[i] for i in with_text])
+                        bert_prob[with_text] = diag_prob.detach().cpu().numpy()
+                        for i in with_text:
+                            ground_truth.append((bert_prob[i] >= bert_thresholds).astype(int))
+                            predictions.append(sig_prob[i])
+                    for i, file_name in enumerate(batch['file_name']):
+                        probabilities_rows.append([file_name] + list(bert_prob[i]) + list(sig_prob[i]))
+
+            bert_columns = [f"{pattern}_bert_model" for pattern in ECG_PATTERNS]
+            sig_columns = [f"{pattern}_sig_model" for pattern in ECG_PATTERNS]
+            df_probabilities = pd.DataFrame(probabilities_rows, columns=['file_name'] + bert_columns + sig_columns)
+
+            if len(ground_truth) <= 1:
+                logger.warning("Skipping 77-class metrics: %d ECG(s) with report text", len(ground_truth))
+                return {}, df_probabilities
+            df_gt = pd.DataFrame(ground_truth, columns=ECG_PATTERNS)
+            df_pred = pd.DataFrame(predictions, columns=ECG_PATTERNS)
+            # Labels without a probe (NaN probabilities) are left out of every metric:
+            # compute_metrics skips labels with no positive ground truth.
+            no_head = [c for c in ECG_PATTERNS if df_pred[c].isna().all()]
+            df_gt[no_head] = 0
+            df_pred[no_head] = 0.0
+            return compute_metrics(df_gt=df_gt, df_pred=df_pred), df_probabilities
+
+        probabilities_rows = []
+        with torch.no_grad():
+            for batch in tqdm(dataloader, total=len(dataloader)):
+                sig_prob = model(batch['ecg_signal']).detach().cpu().numpy()[:, 0]
+                labels = batch['diagnosis'].detach().cpu().numpy()
+                for i, file_name in enumerate(batch['file_name']):
+                    probabilities_rows.append([file_name, labels[i], float(sig_prob[i])])
+        df_probabilities = pd.DataFrame(probabilities_rows, columns=['file_name', 'ground_truth', 'predictions'])
+
+        labelled = df_probabilities[df_probabilities['ground_truth'].notna()]
+        if len(labelled) <= 1:
+            logger.warning("Skipping metrics: %d labelled ECG(s)", len(labelled))
+            return {}, df_probabilities
+        return compute_metrics_binary(
+            df_gt=labelled[['ground_truth']].astype(int),
+            df_pred=labelled[['predictions']]
+        ), df_probabilities

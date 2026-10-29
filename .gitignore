@@ -20,6 +20,8 @@ ecg_signals_analysis_cleaned_ecg_signals.csv
 !inputs/data_rows_template.csv
 !tests/fixtures/reproducibility/data_rows_reproducibility_50.csv
 !tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json
+!tests/fixtures/reproducibility/data_rows_png_reproducibility_25.csv
+!tests/fixtures/reproducibility/data_rows_png_reproducibility_25.reference.json
 notebooks/ptb-xl_lite
 notebooks/README.md
 notebooks/ssl_pretrained_model
@@ -35,5 +37,7 @@ notebooks/outputs
 *.ipynb_meta
 *.ipynb_checkpoints
 
+# cloned by the dockerfile / for local runs
+fairseq-signals/
 !api_key.example.json
 !models/manifest.json

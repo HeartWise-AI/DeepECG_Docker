@@ -16,6 +16,7 @@ This pipeline offers 3 modes of processing:
 - [Usage](#usage)
 - [Testing](#testing)
 - [Docker](#docker)
+- [DeepECG-PNG (ECG images)](#️-deepecg-png-ecg-images)
 - [Output Folder Structure](#-output-folder-structure)
 - [Adding Support for New XML Formats](#-adding-support-for-new-xml-formats)
 - [Contributing](#contributing)
@@ -217,8 +218,12 @@ CSV and metrics JSON/CSV per selected model and task.
      'ecg_machine_diagnosis': '77_classes_ecg_file_name',
      'afib_5y': 'afib_ecg_file_name',
      'lvef_40': 'lvef_40_ecg_file_name',
-     'lvef_50': 'lvef_50_ecg_file_name'
+     'lvef_50': 'lvef_50_ecg_file_name',
+     'shd': 'shd_ecg_file_name'          # image models only
      ```
+   - A file column may list **signals** (`.xml`, `.npy`) or **ECG page images** (`.png`, `.jpg`, `.jpeg`), mixed
+     in the same CSV: the input type of each file is detected from its extension (there is no flag), and each
+     task runs the models selected in `heartwise.config` for that input type (see [DeepECG-PNG](#️-deepecg-png-ecg-images)).
    - `ecg_machine_diagnosis` (string): Diagnosis from the ECG machine
    - `77_classes_ecg_file_name` (string): The ECG signal **file names** machine ecg diagnosis
    - `afib_5y` (int): Binary classification of incident AFIB at 5 years
@@ -238,8 +243,8 @@ CSV and metrics JSON/CSV per selected model and task.
      - `batch_size`: Defines the batch size for processing the data. Example: `32`.
      - `output_folder`: The directory where the output files will be saved. Example: `/app/outputs`.
      - `hugging_face_api_key_path`: The path to the file containing the HuggingFace API key. Example: `/app/api_key.json`.
-     - `use_efficientnet`: Boolean value to specify if the EfficientNet model should be used. Example: `True`.
-     - `use_wcr`: Boolean value to specify if the WCR model should be used. Example: `True`.
+     - `signal_models`: Models run on signal files (`.xml`, `.npy`), comma-separated, among `efficientnet`, `wcr`. Example: `efficientnet,wcr`.
+     - `image_models`: Models run on ECG page images (`.png`, `.jpg`, `.jpeg`), among `deepecg_siglip2`. Example: `deepecg_siglip2`.
      - `data_path`: The path to the input CSV file containing the data. Example: `/app/inputs/data_rows_template.csv`.
      - `mode`: The mode of the pipeline (overwriten by docker command line). Example: `analysis` | `preprocessing` | `full_run`.
      - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/app/ecg_signals`.
@@ -265,10 +270,12 @@ python scripts/test_ecg_reproducibility.py \
   --gpu 0
 ```
 
-The default ECG folder is `/mnt/data1/datasets/unit_tests/ECGs`; use `--ecg-dir`
-to override it on another machine. The CSV selects exactly 25 XMLs and 25 NPYs;
-extra files in that folder are not included. The NPYs contain the same decoded
-signals as their original XMLs, before shared scaling and cleaning.
+The default ECG root is `/mnt/data1/datasets/unit_tests/ECGs`, with XML fixtures
+under `xml/` and NPY fixtures under `npy/`; use `--ecg-dir` to override the root
+on another machine. The CSV keeps basename-only references and selects exactly
+25 XMLs and 25 NPYs; extra files under either folder are not included. The NPYs
+contain the same decoded signals as their original XMLs, before shared scaling
+and cleaning.
 
 The work directory must be new. Omit `--gpu` to use CPU. The test builds once with
 `--pull --no-cache` from a source-only context, downloads BERT and the eight
@@ -323,9 +330,34 @@ evaluation mode. Credential and download tests use synthetic snapshots:
 
 ```bash
 python -m unittest discover -s tests -p test_reproducibility.py -v
+python -m pytest tests/test_png_reproducibility.py -q
 python tests/test_error_collector.py
 python -m unittest discover -s tests -p test_model_downloads.py -v
 ```
+
+### PNG reproducibility test
+
+The PNG pipeline has the same pinned, offline regression workflow for the 25
+approved ECG pages under `/mnt/data1/datasets/unit_tests/ECGs/png`:
+
+```bash
+python scripts/test_png_reproducibility.py \
+  --png-dir /mnt/data1/datasets/unit_tests/ECGs/png \
+  --input-csv "$PWD/tests/fixtures/reproducibility/data_rows_png_reproducibility_25.csv" \
+  --reference "$PWD/tests/fixtures/reproducibility/data_rows_png_reproducibility_25.reference.json" \
+  --api-key-file "$PWD/api_key.json" \
+  --work-dir /path/to/new/private/png-test-results
+```
+
+The test performs a clean source-only Docker build, verifies the pinned BERT,
+base encoder, and five classifier snapshots and their file hashes, then disables
+networking for inference. It passes no PNG mode or image-model flag: the normal
+`.png` extension routing and `heartwise.config` select SigLIP2. It requires all
+five prediction files, checks every probability is finite and in `[0, 1]`, and
+fails if a PNG was missing, unreadable, or sent through signal preprocessing.
+The default tolerance is zero. The checked-in reference contains file hashes,
+model hashes, environment metadata, and raw probabilities only; ECG pages remain
+outside git.
 
 ## 🐳 Docker
 
@@ -410,6 +442,66 @@ You’ll get a prompt inside the container. Run the pipeline manually when you�
 ```
 
 When you’re done, exit the shell (`exit`) and stop the container: `docker stop deepecg`. Remove it before the next run if you reuse the name: `docker rm deepecg` (or use `docker rm -f deepecg` to remove a running container).
+
+## 🖼️ DeepECG-PNG (ECG images)
+
+DeepECG-PNG reads ECG **page images (PNG)** instead of signals: a SigLIP-2 ViT-B/16 image encoder
+(run ux5uajqm) with linear probes for **77 classes, SHD, LVEF ≤ 40 %, LVEF < 50 % and incident AFib
+at 5 years**. Images are preprocessed exactly as in training (grayscale, stretched to 224×224,
+CLIP normalization); it expects ECG pages rendered like the training images.
+
+**1. Weights (Hugging Face).** The SigLIP2 models use the same pinned manifest download path as the
+signal models. `models/manifest.json` identifies one shared base encoder
+([`heartwise/SigLIP-2_BaseEncoder`](https://huggingface.co/heartwise/SigLIP-2_BaseEncoder)) and five
+independent classifier repositories: 77 classes, SHD, LVEF ≤ 40%, LVEF < 50%, and incident AFib at
+5 years. Each immutable snapshot is stored under `weights/<manifest-key>/<repository>/<commit>/`,
+either by `models_setup.py` or on first use. The encoder is loaded once per process/device; each task
+loads its own `classifier.safetensors`, metadata, and thresholds from its pinned repository.
+
+**2. Input CSV.** The same per-task CSV as for signals, with image file names in the file columns
+(template: [inputs/data_rows_template_png.csv](inputs/data_rows_template_png.csv)). Signals and images
+can be mixed in one CSV; images are never sent to the signal preprocessing.
+
+| column | content |
+|---|---|
+| `<task>_ecg_file_name` (e.g. `shd_ecg_file_name`) | image file name (relative to `ecg_signals_path`) or absolute path (with Docker: a path inside the container) |
+| `shd`, `lvef_40`, `lvef_50`, `afib_5y` | 0/1 labels, optional for images (metrics are computed on labelled rows) |
+| `ecg_machine_diagnosis` | report text, optional for images: 77-class ground truth through the BERT classifier |
+
+Image rows without labels get predictions only. Labels may be 0/1, `true`/`false` or `yes`/`no`; any
+other value is treated as missing (with a warning). Images that are missing or cannot be decoded are
+skipped and listed (`missing_files_<ts>.csv`, `unreadable_images_<ts>.csv`); the other images still run.
+The image probes use the image only (no age or sex input).
+
+Each image is opened with its own format's decoder only, after a header check: a `.png` must be a real,
+non-animated PNG and a `.jpg` / `.jpeg` a real single-picture JPEG (no MPO), both at most 50 megapixels
+(ECG pages are ~1–3). Anything else, e.g. a TIFF renamed `.png`, is refused and listed as unreadable, so
+no other Pillow decoder is ever reached. The model was trained on PNG renders: on JPEG copies of the same validation pages (quality 75–95)
+the binary-task probabilities moved by 0.002 on average (at most 0.019), and 1–3 of 192 calls flipped.
+
+**3. Run.** `image_models: deepecg_siglip2` is the default in `heartwise.config`; no other setting is needed:
+```bash
+docker run -d --gpus all --name deepecg \
+  -v $(pwd)/api_key.json:/app/api_key.json:ro \
+  -v $(pwd)/inputs:/app/inputs \
+  -v $(pwd)/outputs:/app/outputs \
+  -v /path/to/pngs:/app/ecg_signals:ro \
+  -v $(pwd)/preprocessing:/app/preprocessing \
+  deepecg-docker
+docker exec -it deepecg ./run_pipeline.bash --mode full_run --csv_file_name my_pngs.csv
+```
+
+**4. Outputs** (in `output_folder`), as for the other models: per task,
+`<model>_<ts>_<task>_probabilities.csv` (e.g. `deepecg_siglip2_lvef_equal_under_40_<ts>_lvef_40_probabilities.csv`,
+with the same columns as the signal models) and the metrics `<model>_<ts>_<task>.json` / `.csv` (empty
+when the task has no labels). The 77-class classifier returns all 77 probabilities.
+The validation Youden thresholds of the binary probes are in the snapshot's `thresholds.json`.
+
+With a GPU (`signal_processing_device: cuda:0`) the encoder runs once per minibatch and all five
+tasks reuse those features. Images are decoded only as their minibatch is read and no derived image
+or Base64 file is persisted. The in-process feature cache is capped at 500,000 rows (about 1.43 GiB
+for 768-dimensional float32 embeddings); older minibatches are evicted and recomputed if a larger
+cohort is processed. Split very large CSVs to retain the five-head reuse without reaching that cap.
 
 ## 📂 Output Folder Structure
 

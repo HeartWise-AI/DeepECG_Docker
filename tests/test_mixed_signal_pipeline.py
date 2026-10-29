@@ -204,7 +204,7 @@ def test_full_run_combines_outputs_per_model_and_excludes_stale_failed_files(tmp
     args = SimpleNamespace(
         mode='full_run', data_path=str(tmp_path / 'input.csv'), ecg_signals_path=str(tmp_path),
         output_folder=str(tmp_path / 'outputs'), preprocessing_folder=str(preprocessed),
-        preprocessing_n_workers=3, use_wcr=True, use_efficientnet=True, batch_size=2,
+        preprocessing_n_workers=3, batch_size=2,
         signal_processing_device='cpu', diagnosis_classifier_device='cpu',
         hugging_face_api_key_path=str(tmp_path / 'key.json'),
     )
@@ -224,3 +224,18 @@ def test_full_run_combines_outputs_per_model_and_excludes_stale_failed_files(tmp
         assert len(list((tmp_path / 'outputs').glob(f'{model}_*.json'))) == 1
         assert len(list((tmp_path / 'outputs').glob(f'{model}_*.csv'))) == 2
         assert np.isfinite(probabilities.predictions).all()
+
+
+def test_blank_file_cells_are_not_checked_as_signal_paths(tmp_path, monkeypatch):
+    # pandas 3 keeps NaN in DataFrame.stack(): a row without a file must not reach the path checks
+    monkeypatch.setattr(ECGSignalProcessor, 'clean_and_process_ecg_leads', lambda self, df, **kw: df)
+    write_signal(tmp_path / 'one.npy')
+    pd.DataFrame({'afib_5y': [0, 1], 'afib_ecg_file_name': ['one.npy', None]}).to_csv(
+        tmp_path / 'input.csv', index=False)
+    args = SimpleNamespace(
+        mode='preprocessing', data_path=str(tmp_path / 'input.csv'), ecg_signals_path=str(tmp_path),
+        output_folder=str(tmp_path / 'outputs'), preprocessing_folder=str(tmp_path / 'preprocessed'),
+        preprocessing_n_workers=1,
+    )
+    pipeline.main(args)
+    assert (tmp_path / 'preprocessed' / 'one.base64').exists()

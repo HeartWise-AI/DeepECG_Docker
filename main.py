@@ -9,7 +9,12 @@ warnings.filterwarnings("ignore", message=".*_register_pytree_node.*deprecated",
 from utils.constants import (
     Mode, 
     DIAGNOSIS_TO_FILE_COLUMNS,
-    MODEL_MAPPING
+    MODEL_MAPPING,
+    DEFAULT_MODELS,
+    INPUT_TYPES,
+    SIGNAL,
+    IMAGE,
+    input_type_of
 )
 from utils.parser import HearWiseArgs
 from utils.analysis_pipeline import AnalysisPipeline
@@ -21,6 +26,7 @@ from utils.files_handler import (
     load_df,
     validate_signal_paths,
 )
+from utils.image_preprocessing import open_ecg_image
 from utils.log_config import get_logger
 
 logger = get_logger(__name__)
@@ -170,10 +176,14 @@ def create_preprocessing_dataframe(df: pd.DataFrame, existing_file_columns: list
     
     # Create separate dataframes for existing and missing files
     exists_mask = melted_df['ecg_path'].apply(lambda x: os.path.exists(x))
-    df_preprocessing = melted_df[exists_mask].reset_index(drop=True)
+    # Images are read as they are by the image models: only signals are preprocessed
+    image_mask = melted_df['ecg_path'].map(input_type_of).eq(IMAGE)
+    df_preprocessing = melted_df[exists_mask & ~image_mask].reset_index(drop=True)
     df_missing = melted_df[~exists_mask].reset_index(drop=True)
     
     logger.info("Rows removed (files not found): %d", len(df_missing))
+    if image_mask.any():
+        logger.info("Image files (not preprocessed): %d", int((exists_mask & image_mask).sum()))
         
     # Remove duplicates from preprocessing df
     df_preprocessing = df_preprocessing[['ecg_path']].drop_duplicates().reset_index(drop=True) 
@@ -209,7 +219,9 @@ def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_
     )
         
     # Remove files that do not exist
-    df_analysis = df_analysis[df_analysis['ecg_path'].apply(os.path.exists)]
+    # astype(bool): on an empty frame apply() returns an object Series that pandas would read as
+    # a column selection (KeyError 'diagnosis') instead of a row mask
+    df_analysis = df_analysis[df_analysis['ecg_path'].apply(os.path.exists).astype(bool)]
     if processed_paths is not None:
         df_analysis = df_analysis[df_analysis['ecg_path'].isin(processed_paths)]
     # reset index to 0
@@ -219,31 +231,160 @@ def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_
         
     return df_analysis
 
+def create_image_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_column: str, ecg_path: str) -> pd.DataFrame:
+    """
+    Build an analysis DataFrame for an image model: one row per image file of the task.
+
+    Rows without a label are kept (inference only); rows without an image file, with a
+    non-image file or with a file that does not exist are dropped.
+
+    Args:
+        df: Source DataFrame.
+        diagnosis_column: Column name for diagnosis labels.
+        ecg_file_column: Column name for the image file names.
+        ecg_path: Base directory to join with file names (absolute paths are kept).
+
+    Returns:
+        DataFrame with columns diagnosis, ecg_path and file_name (as given in the CSV).
+    """
+    df_non_null = df[[diagnosis_column, ecg_file_column]].dropna(subset=[ecg_file_column])
+    names = df_non_null[ecg_file_column].astype(str)
+    is_image = names.map(input_type_of).eq(IMAGE)
+    labels = df_non_null[diagnosis_column][is_image]
+    if diagnosis_column != 'ecg_machine_diagnosis':
+        labels = normalize_binary_labels(labels, diagnosis_column)
+    df_analysis = pd.DataFrame(
+        {
+            'diagnosis': labels.tolist(),
+            'ecg_path': [os.path.join(ecg_path, x) for x in names[is_image]],
+            'file_name': names[is_image].tolist()
+        },
+        columns=['diagnosis', 'ecg_path', 'file_name']
+    )
+    if df_analysis.empty:
+        logger.info("No image rows for %s.", diagnosis_column)
+        return df_analysis
+    exists = df_analysis['ecg_path'].map(os.path.exists).astype(bool)
+    if (~exists).any():
+        logger.warning("Images not found for %s: %d", diagnosis_column, int((~exists).sum()))
+    df_analysis = df_analysis[exists].reset_index(drop=True)
+    readable = df_analysis['ecg_path'].map(lambda p: image_error(p) is None).astype(bool)
+    if (~readable).any():
+        logger.warning("Unreadable images skipped for %s: %d", diagnosis_column, int((~readable).sum()))
+    df_analysis = df_analysis[readable].reset_index(drop=True)
+    if diagnosis_column == 'ecg_machine_diagnosis':
+        n_labelled = int(df_analysis['diagnosis'].map(lambda t: pd.notna(t) and bool(str(t).strip())).sum())
+    else:
+        n_labelled = int(df_analysis['diagnosis'].notna().sum())
+    logger.info("Image rows for %s: %d (%d with a label)", diagnosis_column, len(df_analysis), n_labelled)
+    return df_analysis
+
+# Images that could not be decoded, path -> error (checked once per file per run)
+UNREADABLE_IMAGES: dict[str, str | None] = {}
+
+def image_error(path: str) -> str | None:
+    """Decode the image once; return None if it reads, else the error (cached per path)."""
+    if path not in UNREADABLE_IMAGES:
+        try:
+            with open_ecg_image(path) as image:   # header checked, own decoder only, as the model reads it
+                image.load()
+            UNREADABLE_IMAGES[path] = None
+        except Exception as e:
+            UNREADABLE_IMAGES[path] = f"{type(e).__name__}: {e}"
+    return UNREADABLE_IMAGES[path]
+
+def normalize_binary_labels(labels: pd.Series, task: str) -> pd.Series:
+    """
+    0/1 labels from numbers, numeric strings or booleans (true/false, yes/no). Any other
+    value is treated as missing (the row still gets a prediction) and counted in a warning.
+    """
+    words = {'true': 1, 'false': 0, 'yes': 1, 'no': 0}
+    mapped = labels.map(lambda v: words.get(str(v).strip().lower(), v) if pd.notna(v) else v)
+    numeric = pd.to_numeric(mapped, errors='coerce')
+    invalid = labels.notna() & ~numeric.isin([0, 1])
+    if invalid.any():
+        logger.warning("Labels of %s that are not 0/1 treated as missing: %d", task, int(invalid.sum()))
+        numeric[invalid] = float('nan')
+    return numeric
+
+def select_models(args: HearWiseArgs, diagnosis_column: str, input_type: str) -> list[str]:
+    """
+    Names of the models to run on the rows of a task whose files are of input_type.
+
+    heartwise.config chooses them with `<input type>_models`, otherwise DEFAULT_MODELS
+    applies. A chosen model the task does not have is skipped (e.g. efficientnet for shd).
+
+    Args:
+        args: Configuration (`models` from heartwise.config).
+        diagnosis_column: The task.
+        input_type: SIGNAL or IMAGE.
+
+    Returns:
+        Model names (MODEL_MAPPING values), possibly empty.
+    """
+    models = getattr(args, 'models', None) or {}
+    chosen = models.get(f'{input_type}_models', DEFAULT_MODELS[input_type])
+    available = MODEL_MAPPING[diagnosis_column][input_type]
+    return [available[family] for family in chosen if family in available]
+
+def validate_model_selection(models: dict) -> None:
+    """
+    Reject a heartwise.config model selection naming an unknown task, input type or model.
+
+    Raises:
+        ValueError: On the first invalid key or model.
+    """
+    keys = {f'{input_type}_models': input_type for input_type in INPUT_TYPES}
+    for key, families in models.items():
+        if key not in keys:
+            raise ValueError(f"Unknown model selection '{key}' in heartwise.config "
+                             f"(expected one of: {', '.join(sorted(keys))})")
+        known = {family for task in MODEL_MAPPING.values() for family in task[keys[key]]}
+        unknown = sorted(set(families) - known)
+        if unknown:
+            raise ValueError(f"Unknown {keys[key]} model(s) {unknown} in '{key}' (available: {sorted(known)})")
+
 def main(args: HearWiseArgs):
     """
     Run the pipeline: load data, optionally preprocess and/or run analysis, and print any collected errors.
 
-    Mode controls whether preprocessing, analysis, or both run. Errors are collected
+    The input type of every ECG file is detected from its extension (images: .png/.jpg/.jpeg,
+    signals: anything else); each task runs the models heartwise.config selects for that input
+    type. Mode controls whether preprocessing, analysis, or both run. Errors are collected
     and printed at the end under "Errors encountered:".
     """
     if args.mode not in {Mode.PREPROCESSING, Mode.ANALYSIS, Mode.FULL_RUN}:
         raise ValueError(f"Invalid mode: {args.mode}. Please choose from 'preprocessing', 'analysis', or 'full_run'.")
 
     errors: list[str] = []
+    UNREADABLE_IMAGES.clear()
 
     try:
+        validate_model_selection(getattr(args, 'models', None) or {})
         logger.info("Loading input DataFrame from %s", args.data_path)
         df = load_df(args.data_path)
         logger.info("DataFrame loaded: %d rows", len(df))
+        # Tasks with no selected model (e.g. shd when no image model is selected) are not
+        # expected, so an unrelated column of that name validates as before.
+        task_columns = {
+            diagnosis_column: file_column
+            for diagnosis_column, file_column in DIAGNOSIS_TO_FILE_COLUMNS.items()
+            if any(select_models(args, diagnosis_column, input_type) for input_type in INPUT_TYPES)
+        }
 
         existing_diagnosis_columns, existing_file_columns = validate_dataframe(
             df=df,
-            diagnosis_to_file_columns=DIAGNOSIS_TO_FILE_COLUMNS
+            diagnosis_to_file_columns=task_columns
         )
+        # dropna: pandas 3 keeps the NaN of rows without a file in stack()
+        file_references = df[existing_file_columns].stack().dropna() if existing_file_columns else pd.Series(dtype=str)
+        is_signal = file_references.map(input_type_of).eq(SIGNAL)
+        has_signals = bool(is_signal.any())
         # Include missing sources: their labels must not resolve to another ECG's output.
+        # Only signal files are preprocessed into .base64 outputs; images are read as they are.
         validate_signal_paths(
             os.path.join(args.ecg_signals_path, name)
-            for name in df[existing_file_columns].stack()
+            for name in file_references[is_signal]
         )
         set_up_directories(args)
 
@@ -263,63 +404,96 @@ def main(args: HearWiseArgs):
                 missing_files_path = os.path.join(args.output_folder, f'missing_files_{current_date}.csv')
                 save_df(df_missing, missing_files_path)
                 logger.info("Missing files list saved to %s", missing_files_path)
-            logger.info("Saving and performing preprocessing...")
-            preprocessed_df = save_and_perform_preprocessing(args, df_preprocessing, errors=errors)
-            if preprocessed_df is None:
-                logger.warning("Preprocessing failed completely.")
-                preprocessing_failed = True
+            if not has_signals:
+                logger.info("No signal files to preprocess.")
             else:
-                processed_paths = set(preprocessed_df['ecg_path'])
-                logger.info("Data preprocessed.")
+                logger.info("Saving and performing preprocessing...")
+                preprocessed_df = save_and_perform_preprocessing(args, df_preprocessing, errors=errors)
+                if preprocessed_df is None:
+                    logger.warning("Preprocessing failed completely.")
+                    preprocessing_failed = True
+                else:
+                    processed_paths = set(preprocessed_df['ecg_path'])
+                    logger.info("Data preprocessed.")
 
-        if (args.mode == Mode.ANALYSIS or args.mode == Mode.FULL_RUN) and not preprocessing_failed:
+        if args.mode == Mode.ANALYSIS or args.mode == Mode.FULL_RUN:
             for diagnosis_column in existing_diagnosis_columns:
-                ecg_file_column = DIAGNOSIS_TO_FILE_COLUMNS[diagnosis_column]
-                logger.info("Creating analysis dataframe for %s...", diagnosis_column)
-                df_analysis = create_analysis_dataframe(
-                    df=df,
-                    diagnosis_column=diagnosis_column,
-                    ecg_file_column=ecg_file_column,
-                    preprocessing_folder=args.preprocessing_folder,
-                    processed_paths=processed_paths
-                )
-                logger.info("Analysis dataframe created for %s.", diagnosis_column)
+                ecg_file_column = task_columns[diagnosis_column]
                 args.diagnosis_classifier_model_name = MODEL_MAPPING[diagnosis_column]['bert']
-                signal_processing_models = []
-                if args.use_wcr:
-                    signal_processing_models.append(MODEL_MAPPING[diagnosis_column]['wcr'])
-                if args.use_efficientnet:
-                    signal_processing_models.append(MODEL_MAPPING[diagnosis_column]['efficientnet'])
-
-                for model_name in signal_processing_models:
-                    logger.info("Performing analysis with %s...", model_name)
-                    args.signal_processing_model_name = model_name
-                    metrics, df_probabilities = perform_analysis(args=args, df=df_analysis, errors=errors)
-
-                    if metrics is None or df_probabilities is None:
+                row_types = df[ecg_file_column].map(lambda x: input_type_of(x) if pd.notna(x) else None)
+                for input_type in INPUT_TYPES:
+                    df_rows = df[row_types == input_type]
+                    if df_rows.empty:
+                        continue
+                    model_names = select_models(args, diagnosis_column, input_type)
+                    if not model_names:
+                        message = (f"[main] No {input_type} model selected for {diagnosis_column}: "
+                                         f"{len(df_rows)} {input_type} row(s) not analysed "
+                                         f"(set {input_type}_models in heartwise.config)")
+                        logger.error(message)
+                        errors.append(message)
+                        continue
+                    if input_type == SIGNAL:
+                        if preprocessing_failed:
+                            continue
+                        logger.info("Creating analysis dataframe for %s...", diagnosis_column)
+                        df_analysis = create_analysis_dataframe(
+                            df=df_rows,
+                            diagnosis_column=diagnosis_column,
+                            ecg_file_column=ecg_file_column,
+                            preprocessing_folder=args.preprocessing_folder,
+                            processed_paths=processed_paths
+                        )
+                        logger.info("Analysis dataframe created for %s.", diagnosis_column)
+                    else:
+                        df_analysis = create_image_analysis_dataframe(
+                            df=df_rows,
+                            diagnosis_column=diagnosis_column,
+                            ecg_file_column=ecg_file_column,
+                            ecg_path=args.ecg_signals_path
+                        )
+                    if df_analysis.empty:
+                        logger.warning("No %s ECG to analyse for %s; %s skipped.",
+                                       input_type, diagnosis_column, ", ".join(model_names))
                         continue
 
-                    current_date = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    logger.info("Saving metrics and probabilities...")
-                    save_df(
-                        df_probabilities,
-                        os.path.join(
-                            args.output_folder,
-                            f'{model_name}_{current_date}_{diagnosis_column}_probabilities.csv'
+                    for model_name in model_names:
+                        logger.info("Performing analysis with %s...", model_name)
+                        args.signal_processing_model_name = model_name
+                        metrics, df_probabilities = perform_analysis(args=args, df=df_analysis, errors=errors)
+
+                        if metrics is None or df_probabilities is None:
+                            continue
+
+                        current_date = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        logger.info("Saving metrics and probabilities...")
+                        save_df(
+                            df_probabilities,
+                            os.path.join(
+                                args.output_folder,
+                                f'{model_name}_{current_date}_{diagnosis_column}_probabilities.csv'
+                            )
                         )
-                    )
-                    save_json(
-                        metrics,
-                        os.path.join(
-                            args.output_folder,
-                            f'{model_name}_{current_date}_{diagnosis_column}.json'
+                        save_json(
+                            metrics,
+                            os.path.join(
+                                args.output_folder,
+                                f'{model_name}_{current_date}_{diagnosis_column}.json'
+                            )
                         )
-                    )
-                    save_to_csv(
-                        metrics,
-                        os.path.join(args.output_folder, f'{model_name}_{current_date}_{diagnosis_column}.csv')
-                    )
-                    logger.info("Metrics and probabilities saved.")
+                        save_to_csv(
+                            metrics,
+                            os.path.join(args.output_folder, f'{model_name}_{current_date}_{diagnosis_column}.csv')
+                        )
+                        logger.info("Metrics and probabilities saved.")
+
+            unreadable = {p: e for p, e in UNREADABLE_IMAGES.items() if e is not None}
+            if unreadable:
+                current_date = datetime.now().strftime('%Y%m%d_%H%M%S')
+                unreadable_path = os.path.join(args.output_folder, f'unreadable_images_{current_date}.csv')
+                save_df(pd.DataFrame({'ecg_path': list(unreadable), 'error': list(unreadable.values())}),
+                        unreadable_path)
+                logger.warning("%d unreadable images listed in %s", len(unreadable), unreadable_path)
     except Exception as e:
         errors.append(f"[main] Fatal: {e}")
 
@@ -333,15 +507,14 @@ if __name__ == "__main__":
     args = HearWiseArgs.parse_arguments()
     logger.info(
         "Run config: mode=%s data_path=%s output_folder=%s batch_size=%s "
-        "diagnosis_device=%s signal_device=%s use_wcr=%s use_efficientnet=%s",
+        "diagnosis_device=%s signal_device=%s models=%s",
         args.mode,
         args.data_path,
         args.output_folder,
         args.batch_size,
         args.diagnosis_classifier_device,
         args.signal_processing_device,
-        args.use_wcr,
-        args.use_efficientnet,
+        args.models or DEFAULT_MODELS,
     )
     main(args)
 

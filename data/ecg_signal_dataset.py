@@ -4,7 +4,7 @@ import pandas as pd
 from utils.files_handler import ECGFileHandler
 from torch.utils.data import DataLoader, Dataset
     
-class ProjectDataset(Dataset):
+class ECGSignalDataset(Dataset):
     """PyTorch Dataset that yields diagnosis, loaded ECG signal tensor, and file name per row."""
 
     def __init__(self, df: pd.DataFrame):
@@ -28,9 +28,9 @@ class ProjectDataset(Dataset):
             'file_name': file_name
         }
 
-def create_dataloader(df: pd.DataFrame, batch_size: int = 1, shuffle: bool = False):
-    """Build a DataLoader over the given DataFrame using ProjectDataset."""
-    dataset = ProjectDataset(df)
+def create_signal_dataloader(df: pd.DataFrame, batch_size: int = 1, shuffle: bool = False):
+    """Build a DataLoader over the given DataFrame using ECGSignalDataset."""
+    dataset = ECGSignalDataset(df)
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
 

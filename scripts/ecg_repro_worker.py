@@ -26,12 +26,14 @@ def prepare():
     from utils.huggingface_wrapper import HuggingFaceWrapper
     from utils.credentials import read_api_key
     from utils.model_manifest import model_entry
-    from utils.constants import MODEL_MAPPING
+    from utils.constants import MODEL_MAPPING, SIGNAL
 
     token = read_api_key('/run/hf-key.json')['HUGGING_FACE_API_KEY']
     previous = json.loads(Path('/work/reference.json').read_text())['model_manifest']
     manifest = {}
-    names = {name for config in MODEL_MAPPING.values() for name in config.values() if name is not None}
+    # This XML test enables WCR and EfficientNet plus BERT, not image models.
+    names = {name for config in MODEL_MAPPING.values()
+             for name in [*config[SIGNAL].values(), config['bert']] if name is not None}
     if names != set(previous):
         raise ValueError('Configured models do not match the reference')
     for name in sorted(names):
