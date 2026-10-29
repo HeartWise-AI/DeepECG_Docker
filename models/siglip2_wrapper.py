@@ -1,4 +1,4 @@
-"""DeepECG-PNG: an image model for ECG pages (PNG).
+"""DeepECG SigLIP2 models for ECG page images.
 
 A SigLIP-2 ViT-B/16 image encoder (DeepECG-PNG run ux5uajqm) and the linear probes fitted
 on its frozen 768-d features. Like the other models, the weights are downloaded from the

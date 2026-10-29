@@ -26,7 +26,7 @@ sys.path.insert(0, REPO)
 _cwd = os.getcwd()
 os.chdir(REPO)   # models/wcr_ecg_transformer.py loads ./fairseq-signals at import
 import main as pipeline  # noqa: E402
-from models import deepecg_png  # noqa: E402
+from models import siglip2_wrapper  # noqa: E402
 from models.bert_classifier import BertClassifier_En_Fr  # noqa: E402
 from utils import analysis_pipeline  # noqa: E402
 from utils.constants import DIAGNOSIS_TO_FILE_COLUMNS, ECG_PATTERNS, IMAGE, SIGNAL  # noqa: E402
@@ -48,7 +48,7 @@ def write_tiny_weights(folder):
                   num_attention_heads=2, num_channels=3, image_size=32, patch_size=16,
                   hidden_act='quick_gelu', layer_norm_eps=1e-5, attention_dropout=0.0,
                   initializer_range=0.02, initializer_factor=1.0)
-    tower = deepecg_png._vision_tower(CLIPVisionModel(CLIPVisionConfig(**vision)))
+    tower = siglip2_wrapper._vision_tower(CLIPVisionModel(CLIPVisionConfig(**vision)))
     os.makedirs(folder, exist_ok=True)
     save_file({k: v.contiguous() for k, v in tower.state_dict().items() if not k.endswith('position_ids')},
               os.path.join(folder, 'encoder.safetensors'))
@@ -102,8 +102,8 @@ class FakeBert:
 def world(tmp_path, monkeypatch):
     weights = tmp_path / 'weights'
     write_tiny_weights(str(weights))
-    monkeypatch.setattr(deepecg_png, 'download_weights', lambda key: str(weights))
-    deepecg_png._BANKS.clear()
+    monkeypatch.setattr(siglip2_wrapper, 'download_weights', lambda key: str(weights))
+    siglip2_wrapper._BANKS.clear()
     pngs = tmp_path / 'pngs'
     pngs.mkdir()
     for k in range(12):
@@ -119,7 +119,7 @@ def world(tmp_path, monkeypatch):
             return real_factory.create_model(model_config)
     monkeypatch.setattr(analysis_pipeline, 'HeartWiseModelFactory', Factory)
     yield tmp_path
-    deepecg_png._BANKS.clear()
+    siglip2_wrapper._BANKS.clear()
 
 
 IMAGE_ONLY = {'signal_models': [], 'image_models': ['deepecg_siglip2']}
@@ -242,19 +242,19 @@ def test_weights_come_from_hugging_face(tmp_path, monkeypatch):
         calls.append((repo_id, local_dir, hugging_face_api_key))
         write_tiny_weights(str(tmp_path / 'hf'))
         return str(tmp_path / 'hf')
-    monkeypatch.setattr(deepecg_png.HuggingFaceWrapper, 'get_model', staticmethod(get_model))
-    deepecg_png._BANKS.clear()
-    deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), 'token')
+    monkeypatch.setattr(siglip2_wrapper.HuggingFaceWrapper, 'get_model', staticmethod(get_model))
+    siglip2_wrapper._BANKS.clear()
+    siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), 'token')
     assert calls == [('heartwise/deepecg_png', os.path.join('weights', 'deepecg_png'), 'token')]
-    deepecg_png._BANKS.clear()
+    siglip2_wrapper._BANKS.clear()
 
 
 def test_incomplete_download_says_which_repository(tmp_path, monkeypatch):
-    monkeypatch.setattr(deepecg_png, 'download_weights', lambda key: str(tmp_path / 'empty'))
+    monkeypatch.setattr(siglip2_wrapper, 'download_weights', lambda key: str(tmp_path / 'empty'))
     (tmp_path / 'empty').mkdir()
-    deepecg_png._BANKS.clear()
+    siglip2_wrapper._BANKS.clear()
     with pytest.raises(FileNotFoundError, match='heartwise/deepecg_png'):
-        deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
+        siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
 
 
 # ---------------------------------------------------------------------------- one CSV, models from the config
@@ -392,43 +392,43 @@ def test_parser_reads_the_model_selection(monkeypatch):
 def test_broken_weights_give_a_clear_error(tmp_path, monkeypatch, break_it, message):
     write_tiny_weights(str(tmp_path / 'w'))
     break_it(tmp_path / 'w')
-    monkeypatch.setattr(deepecg_png, 'download_weights', lambda key: str(tmp_path / 'w'))
-    deepecg_png._BANKS.clear()
+    monkeypatch.setattr(siglip2_wrapper, 'download_weights', lambda key: str(tmp_path / 'w'))
+    siglip2_wrapper._BANKS.clear()
     with pytest.raises(RuntimeError, match=message):
-        deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
+        siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
 
 
 def test_wrong_rope_dtype_or_head_shape_is_refused(tmp_path, monkeypatch):
     from safetensors.torch import load_file, save_file
     folder = tmp_path / 'w'
     write_tiny_weights(str(folder))
-    monkeypatch.setattr(deepecg_png, 'download_weights', lambda key: str(folder))
+    monkeypatch.setattr(siglip2_wrapper, 'download_weights', lambda key: str(folder))
     cfg = json.loads((folder / 'config.json').read_text())
     bad = {**cfg, 'rope': {**cfg['rope'], 'grid': 3}}
     (folder / 'config.json').write_text(json.dumps(bad))
-    deepecg_png._BANKS.clear()
+    siglip2_wrapper._BANKS.clear()
     with pytest.raises(RuntimeError, match='RoPE settings'):
-        deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
+        siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
     (folder / 'config.json').write_text(json.dumps(cfg))
     enc = load_file(str(folder / 'encoder.safetensors'))
     save_file({k: v.half() for k, v in enc.items()}, str(folder / 'encoder.safetensors'))
-    deepecg_png._BANKS.clear()
+    siglip2_wrapper._BANKS.clear()
     with pytest.raises(RuntimeError, match='float32'):
-        deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
+        siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
     save_file(enc, str(folder / 'encoder.safetensors'))
     heads = load_file(str(folder / 'heads.safetensors'))
     heads['shd_lvef.weight'] = heads['shd_lvef.weight'][:2]
     save_file(heads, str(folder / 'heads.safetensors'))
-    deepecg_png._BANKS.clear()
+    siglip2_wrapper._BANKS.clear()
     with pytest.raises(RuntimeError, match='head shd_lvef has shapes'):
-        deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
-    deepecg_png._BANKS.clear()
+        siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
+    siglip2_wrapper._BANKS.clear()
     with pytest.raises(RuntimeError, match='base class'):
-        deepecg_png.DeepECG_SigLIP2_Wrapper('deepecg_siglip2', torch.device('cpu'), '')
+        siglip2_wrapper.DeepECG_SigLIP2_Wrapper('deepecg_siglip2', torch.device('cpu'), '')
 
 
 def test_feature_cache_drops_the_oldest_batches(world, monkeypatch):
-    bank = deepecg_png._get_bank(torch.device('cpu'), '')
+    bank = siglip2_wrapper._get_bank(torch.device('cpu'), '')
     monkeypatch.setattr(bank, 'MAX_CACHED_ROWS', 4)
     bank._features.clear()
     bank._cached_rows = 0

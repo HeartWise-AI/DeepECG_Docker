@@ -1,5 +1,5 @@
 """Export the DeepECG-PNG model (SigLIP-2 encoder ux5uajqm + linear probes) into a small,
-self-contained weights folder for the Docker image (models/deepecg_png.py).
+self-contained weights folder for the Docker image (models/siglip2_wrapper.py).
 
 Run it ONCE on the machine that holds the training checkpoints, with the DeepECG-PNG
 repository's Python environment (it reuses that repository's validated loaders, so the
@@ -14,7 +14,7 @@ issue #215) and the Hugging Face cache of openai/clip-vit-base-patch16 (or netwo
 
 --push-to-hub uploads the exported folder to the private Hugging Face repository
 heartwise/deepecg_png (created if needed; token from `huggingface-cli login` or HF_TOKEN),
-from which the Docker image downloads it like every other model (models/deepecg_png.py).
+from which the Docker image downloads it like every other model (models/siglip2_wrapper.py).
 
 Writes to --out:
     encoder.safetensors   the CLIP vision tower (float32), keys relative to the tower

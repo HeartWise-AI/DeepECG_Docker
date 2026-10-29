@@ -22,7 +22,7 @@ import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from models import deepecg_png  # noqa: E402
+from models import siglip2_wrapper  # noqa: E402
 from utils.image_preprocessing import load_ecg_image  # noqa: E402
 from utils.model_manifest import ModelPreparationError, model_entry  # noqa: E402
 
@@ -30,10 +30,10 @@ from utils.model_manifest import ModelPreparationError, model_entry  # noqa: E40
 def _pinned_weights():
     """The pinned snapshot folder of heartwise/deepecg_png, or '' if the manifest has no entry."""
     try:
-        revision = model_entry(deepecg_png.HF_REPO_ID)['revision']
+        revision = model_entry(siglip2_wrapper.HF_REPO_ID)['revision']
     except ModelPreparationError:
         return ''
-    return os.path.join(deepecg_png.WEIGHTS_DIR, deepecg_png.HF_REPO_ID.replace('/', '--'), revision)
+    return os.path.join(siglip2_wrapper.WEIGHTS_DIR, siglip2_wrapper.HF_REPO_ID.replace('/', '--'), revision)
 
 
 REFERENCE = os.environ.get("DEEPECG_PNG_REFERENCE", "")
@@ -50,7 +50,7 @@ def ref():
 
 @pytest.fixture(scope="module")
 def bank():
-    return deepecg_png._get_bank(torch.device("cpu"), "")
+    return siglip2_wrapper._get_bank(torch.device("cpu"), "")
 
 
 @pytest.fixture(scope="module")
