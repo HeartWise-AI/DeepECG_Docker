@@ -224,6 +224,11 @@ def main():
         for path in (source / folder).iterdir():
             if path.suffix in ('.py', '.json'):
                 shutil.copyfile(path, context / folder / path.name)
+    # The dockerfile also copies the external-validation adapters (one subfolder per dataset).
+    for path in (source / 'ingestion').rglob('*'):
+        if path.suffix in ('.py', '.csv', '.md'):
+            (context / path.relative_to(source)).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, context / path.relative_to(source))
     # The image runs as the invoking user, while COPY creates root-owned files.
     # Only application source goes into this context; credentials and ECGs do not.
     for path in context.rglob('*'):

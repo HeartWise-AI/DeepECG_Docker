@@ -113,6 +113,10 @@ DeepECG_Docker/
 ├── thresholds/
 │   └── wcr_77_classes_ecg_machine_diagnosis.json  # WCR optimal thresholds (MHI training)
 │
+├── ingestion/                          # External validation on annotated datasets (no BERT)
+│   ├── mapping.py, metrics.py          # Dataset-independent: label mapping, metrics
+│   └── icentia11k/                     # Icentia-11k single-lead Holter (see its README)
+│
 ├── utils/
 │   └── ...
 │
@@ -245,9 +249,29 @@ CSV and metrics JSON/CSV per selected model and task.
      - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/app/ecg_signals`.
      - `preprocessing_folder`: The path to the folder where the preprocessed files will be saved. Example: `/app/preprocessing`.
      - `preprocessing_n_workers`: The number of workers to be used for the preprocessing. Example: `16`.
+     - `single_lead`: `none` (default) for 12-lead input; `all` or a lead name for single-lead NPY files (see [Single-lead input](#single-lead-input)).
 
 3. Notes:
    - **Single ECG processing**: When running the pipeline with only one ECG file, metrics computation (AUC, F1, etc.) is automatically skipped since these metrics require multiple samples. Predictions are still generated and saved normally.
+
+### Single-lead input
+
+An NPY file can hold one lead instead of twelve: shape `(2500,)`, `(2500, 1)` or `(1, 2500)` (10 s at 250 Hz;
+longer signals are downsampled as for 12-lead files). Set `single_lead` in `heartwise.config` (or `--single_lead`):
+
+| `single_lead` | 12-lead input given to the models |
+| --- | --- |
+| `none` (default) | The file must have 12 leads; a single-lead file fails. |
+| `all` | The lead is copied into all 12 leads. |
+| `I`, `II`, ..., `V6` | The lead goes into that lead only; the other 11 are zero. |
+
+Single-lead signals then go through the same preprocessing and models as 12-lead ECGs and give the same
+output files (77 probabilities per ECG). The PTB-XL power scaling and line-noise cleaning use the lead that has the signal (lead I for 12-lead
+input). XML files are always read as 12-lead.
+
+Long annotated recordings (Holter) are scored with a dataset adapter in [`ingestion/`](ingestion/), which
+cuts them into 10 s windows and uses the same 12-lead input, preprocessing and models in memory. See
+[ingestion/icentia11k/README.md](ingestion/icentia11k/README.md).
 
 ## Testing
 

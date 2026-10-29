@@ -37,5 +37,5 @@ notebooks/outputs
 
 !api_key.example.json
 !models/manifest.json
-# ingestion pipeline configs (mapping and threshold files)
-!configs/*.csv
+# label mappings of the external-validation datasets
+!ingestion/*/mapping.csv

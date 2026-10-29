@@ -1,21 +1,10 @@
 """--mapping: dataset label -> DeepECG 77-class name, and the ground truth it implies."""
-import ast
 import os
 
 import numpy as np
 import pandas as pd
 
-_CONSTANTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'utils', 'constants.py')
-
-
-def load_ecg_patterns(path=_CONSTANTS):
-    """Read ECG_PATTERNS from utils/constants.py without importing it (that import pulls in torch)."""
-    tree = ast.parse(open(path).read())
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and getattr(node.targets[0], 'id', None) == 'ECG_PATTERNS':
-            return ast.literal_eval(node.value)
-    raise RuntimeError(f'ECG_PATTERNS not found in {path}')
-
+from utils.constants import ECG_PATTERNS
 
 COMBINE = '|'  # 'Afib|Atrial flutter' = score 1 - (1 - p_Afib)(1 - p_Atrial flutter)
 
@@ -24,13 +13,12 @@ def split_task(task):
     return [c.strip() for c in task.split(COMBINE)]
 
 
-def load_mapping(path, dataset_labels, classes=None):
+def load_mapping(path, dataset_labels, classes=ECG_PATTERNS):
     """Return {task: [dataset_label, ...]}, where a task is one DeepECG class or several joined by '|'.
 
     Errors on unknown labels or classes."""
     if not os.path.exists(path):
         raise FileNotFoundError(f'--mapping file not found: {path}')
-    classes = classes or load_ecg_patterns()
     df = pd.read_csv(path, dtype=str).fillna('')
     if list(df.columns) != ['dataset_label', 'deepecg_class']:
         raise ValueError(f'{path}: columns must be dataset_label,deepecg_class, got {list(df.columns)}')
@@ -58,7 +46,7 @@ def ground_truth(labels, mapping):
     return pd.DataFrame(gt, index=labels.index)
 
 
-def task_scores(probs, task, classes):
+def task_scores(probs, task, classes=ECG_PATTERNS):
     """probs [n, 77] in ECG_PATTERNS order -> [n] score; combined classes use 1 - prod(1 - p)."""
     idx = [classes.index(c) for c in split_task(task)]
     p = probs[:, idx].astype(np.float64)
