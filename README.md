@@ -331,9 +331,34 @@ evaluation mode. Credential and download tests use synthetic snapshots:
 
 ```bash
 python -m unittest discover -s tests -p test_reproducibility.py -v
+python -m pytest tests/test_png_reproducibility.py -q
 python tests/test_error_collector.py
 python -m unittest discover -s tests -p test_model_downloads.py -v
 ```
+
+### PNG reproducibility test
+
+The PNG pipeline has the same pinned, offline regression workflow for the 25
+approved ECG pages under `/mnt/data1/datasets/unit_tests/ECGs/png`:
+
+```bash
+python scripts/test_png_reproducibility.py \
+  --png-dir /mnt/data1/datasets/unit_tests/ECGs/png \
+  --input-csv "$PWD/tests/fixtures/reproducibility/data_rows_png_reproducibility_25.csv" \
+  --reference "$PWD/tests/fixtures/reproducibility/data_rows_png_reproducibility_25.reference.json" \
+  --api-key-file "$PWD/api_key.json" \
+  --work-dir /path/to/new/private/png-test-results
+```
+
+The test performs a clean source-only Docker build, verifies the pinned BERT,
+base encoder, and five classifier snapshots and their file hashes, then disables
+networking for inference. It passes no PNG mode or image-model flag: the normal
+`.png` extension routing and `heartwise.config` select SigLIP2. It requires all
+five prediction files, checks every probability is finite and in `[0, 1]`, and
+fails if a PNG was missing, unreadable, or sent through signal preprocessing.
+The default tolerance is zero. The checked-in reference contains file hashes,
+model hashes, environment metadata, and raw probabilities only; ECG pages remain
+outside git.
 
 ## 🐳 Docker
 
@@ -473,8 +498,11 @@ with the same columns as the signal models) and the metrics `<model>_<ts>_<task>
 when the task has no labels). The 77-class classifier returns all 77 probabilities.
 The validation Youden thresholds of the binary probes are in the snapshot's `thresholds.json`.
 
-With a GPU (`signal_processing_device: cuda:0`) the encoder runs once per batch for all five tasks
-(features of up to 500k images are kept between tasks; for larger CSVs, split them to keep that speed-up).
+With a GPU (`signal_processing_device: cuda:0`) the encoder runs once per minibatch and all five
+tasks reuse those features. Images are decoded only as their minibatch is read and no derived image
+or Base64 file is persisted. The in-process feature cache is capped at 500,000 rows (about 1.43 GiB
+for 768-dimensional float32 embeddings); older minibatches are evicted and recomputed if a larger
+cohort is processed. Split very large CSVs to retain the five-head reuse without reaching that cap.
 
 ## 📂 Output Folder Structure
 
