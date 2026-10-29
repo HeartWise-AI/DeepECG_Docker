@@ -244,7 +244,7 @@ CSV and metrics JSON/CSV per selected model and task.
      - `output_folder`: The directory where the output files will be saved. Example: `/app/outputs`.
      - `hugging_face_api_key_path`: The path to the file containing the HuggingFace API key. Example: `/app/api_key.json`.
      - `signal_models`: Models run on signal files (`.xml`, `.npy`), comma-separated, among `efficientnet`, `wcr`. Example: `efficientnet,wcr`.
-     - `image_models`: Models run on ECG page images (`.png`, `.jpg`, `.jpeg`), among `deepecg_png`. Example: `deepecg_png`.
+     - `image_models`: Models run on ECG page images (`.png`, `.jpg`, `.jpeg`), among `deepecg_siglip2`. Example: `deepecg_siglip2`.
      - Optional per-task choice, overriding the two lines above for one task: `<task>_signal_models` / `<task>_image_models`, with `<task>` one of `ecg_machine_diagnosis`, `afib_5y`, `lvef_40`, `lvef_50`, `shd`. Example: `lvef_40_signal_models: efficientnet`. An empty value runs no model for that task and input type; rows left without a model are reported as errors. (The former `use_efficientnet` / `use_wcr` options are still accepted by `main.py` but deprecated.)
      - `data_path`: The path to the input CSV file containing the data. Example: `/app/inputs/data_rows_template.csv`.
      - `mode`: The mode of the pipeline (overwriten by docker command line). Example: `analysis` | `preprocessing` | `full_run`.
@@ -458,7 +458,7 @@ non-animated PNG and a `.jpg` / `.jpeg` a real single-picture JPEG (no MPO), bot
 no other Pillow decoder is ever reached. The model was trained on PNG renders: on JPEG copies of the same validation pages (quality 75–95)
 the binary-task probabilities moved by 0.002 on average (at most 0.019), and 1–3 of 192 calls flipped.
 
-**3. Run.** `image_models: deepecg_png` is the default in `heartwise.config`; no other setting is needed:
+**3. Run.** `image_models: deepecg_siglip2` is the default in `heartwise.config`; no other setting is needed:
 ```bash
 docker run -d --gpus all --name deepecg \
   -v $(pwd)/api_key.json:/app/api_key.json:ro \
@@ -471,7 +471,7 @@ docker exec -it deepecg ./run_pipeline.bash --mode full_run --csv_file_name my_p
 ```
 
 **4. Outputs** (in `output_folder`), as for the other models: per task,
-`<model>_<ts>_<task>_probabilities.csv` (e.g. `deepecg_png_lvef_equal_under_40_<ts>_lvef_40_probabilities.csv`,
+`<model>_<ts>_<task>_probabilities.csv` (e.g. `deepecg_siglip2_lvef_equal_under_40_<ts>_lvef_40_probabilities.csv`,
 same columns as the signal models; for the 77 classes, *Lead misplacement* and *Brugada* have no probe
 and stay empty) and the metrics `<model>_<ts>_<task>.json` / `.csv` (empty when the task has no labels).
 The validation Youden thresholds of the binary probes are in the snapshot's `thresholds.json`.

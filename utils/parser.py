@@ -19,7 +19,7 @@ class HearWiseArgs:
     
     @staticmethod
     def parse_models(v):
-        """Parse "signal_models:efficientnet,wcr;image_models:deepecg_png" into {key: [model, ...]}."""
+        """Parse "signal_models:efficientnet,wcr;image_models:deepecg_siglip2" into {key: [model, ...]}."""
         if isinstance(v, dict):
             return v
         models = {}

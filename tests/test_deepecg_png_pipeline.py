@@ -122,7 +122,7 @@ def world(tmp_path, monkeypatch):
     deepecg_png._BANKS.clear()
 
 
-IMAGE_ONLY = {'signal_models': [], 'image_models': ['deepecg_png']}
+IMAGE_ONLY = {'signal_models': [], 'image_models': ['deepecg_siglip2']}
 
 
 def run(tmp_path, df, name, mode='full_run', models=None, expect_exit=None):
@@ -169,7 +169,7 @@ def test_png_rows_give_predictions_for_every_task(world):
         assert list(probs.columns) == ['file_name', 'ground_truth', 'predictions'], task
         assert probs['file_name'].tolist() == files and probs['ground_truth'].isna().all()
         assert probs['predictions'].between(0, 1).all()
-    probs77 = pd.read_csv(_one(out, 'deepecg_png_77_classes_', '_probabilities.csv'))
+    probs77 = pd.read_csv(_one(out, 'deepecg_siglip2_77_classes_', '_probabilities.csv'))
     assert list(probs77.columns) == (['file_name'] + [f'{p}_bert_model' for p in ECG_PATTERNS]
                                      + [f'{p}_sig_model' for p in ECG_PATTERNS])
     for p in ECG_PATTERNS:
@@ -189,20 +189,20 @@ def test_labels_and_reports_give_metrics(world):
                   ecg_machine_diagnosis=pd.Series([f'report {"x" * k}' for k in range(12)]))
     out = run(world, df, 'labels')
     for task in ('shd', 'lvef_40', 'lvef_50', 'afib_5y'):
-        with open(_one(out, 'deepecg_png_', f'_{task}.json')) as f:
+        with open(_one(out, 'deepecg_siglip2_', f'_{task}.json')) as f:
             metrics = json.load(f)
-        probs = pd.read_csv(_one(out, 'deepecg_png_', f'_{task}_probabilities.csv'))
+        probs = pd.read_csv(_one(out, 'deepecg_siglip2_', f'_{task}_probabilities.csv'))
         labelled = probs[probs['ground_truth'].notna()]
         from sklearn.metrics import roc_auc_score
         want = roc_auc_score(labelled['ground_truth'].astype(int), labelled['predictions'])
         assert metrics['results']['auc'] == pytest.approx(want), task
-    shd_probs = pd.read_csv(_one(out, 'deepecg_png_shd_', '_probabilities.csv'))
+    shd_probs = pd.read_csv(_one(out, 'deepecg_siglip2_shd_', '_probabilities.csv'))
     assert len(shd_probs) == 12 and shd_probs['ground_truth'].isna().sum() == 1
     assert FakeBert.calls > 0
     with open(_one(out, '_ecg_machine_diagnosis.json')) as f:
         m77 = json.load(f)
     assert all(m77[p]['auc'] is None or np.isnan(m77[p]['auc']) for p in NO_HEAD)   # no probe: no metric
-    probs77 = pd.read_csv(_one(out, 'deepecg_png_77_classes_', '_probabilities.csv'))
+    probs77 = pd.read_csv(_one(out, 'deepecg_siglip2_77_classes_', '_probabilities.csv'))
     assert probs77[[f'{p}_bert_model' for p in ECG_PATTERNS]].notna().all().all()
 
 
@@ -244,7 +244,7 @@ def test_weights_come_from_hugging_face(tmp_path, monkeypatch):
         return str(tmp_path / 'hf')
     monkeypatch.setattr(deepecg_png.HuggingFaceWrapper, 'get_model', staticmethod(get_model))
     deepecg_png._BANKS.clear()
-    deepecg_png.DeepECGPNG_SHD('deepecg_png_shd', torch.device('cpu'), 'token')
+    deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), 'token')
     assert calls == [('heartwise/deepecg_png', os.path.join('weights', 'deepecg_png'), 'token')]
     deepecg_png._BANKS.clear()
 
@@ -254,7 +254,7 @@ def test_incomplete_download_says_which_repository(tmp_path, monkeypatch):
     (tmp_path / 'empty').mkdir()
     deepecg_png._BANKS.clear()
     with pytest.raises(FileNotFoundError, match='heartwise/deepecg_png'):
-        deepecg_png.DeepECGPNG_SHD('deepecg_png_shd', torch.device('cpu'), '')
+        deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
 
 
 # ---------------------------------------------------------------------------- one CSV, models from the config
@@ -263,7 +263,7 @@ def test_a_task_without_png_rows_does_not_crash(world):
     df = pd.DataFrame({'afib_5y': [0, 1], 'afib_ecg_file_name': ['ecg_0.png', 'ecg_1.png'],
                        'lvef_40': [0, 1], 'lvef_40_ecg_file_name': ['a.npy', 'b.npy']})
     out = run(world, df, 'nopngtask', expect_exit=1)     # no signal model selected for the .npy rows: reported
-    assert len(pd.read_csv(_one(out, 'deepecg_png_afib_5y_', '_probabilities.csv'))) == 2
+    assert len(pd.read_csv(_one(out, 'deepecg_siglip2_afib_5y_', '_probabilities.csv'))) == 2
     assert not any('lvef_40' in f for f in os.listdir(out))
     assert pipeline.create_image_analysis_dataframe(df, 'lvef_40', 'lvef_40_ecg_file_name', str(world)).empty
 
@@ -289,9 +289,9 @@ def test_unreadable_png_is_skipped_and_listed(world):
 def test_failed_signal_preprocessing_does_not_stop_the_image_model(world):
     np.save(world / 'pngs' / 'bad.npy', np.full((12, 5000), np.nan, dtype=np.float32))
     df = pd.DataFrame({'afib_5y': [0, 1, 0], 'afib_ecg_file_name': ['ecg_0.png', 'ecg_1.png', 'bad.npy']})
-    out = run(world, df, 'badsignal', models={'image_models': ['deepecg_png'], 'signal_models': ['efficientnet']},
+    out = run(world, df, 'badsignal', models={'image_models': ['deepecg_siglip2'], 'signal_models': ['efficientnet']},
               expect_exit=1)                              # the signal failure is still reported
-    probs = pd.read_csv(_one(out, 'deepecg_png_afib_5y_', '_probabilities.csv'))
+    probs = pd.read_csv(_one(out, 'deepecg_siglip2_afib_5y_', '_probabilities.csv'))
     assert probs['file_name'].tolist() == ['ecg_0.png', 'ecg_1.png']
 
 
@@ -305,7 +305,7 @@ def test_png_only_csv_never_runs_the_signal_models(world, monkeypatch):
         return real(model_config)
     monkeypatch.setattr(analysis_pipeline.HeartWiseModelFactory, 'create_model', staticmethod(spy))
     run(world, task_csv(['ecg_0.png', 'ecg_1.png']), 'pngonly', models={})
-    assert loaded and all(name.startswith('deepecg_png') for name in loaded)
+    assert loaded and all(name.startswith('deepecg_siglip2') for name in loaded)
 
 
 def test_image_rows_without_an_image_model_are_reported(world):
@@ -316,8 +316,8 @@ def test_image_rows_without_an_image_model_are_reported(world):
 
 def test_per_task_model_selection_overrides_the_default(world):
     out = run(world, task_csv(['ecg_0.png', 'ecg_1.png']), 'override',
-              models={'image_models': ['deepecg_png'], 'lvef_40_image_models': []}, expect_exit=1)
-    assert os.path.exists(_one(out, 'deepecg_png_shd_', '_probabilities.csv'))
+              models={'image_models': ['deepecg_siglip2'], 'lvef_40_image_models': []}, expect_exit=1)
+    assert os.path.exists(_one(out, 'deepecg_siglip2_shd_', '_probabilities.csv'))
     assert not any('lvef_40' in f for f in os.listdir(out))
 
 
@@ -325,7 +325,7 @@ def test_select_models():
     import argparse
     ns = argparse.Namespace(models={}, use_wcr=None, use_efficientnet=None)
     assert pipeline.select_models(ns, 'lvef_40', SIGNAL) == ['efficientnetv2_lvef_equal_under_40', 'wcr_lvef_equal_under_40']
-    assert pipeline.select_models(ns, 'lvef_40', IMAGE) == ['deepecg_png_lvef_equal_under_40']
+    assert pipeline.select_models(ns, 'lvef_40', IMAGE) == ['deepecg_siglip2_lvef_equal_under_40']
     assert pipeline.select_models(ns, 'shd', SIGNAL) == []           # no signal model for shd
     ns.models = {'signal_models': ['wcr'], 'afib_5y_signal_models': ['efficientnet']}
     assert pipeline.select_models(ns, 'lvef_50', SIGNAL) == ['wcr_lvef_under_50']
@@ -338,7 +338,7 @@ def test_select_models():
 @pytest.mark.parametrize('models, message', [
     ({'signal_models': ['resnet']}, "Unknown signal model"),
     ({'image_models': ['efficientnet']}, "Unknown image model"),
-    ({'lvef_45_image_models': ['deepecg_png']}, "Unknown model selection"),
+    ({'lvef_45_image_models': ['deepecg_siglip2']}, "Unknown model selection"),
 ])
 def test_unknown_model_selection_is_refused(world, capsys, models, message):
     run(world, task_csv(['ecg_0.png']), 'badconfig', models=models, expect_exit=1)
@@ -374,10 +374,10 @@ def test_parser_reads_the_model_selection(monkeypatch):
     monkeypatch.setattr(sys, 'argv', base)
     args = pipeline.HearWiseArgs.parse_arguments()
     assert args.models == {} and args.use_wcr is None and args.use_efficientnet is None
-    monkeypatch.setattr(sys, 'argv', base + ['--models', 'signal_models:efficientnet,wcr;image_models:deepecg_png;'
+    monkeypatch.setattr(sys, 'argv', base + ['--models', 'signal_models:efficientnet,wcr;image_models:deepecg_siglip2;'
                                                          'lvef_40_signal_models:'])
     assert pipeline.HearWiseArgs.parse_arguments().models == {
-        'signal_models': ['efficientnet', 'wcr'], 'image_models': ['deepecg_png'], 'lvef_40_signal_models': []}
+        'signal_models': ['efficientnet', 'wcr'], 'image_models': ['deepecg_siglip2'], 'lvef_40_signal_models': []}
     monkeypatch.setattr(sys, 'argv', base + ['--use_wcr', 'False', '--use_efficientnet', 'True'])
     args = pipeline.HearWiseArgs.parse_arguments()
     assert args.use_wcr is False and args.use_efficientnet is True
@@ -395,7 +395,7 @@ def test_broken_weights_give_a_clear_error(tmp_path, monkeypatch, break_it, mess
     monkeypatch.setattr(deepecg_png, 'download_weights', lambda key: str(tmp_path / 'w'))
     deepecg_png._BANKS.clear()
     with pytest.raises(RuntimeError, match=message):
-        deepecg_png.DeepECGPNG_SHD('deepecg_png_shd', torch.device('cpu'), '')
+        deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
 
 
 def test_wrong_rope_dtype_or_head_shape_is_refused(tmp_path, monkeypatch):
@@ -408,23 +408,23 @@ def test_wrong_rope_dtype_or_head_shape_is_refused(tmp_path, monkeypatch):
     (folder / 'config.json').write_text(json.dumps(bad))
     deepecg_png._BANKS.clear()
     with pytest.raises(RuntimeError, match='RoPE settings'):
-        deepecg_png.DeepECGPNG_SHD('deepecg_png_shd', torch.device('cpu'), '')
+        deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
     (folder / 'config.json').write_text(json.dumps(cfg))
     enc = load_file(str(folder / 'encoder.safetensors'))
     save_file({k: v.half() for k, v in enc.items()}, str(folder / 'encoder.safetensors'))
     deepecg_png._BANKS.clear()
     with pytest.raises(RuntimeError, match='float32'):
-        deepecg_png.DeepECGPNG_SHD('deepecg_png_shd', torch.device('cpu'), '')
+        deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
     save_file(enc, str(folder / 'encoder.safetensors'))
     heads = load_file(str(folder / 'heads.safetensors'))
     heads['shd_lvef.weight'] = heads['shd_lvef.weight'][:2]
     save_file(heads, str(folder / 'heads.safetensors'))
     deepecg_png._BANKS.clear()
     with pytest.raises(RuntimeError, match='head shd_lvef has shapes'):
-        deepecg_png.DeepECGPNG_SHD('deepecg_png_shd', torch.device('cpu'), '')
+        deepecg_png.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
     deepecg_png._BANKS.clear()
     with pytest.raises(RuntimeError, match='base class'):
-        deepecg_png.DeepECGPNGWrapper('deepecg_png', torch.device('cpu'), '')
+        deepecg_png.DeepECG_SigLIP2_Wrapper('deepecg_siglip2', torch.device('cpu'), '')
 
 
 def test_feature_cache_drops_the_oldest_batches(world, monkeypatch):

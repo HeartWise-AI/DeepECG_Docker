@@ -118,7 +118,7 @@ def _vision_tower(backbone: nn.Module) -> nn.Module:
     raise AttributeError(f"{type(backbone).__name__}: transformers CLIP layout not recognised")
 
 
-class DeepECGPNGEncoder(nn.Module):
+class DeepECG_SigLIP2_Encoder(nn.Module):
     """CLIP ViT-B/16 vision tower + 2D axial RoPE; returns the pooled CLS (768-d)."""
 
     def __init__(self, config: dict):
@@ -159,7 +159,7 @@ class DeepECGPNGEncoder(nn.Module):
 
 
 # ---------------------------------------------------------------------------- encoder + probes
-class _DeepECGPNGBank:
+class _DeepECG_SigLIP2_Bank:
     """The encoder and every probe, loaded once per (folder, device) and shared by the
     task models. Features of a batch are kept (float32, oldest batches dropped first), so
     the five tasks run the encoder once per batch rather than five times."""
@@ -179,7 +179,7 @@ class _DeepECGPNGBank:
         with open(os.path.join(folder, "thresholds.json")) as f:
             self.thresholds = {k: float(v) for k, v in json.load(f)["thresholds"].items()}
         self.device = device
-        self.encoder = DeepECGPNGEncoder(self.config)
+        self.encoder = DeepECG_SigLIP2_Encoder(self.config)
         self.encoder.load_weights(os.path.join(folder, "encoder.safetensors"))
         self.encoder.eval().to(device)
         heads_path = os.path.join(folder, "heads.safetensors")
@@ -245,20 +245,20 @@ class _DeepECGPNGBank:
 _BANKS = {}
 
 
-def _get_bank(device: torch.device, hugging_face_api_key: str) -> _DeepECGPNGBank:
+def _get_bank(device: torch.device, hugging_face_api_key: str) -> _DeepECG_SigLIP2_Bank:
     folder = os.path.abspath(download_weights(hugging_face_api_key))
     key = (folder, str(device))
     if key not in _BANKS:
-        _BANKS[key] = _DeepECGPNGBank(folder, device)
+        _BANKS[key] = _DeepECG_SigLIP2_Bank(folder, device)
         logger.info("DeepECG-PNG weights loaded from %s on %s", folder, device)
     return _BANKS[key]
 
 
 # ---------------------------------------------------------------------------- task models
-class DeepECGPNGWrapper(HeartWiseModelFactory):
+class DeepECG_SigLIP2_Wrapper(HeartWiseModelFactory):
     """Base of the DeepECG-PNG task models. Inputs are images, not signals."""
 
-    name = 'deepecg_png'
+    name = 'deepecg_siglip2'
     input_type = 'image'          # utils.constants.IMAGE: fed ECG page images, not signals
     outputs = ()
 
@@ -295,26 +295,26 @@ class DeepECGPNGWrapper(HeartWiseModelFactory):
         return self.bank.probabilities(images, self.output_names)
 
 
-class DeepECGPNG_77_classes(DeepECGPNGWrapper):
-    name = 'deepecg_png_77_classes'
+class DeepECG_SigLIP2_77_classes(DeepECG_SigLIP2_Wrapper):
+    name = 'deepecg_siglip2_77_classes'
     outputs = (ALL_77,)
 
 
-class DeepECGPNG_AFIB_5Y(DeepECGPNGWrapper):
-    name = 'deepecg_png_afib_5y'
+class DeepECG_SigLIP2_AFIB_5Y(DeepECG_SigLIP2_Wrapper):
+    name = 'deepecg_siglip2_afib_5y'
     outputs = ('iAFib5',)
 
 
-class DeepECGPNG_LVEF_Equal_Under_40(DeepECGPNGWrapper):
-    name = 'deepecg_png_lvef_equal_under_40'
+class DeepECG_SigLIP2_LVEF_Equal_Under_40(DeepECG_SigLIP2_Wrapper):
+    name = 'deepecg_siglip2_lvef_equal_under_40'
     outputs = ('LVEF_le40',)
 
 
-class DeepECGPNG_LVEF_Under_50(DeepECGPNGWrapper):
-    name = 'deepecg_png_lvef_under_50'
+class DeepECG_SigLIP2_LVEF_Under_50(DeepECG_SigLIP2_Wrapper):
+    name = 'deepecg_siglip2_lvef_under_50'
     outputs = ('LVEF_lt50',)
 
 
-class DeepECGPNG_SHD(DeepECGPNGWrapper):
-    name = 'deepecg_png_shd'
+class DeepECG_SigLIP2_SHD(DeepECG_SigLIP2_Wrapper):
+    name = 'deepecg_siglip2_shd'
     outputs = ('SHD',)

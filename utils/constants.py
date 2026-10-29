@@ -16,11 +16,11 @@ from models.wcr_ecg_transformer import (
 )
 from models.bert_classifier import BertClassifier_En_Fr
 from models.deepecg_png import (
-    DeepECGPNG_77_classes,
-    DeepECGPNG_AFIB_5Y,
-    DeepECGPNG_LVEF_Equal_Under_40,
-    DeepECGPNG_LVEF_Under_50,
-    DeepECGPNG_SHD
+    DeepECG_SigLIP2_77_classes,
+    DeepECG_SigLIP2_AFIB_5Y,
+    DeepECG_SigLIP2_LVEF_Equal_Under_40,
+    DeepECG_SigLIP2_LVEF_Under_50,
+    DeepECG_SigLIP2_SHD
 )
 
 DIAGNOSIS_TO_FILE_COLUMNS = {
@@ -49,27 +49,27 @@ def input_type_of(file_name) -> str:
 MODEL_MAPPING = {
     'ecg_machine_diagnosis': {
         SIGNAL: {'efficientnet': EfficientNetV2_77_classes.name, 'wcr': WCR_77_classes.name},
-        IMAGE: {'deepecg_png': DeepECGPNG_77_classes.name},
+        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_77_classes.name},
         'bert': BertClassifier_En_Fr.name
     },
     'afib_5y': {
         SIGNAL: {'efficientnet': EfficientNetV2_AFIB_5Y.name, 'wcr': WCR_AFIB_5Y.name},
-        IMAGE: {'deepecg_png': DeepECGPNG_AFIB_5Y.name},
+        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_AFIB_5Y.name},
         'bert': None
     },
     'lvef_40': {
         SIGNAL: {'efficientnet': EfficientNetV2_LVEF_Equal_Under_40.name, 'wcr': WCR_LVEF_Equal_Under_40.name},
-        IMAGE: {'deepecg_png': DeepECGPNG_LVEF_Equal_Under_40.name},
+        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_LVEF_Equal_Under_40.name},
         'bert': None
     },
     'lvef_50': {
         SIGNAL: {'efficientnet': EfficientNetV2_LVEF_Under_50.name, 'wcr': WCR_LVEF_Under_50.name},
-        IMAGE: {'deepecg_png': DeepECGPNG_LVEF_Under_50.name},
+        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_LVEF_Under_50.name},
         'bert': None
     },
     'shd': {
         SIGNAL: {},
-        IMAGE: {'deepecg_png': DeepECGPNG_SHD.name},
+        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_SHD.name},
         'bert': None
     }
 }
@@ -77,7 +77,7 @@ MODEL_MAPPING = {
 # Models run when heartwise.config does not choose
 DEFAULT_MODELS = {
     SIGNAL: ['efficientnet', 'wcr'],
-    IMAGE: ['deepecg_png']
+    IMAGE: ['deepecg_siglip2']
 }
 
 ECG_CATEGORIES = {

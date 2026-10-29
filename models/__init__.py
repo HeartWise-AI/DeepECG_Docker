@@ -17,11 +17,11 @@ from models.efficientnet_wrapper import (
     EfficientNetV2_AFIB_5Y
 )
 from models.deepecg_png import (
-    DeepECGPNG_77_classes,
-    DeepECGPNG_AFIB_5Y,
-    DeepECGPNG_LVEF_Equal_Under_40,
-    DeepECGPNG_LVEF_Under_50,
-    DeepECGPNG_SHD
+    DeepECG_SigLIP2_77_classes,
+    DeepECG_SigLIP2_AFIB_5Y,
+    DeepECG_SigLIP2_LVEF_Equal_Under_40,
+    DeepECG_SigLIP2_LVEF_Under_50,
+    DeepECG_SigLIP2_SHD
 )
 
 __all__ = [
@@ -35,10 +35,10 @@ __all__ = [
     'EfficientNetV2_LVEF_Equal_Under_40',
     'EfficientNetV2_LVEF_Under_50',
     'EfficientNetV2_AFIB_5Y',
-    'DeepECGPNG_77_classes',
-    'DeepECGPNG_AFIB_5Y',
-    'DeepECGPNG_LVEF_Equal_Under_40',
-    'DeepECGPNG_LVEF_Under_50',
-    'DeepECGPNG_SHD',
+    'DeepECG_SigLIP2_77_classes',
+    'DeepECG_SigLIP2_AFIB_5Y',
+    'DeepECG_SigLIP2_LVEF_Equal_Under_40',
+    'DeepECG_SigLIP2_LVEF_Under_50',
+    'DeepECG_SigLIP2_SHD',
 ]
 
