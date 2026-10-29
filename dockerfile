@@ -1,4 +1,5 @@
-FROM python:3.10
+# Pillow 13 security fixes require Python >= 3.11.
+FROM python:3.11
 
 # Set the working directory
 WORKDIR /app
@@ -14,12 +15,17 @@ RUN pip install uv
 # Copy the files into the container
 COPY requirements.txt .
 
-# Install required libraries using uv
-RUN uv pip install --system --extra-index-url https://download.pytorch.org/whl/cu128 -r requirements.txt
+# Install CUDA PyTorch first, then resolve the remaining dependencies from PyPI.
+# The PyTorch index also mirrors Pillow, but does not carry its security release.
+RUN uv pip install --system --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0 && \
+    uv pip install --system -r requirements.txt
 
-# Clone the fairseq-signals repository and install it
+# Pin the upstream Python 3.11 compatibility fixes. Its setup.py still declares
+# the old Hydra/OmegaConf bounds; use the compatible versions for this image.
 RUN git clone https://github.com/HeartWise-AI/fairseq-signals && \
     cd fairseq-signals && \
+    git checkout 980e705ce957c6f46b62f0ca2cfa2d846e112bae && \
+    sed -i 's/"hydra-core<1.1"/"hydra-core==1.3.2"/; s/"omegaconf<2.1"/"omegaconf==2.3.1"/' setup.py && \
     uv pip install --system --editable ./    
 
 # Copy the rest of the application code into the container

@@ -200,10 +200,17 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(download.call_count, 2)
 
     def test_checked_in_revisions_match_reference(self):
-        reference = json.loads((ROOT / 'tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json').read_text())
-        for name, entry in reference['model_manifest'].items():
-            self.assertEqual(load_manifest()[name], {k: entry[k] for k in ('repository', 'revision')})
-            self.assertEqual(model_entry(entry['repository'])['revision'], entry['revision'])
+        fixtures = ROOT / 'tests/fixtures/reproducibility'
+        for filename in (
+            'data_rows_reproducibility_50.reference.json',
+            'data_rows_png_reproducibility_25.reference.json',
+        ):
+            reference = json.loads((fixtures / filename).read_text())
+            for name, entry in reference['model_manifest'].items():
+                self.assertEqual(load_manifest()[name], {
+                    key: entry[key] for key in ('repository', 'revision')
+                })
+                self.assertEqual(model_entry(entry['repository'])['revision'], entry['revision'])
 
     def test_factory_preserves_load_error_and_constructs_only_selected_model(self):
         spec = importlib.util.spec_from_file_location('isolated_factory', ROOT / 'models/heartwise_model_factory.py')

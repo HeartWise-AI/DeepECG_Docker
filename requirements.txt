@@ -9,6 +9,8 @@ tqdm
 statsmodels
 wfdb
 torchmetrics
+pillow==13.0.0
+safetensors==0.8.0
 git+https://github.com/HeartWise-AI/HeartWise_StatPlots.git
 
 filelock

@@ -22,6 +22,8 @@ TASKS = {
     'lvef_50': ('lvef_50_ecg_file_name', 'lvef_under_50', 1),
 }
 
+SIGNAL_SUBDIRS = {'.xml': 'xml', '.npy': 'npy'}
+
 
 def sha256(path):
     h = hashlib.sha256()
@@ -77,20 +79,40 @@ def validate_input_csv(path, ecgs, count):
         if not (row.get('ecg_machine_diagnosis') or '').strip():
             raise ValueError('Input CSV has an empty diagnosis')
         filename = row['77_classes_ecg_file_name']
-        if not filename or Path(filename).name != filename or Path(filename).suffix.lower() not in {'.xml', '.npy'}:
+        suffix = Path(filename).suffix.lower() if filename else ''
+        if not filename or Path(filename).name != filename or suffix not in SIGNAL_SUBDIRS:
             raise ValueError('ECG filenames must be XML or NPY basenames')
         for task, (column, _, _) in TASKS.items():
             if row[column] != filename:
                 raise ValueError('All tasks must use the same ECG in each row')
             if task != 'ecg_machine_diagnosis' and row[task] not in ('0', '1'):
                 raise ValueError('Binary outcome columns must contain 0 or 1')
-        file = ecgs / filename
+        file = ecgs / SIGNAL_SUBDIRS[suffix] / filename
         if file.is_symlink() or not file.is_file():
             raise ValueError('Input CSV references a missing ECG or a symlink')
         files.append(file)
     if len({file.stem for file in files}) != count:
         raise ValueError('Input CSV must contain unique ECGs')
     return files
+
+
+def write_runtime_input_csv(source, destination):
+    """Prefix validated signal basenames with their format subdirectory."""
+    with source.open(encoding='utf-8', newline='') as stream:
+        reader = csv.DictReader(stream)
+        fieldnames = reader.fieldnames
+        rows = list(reader)
+    if fieldnames is None:
+        raise ValueError('Input CSV has no header')
+    file_columns = {column for column, _, _ in TASKS.values()}
+    for row in rows:
+        for column in file_columns:
+            filename = row[column]
+            row[column] = f'{SIGNAL_SUBDIRS[Path(filename).suffix.lower()]}/{filename}'
+    with destination.open('x', encoding='utf-8', newline='') as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def capture_run(folder, names):
@@ -183,7 +205,7 @@ def command(args, log):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ecg-dir', type=Path, default=Path('/mnt/data1/datasets/unit_tests/ECGs'),
-                        help='Test ECG folder (default: /mnt/data1/datasets/unit_tests/ECGs)')
+                        help='Test ECG root containing xml/ and npy/ (default: /mnt/data1/datasets/unit_tests/ECGs)')
     parser.add_argument('--input-csv', type=Path, required=True, help='CSV with diagnosis text, binary labels, and ECG filenames')
     parser.add_argument('--reference', type=Path, default=Path(__file__).resolve().parents[1] / 'tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json', help='Saved expected outputs; never overwritten by the test')
     parser.add_argument('--api-key-file', type=Path, default=Path('api_key.json'),
@@ -237,15 +259,17 @@ def main():
     checks.mkdir()
     for name in ('ecg_repro_worker.py', 'test_ecg_reproducibility.py'):
         shutil.copyfile(source / 'scripts' / name, checks / name)
+    shutil.copyfile(input_csv, work / 'inputs.csv')
+    write_runtime_input_csv(input_csv, work / 'runtime-inputs.csv')
+    shutil.copyfile(reference_path, work / 'reference.json')
     provenance = {'source_commit': subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip(),
                   'source_files': {str(p.relative_to(context)): sha256(p) for p in sorted(context.rglob('*')) if p.is_file()},
                   'test_files': {p.name: sha256(p) for p in sorted(checks.iterdir())},
                   'input_csv_sha256': sha256(input_csv),
+                  'runtime_input_csv_sha256': sha256(work / 'runtime-inputs.csv'),
                   'reference_sha256': reference_hash,
                   'ecgs': {p.name: sha256(p) for p in files}}
     (work / 'provenance.json').write_text(json.dumps(provenance, indent=2))
-    shutil.copyfile(input_csv, work / 'inputs.csv')
-    shutil.copyfile(reference_path, work / 'reference.json')
     image = 'deepecg-repro:' + hashlib.sha256(str(work).encode()).hexdigest()[:12]
     print('Building image without cached layers...', flush=True)
     command(['docker', 'build', '--pull', '--no-cache', '-t', image, str(context)], work / 'build.log')
@@ -268,17 +292,19 @@ def main():
     device = 'cuda:0' if args.gpu is not None else 'cpu'
     command([*base, *gpu, '--network', 'none', '--env', 'HF_HUB_OFFLINE=1',
              '--volume', f'{ecgs}:/ecgs:ro', '--volume', f'{work / "weights"}:/app/weights:ro',
-             '--volume', f'{work / "inputs.csv"}:/input.csv:ro', '--volume', f'{folder}:/run-output',
+             '--volume', f'{work / "runtime-inputs.csv"}:/input.csv:ro', '--volume', f'{folder}:/run-output',
              image, '/checks/ecg_repro_worker.py', 'run', '--mode', 'full_run',
              '--data_path', '/input.csv', '--ecg_signals_path', '/ecgs',
              '--output_folder', '/run-output/outputs', '--preprocessing_folder', '/run-output/preprocessing',
-             '--hugging_face_api_key_path', '/run/hf-key.json', '--use_wcr', 'True', '--use_efficientnet', 'True',
+             '--hugging_face_api_key_path', '/run/hf-key.json', '--models', 'signal_models:wcr,efficientnet',
              '--batch_size', '8', '--preprocessing_n_workers', '4',
              '--signal_processing_device', device, '--diagnosis_classifier_device', device], folder / 'pipeline.log')
     if {p.name: sha256(p) for p in files} != provenance['ecgs']:
         raise ValueError('Input ECGs changed during the test')
     if sha256(work / 'inputs.csv') != provenance['input_csv_sha256']:
         raise ValueError('Input CSV changed during the test')
+    if sha256(work / 'runtime-inputs.csv') != provenance['runtime_input_csv_sha256']:
+        raise ValueError('Runtime input CSV changed during the test')
     if sha256(reference_path) != reference_hash or sha256(work / 'reference.json') != reference_hash:
         raise ValueError('Reference changed during the test')
     try:

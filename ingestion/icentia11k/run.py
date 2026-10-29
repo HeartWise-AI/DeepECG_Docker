@@ -20,7 +20,7 @@ import torch
 from ingestion import mapping, metrics
 from ingestion.icentia11k import labels, reader
 from utils.analysis_pipeline import PREPROCESSING_BATCH_SIZE, AnalysisPipeline, load_model, predict_77_classes
-from utils.constants import MODEL_MAPPING, load_thresholds
+from utils.constants import MODEL_MAPPING, SIGNAL, load_thresholds
 from utils.credentials import read_api_key
 from utils.files_handler import LEAD_ORDER, expand_single_lead, save_json, single_lead_slots
 
@@ -139,7 +139,7 @@ def main(argv=None):
     if a.batch_size < 1:
         raise SystemExit('--batch_size must be at least 1')
 
-    model_name = MODEL_MAPPING['ecg_machine_diagnosis'][a.model]
+    model_name = MODEL_MAPPING['ecg_machine_diagnosis'][SIGNAL][a.model]
     model = load_model(model_name, a.device, read_api_key(a.hugging_face_api_key_path)['HUGGING_FACE_API_KEY'])
     os.makedirs(out, exist_ok=True)
 

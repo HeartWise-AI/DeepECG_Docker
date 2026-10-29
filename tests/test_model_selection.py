@@ -38,7 +38,7 @@ def test_only_selected_models_load_and_requested_failure_exits(tmp_path, monkeyp
     args = SimpleNamespace(
         mode='analysis', data_path=str(tmp_path / 'input.csv'), ecg_signals_path=str(tmp_path),
         output_folder=str(tmp_path / 'outputs'), preprocessing_folder=str(preprocessed),
-        single_lead='none', use_wcr=False, use_efficientnet=True, batch_size=2,
+        models={'signal_models': ['efficientnet']}, batch_size=2,
         signal_processing_device='cpu', diagnosis_classifier_device='cpu',
         hugging_face_api_key_path=str(tmp_path / 'api_key.json'),
     )
