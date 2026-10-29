@@ -1,9 +1,8 @@
 """Parity of the Docker DeepECG-PNG model with the DeepECG-PNG code it was exported from.
 
-Needs the six pinned SigLIP2 snapshots downloaded from Hugging Face and the reference
-file written by `tools/export_deepecg_png.py --reference-out FILE` ($DEEPECG_PNG_REFERENCE): real
-validation PNGs with the features and probabilities computed by the training code. Skipped when
-either is missing.
+Needs the six pinned SigLIP2 snapshots downloaded from Hugging Face and an approved reference
+archive selected with $DEEPECG_PNG_REFERENCE: validation PNGs with the features and probabilities
+computed by the DeepECG-PNG training code. Skipped when either is missing.
 
 Checks, under this image's torch / transformers:
   * preprocessing: the same input tensor as DeepECG-PNG's process_image;
