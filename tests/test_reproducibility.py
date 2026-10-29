@@ -150,21 +150,37 @@ class InputTests(unittest.TestCase):
 
             names = ['synthetic_a.xml', 'synthetic_b.NPY']
             for name in names:
-                (root / name).write_bytes(b'synthetic input-validation fixture')
+                folder = root / Path(name).suffix.lower()[1:]
+                folder.mkdir(exist_ok=True)
+                (folder / name).write_bytes(b'synthetic input-validation fixture')
             write(names)
-            self.assertEqual(repro.validate_input_csv(path, root, 2), [root / n for n in names])
+            self.assertEqual(
+                repro.validate_input_csv(path, root, 2),
+                [root / Path(n).suffix.lower()[1:] / n for n in names],
+            )
             for invalid in ['synthetic.txt', '../synthetic.npy', 'nested/synthetic.npy']:
                 write([invalid])
                 with self.assertRaisesRegex(ValueError, 'XML or NPY basenames'):
                     repro.validate_input_csv(path, root, 1)
-            (root / 'synthetic_a.npy').write_bytes(b'synthetic')
+            (root / 'npy' / 'synthetic_a.npy').write_bytes(b'synthetic')
             write(['synthetic_a.xml', 'synthetic_a.npy'])
             with self.assertRaisesRegex(ValueError, 'unique ECGs'):
                 repro.validate_input_csv(path, root, 2)
-            (root / 'alias.npy').symlink_to(root / 'synthetic_a.npy')
+            (root / 'npy' / 'alias.npy').symlink_to(root / 'npy' / 'synthetic_a.npy')
             write(['alias.npy'])
             with self.assertRaisesRegex(ValueError, 'missing ECG or a symlink'):
                 repro.validate_input_csv(path, root, 1)
+
+            runtime = root / 'runtime.csv'
+            write(names)
+            repro.write_runtime_input_csv(path, runtime)
+            with runtime.open(newline='') as stream:
+                runtime_rows = list(csv.DictReader(stream))
+            for column, _, _ in repro.TASKS.values():
+                self.assertEqual(
+                    [row[column] for row in runtime_rows],
+                    ['xml/synthetic_a.xml', 'npy/synthetic_b.NPY'],
+                )
 
     def test_committed_mixed_fixture_matches_reference_inputs(self):
         fixtures = ROOT / 'tests/fixtures/reproducibility'
@@ -182,7 +198,8 @@ class InputTests(unittest.TestCase):
     def test_normal_template_is_required(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / 'synthetic.xml').write_text('<synthetic/>')
+            (root / 'xml').mkdir()
+            (root / 'xml' / 'synthetic.xml').write_text('<synthetic/>')
             path = root / 'input.csv'
             fields = [c for task, (name, _, _) in repro.TASKS.items() for c in (task, name)]
             row = {c: 'synthetic.xml' for c in fields}
@@ -195,7 +212,7 @@ class InputTests(unittest.TestCase):
                     writer.writerow(values)
 
             write(row)
-            self.assertEqual(repro.validate_input_csv(path, root, 1), [root / 'synthetic.xml'])
+            self.assertEqual(repro.validate_input_csv(path, root, 1), [root / 'xml' / 'synthetic.xml'])
             for update in ({'ecg_machine_diagnosis': ''}, {'afib_5y': '0.2'},
                            {'afib_ecg_file_name': 'different.xml'}):
                 with self.subTest(update=update):

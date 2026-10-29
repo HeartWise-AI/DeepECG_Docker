@@ -271,10 +271,12 @@ python scripts/test_ecg_reproducibility.py \
   --gpu 0
 ```
 
-The default ECG folder is `/mnt/data1/datasets/unit_tests/ECGs`; use `--ecg-dir`
-to override it on another machine. The CSV selects exactly 25 XMLs and 25 NPYs;
-extra files in that folder are not included. The NPYs contain the same decoded
-signals as their original XMLs, before shared scaling and cleaning.
+The default ECG root is `/mnt/data1/datasets/unit_tests/ECGs`, with XML fixtures
+under `xml/` and NPY fixtures under `npy/`; use `--ecg-dir` to override the root
+on another machine. The CSV keeps basename-only references and selects exactly
+25 XMLs and 25 NPYs; extra files under either folder are not included. The NPYs
+contain the same decoded signals as their original XMLs, before shared scaling
+and cleaning.
 
 The work directory must be new. Omit `--gpu` to use CPU. The test builds once with
 `--pull --no-cache` from a source-only context, downloads BERT and the eight
