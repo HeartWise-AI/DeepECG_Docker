@@ -17,8 +17,9 @@ ecg_signals_analysis_cleaned_ecg_signals.csv
 *.csv
 *.json
 !thresholds/*.json
-!inputs/data_rows_reproducibility_50.csv
-!inputs/data_rows_reproducibility_50.reference.json
+!inputs/data_rows_template.csv
+!tests/fixtures/reproducibility/data_rows_reproducibility_50.csv
+!tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json
 notebooks/ptb-xl_lite
 notebooks/README.md
 notebooks/ssl_pretrained_model
@@ -36,3 +37,6 @@ notebooks/outputs
 
 # cloned by the dockerfile / for local runs
 fairseq-signals/
+
+!api_key.example.json
+!models/manifest.json

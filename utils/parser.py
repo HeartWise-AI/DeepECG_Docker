@@ -39,7 +39,7 @@ class HearWiseArgs:
         parser.add_argument('--data_path', help='Path to the data rows csv file', type=str, required=True)
         parser.add_argument('--batch_size', help='Batch size', type=int, required=True)
         parser.add_argument('--output_folder', help='Path to the output folder', type=str, required=True)
-        parser.add_argument('--hugging_face_api_key_path', help='Path to the Hugging Face API key', type=str, required=True)
+        parser.add_argument('--hugging_face_api_key_path', help='Optional API-key JSON (created empty if missing)', type=str, default='api_key.json')
         parser.add_argument('--models', help='Models to run, from heartwise.config: "key:model,model;..." with keys '
                             'signal_models, image_models and optional <task>_signal_models / <task>_image_models',
                             type=HearWiseArgs.parse_models, default={})
