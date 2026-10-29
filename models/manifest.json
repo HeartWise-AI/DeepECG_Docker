@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "models": {
+    "Bert_diagnosis2classification": {
+      "repository": "heartwise/Bert_diagnosis2classification",
+      "revision": "363b6daede9d15484c58182783e4f5fd413fdcff"
+    },
+    "Bert_diagnosis2classification_En_Fr": {
+      "repository": "heartwise/Bert_diagnosis2classification_En_Fr",
+      "revision": "1d69ddd61fe1497f6272262fb2dd33becc79c567"
+    },
+    "efficientnetv2_77_classes": {
+      "repository": "heartwise/efficientnetv2_77_classes",
+      "revision": "82274f2e6da2414ab37f209fd9bbb8d480f9543a"
+    },
+    "efficientnetv2_afib_5y": {
+      "repository": "heartwise/efficientnetv2_afib_5y",
+      "revision": "0c410e854b60335c09c7e8ba13eb583311dd9600"
+    },
+    "efficientnetv2_lvef_equal_under_40": {
+      "repository": "heartwise/efficientnetv2_lvef_equal_under_40",
+      "revision": "973b356566b0397283fe5741b70342d1275d6016"
+    },
+    "efficientnetv2_lvef_under_50": {
+      "repository": "heartwise/efficientnetv2_lvef_under_50",
+      "revision": "f3d8d94e703c0172be43f1267611d14a36b464eb"
+    },
+    "siglip2_base_encoder": {
+      "repository": "heartwise/SigLIP-2_BaseEncoder",
+      "revision": "3f135079f6d288512c6b434f8bebbf749d9be79e"
+    },
+    "siglip2_77_classes": {
+      "repository": "heartwise/SigLIP2_77_classes",
+      "revision": "d88e23eca7e934a5d473fb62bf411c24b30d9a6a"
+    },
+    "siglip2_afib_5y": {
+      "repository": "heartwise/SigLIP2_AFIB_5Y",
+      "revision": "5e73b16ee6b65d8238511b917963ab62e1253dc8"
+    },
+    "siglip2_lvef_equal_under_40": {
+      "repository": "heartwise/SigLIP2_LVEF_equal_under_40",
+      "revision": "18dc0447a88355fb779030425509e91122a1bc5b"
+    },
+    "siglip2_lvef_under_50": {
+      "repository": "heartwise/SigLIP2_LVEF_under_50",
+      "revision": "0ebb62f3c1a3025552b70191edb9caa594a2b889"
+    },
+    "siglip2_shd": {
+      "repository": "heartwise/SigLIP2_SHD",
+      "revision": "1b40ad7a056383386387ecfa32f31e2a4eb8a829"
+    },
+    "wcr_77_classes": {
+      "repository": "heartwise/wcr_77_classes",
+      "revision": "1a29567e09e8ba38c6ad830e94b8e01f1057989f"
+    },
+    "wcr_afib_5y": {
+      "repository": "heartwise/wcr_afib_5y",
+      "revision": "c3051308bded0d94cd76b0e34c39f3dc8d63882a"
+    },
+    "wcr_lvef_equal_under_40": {
+      "repository": "heartwise/wcr_lvef_equal_under_40",
+      "revision": "ebd9ecc4400504088831e5263747ab2cc355b924"
+    },
+    "wcr_lvef_under_50": {
+      "repository": "heartwise/wcr_lvef_under_50",
+      "revision": "f279a3692c575cb13b35d03024557975fe6da7cf"
+    }
+  }
+}

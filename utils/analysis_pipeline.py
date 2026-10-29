@@ -10,7 +10,7 @@ from sklearn.metrics import (
     f1_score, 
     roc_curve
 )
-from utils.files_handler import XMLProcessor, NPYProcessor, ECGFileHandler
+from utils.files_handler import XMLProcessor, NPYProcessor, ECGFileHandler, validate_signal_paths
 from data.project_dataset import create_dataloader
 from models import HeartWiseModelFactory
 from utils.constants import (
@@ -258,9 +258,11 @@ class AnalysisPipeline:
         """
         Preprocess ECG files from df (NPY or XML), scale and clean signals, and save as .base64.
 
-        Processes in batches; failed files or batches are skipped and optionally reported via errors.
+        Decode each format separately within a batch, restoring input order before
+        shared scaling/cleaning. Failed files are excluded and reported via errors.
         Returns None if no data was successfully processed.
         """
+        validate_signal_paths(df['ecg_path'])
         ecg_signal_processor = ECGSignalProcessor()
         batch_size = 10000
         total_batches = (len(df) + batch_size - 1) // batch_size
@@ -274,24 +276,40 @@ class AnalysisPipeline:
             
             try:
                 # Get batch of data
-                batch_df = df.iloc[start_idx:end_idx].copy()
+                batch_df = df.iloc[start_idx:end_idx].copy().reset_index(drop=True)
                 
-                # Select processor based on file type
-                is_npy = batch_df['ecg_path'].iloc[0].endswith('.npy')
-                processor = NPYProcessor() if is_npy else XMLProcessor()
-
-                try:
-                    batch_df, ecg_signals_df = processor.process_batch(
-                        df=batch_df,
-                        num_workers=preprocessing_n_workers,
-                        preprocessing_folder=preprocessing_folder
-                    )
-                    processor.save_report(
-                        output_folder=os.path.join(output_folder, f'batch_{batch_idx + 1}')
-                    )
-                except Exception as e:
-                    collect(errors, "preprocessing", f"Batch {batch_idx + 1} processing failed", str(e))
+                extensions = batch_df['ecg_path'].map(lambda path: os.path.splitext(path)[1].lower())
+                metadata_parts, signal_parts = [], []
+                for extension, processor_type in (('.xml', XMLProcessor), ('.npy', NPYProcessor)):
+                    subset = batch_df[extensions == extension].copy()
+                    if subset.empty:
+                        continue
+                    processor = processor_type()
+                    try:
+                        metadata, signals = processor.process_batch(
+                            df=subset,
+                            num_workers=preprocessing_n_workers,
+                            preprocessing_folder=preprocessing_folder
+                        )
+                        # Keep homogeneous report paths unchanged; mixed reports must not overwrite.
+                        report_folder = os.path.join(output_folder, f'batch_{batch_idx + 1}')
+                        if extensions.nunique() > 1:
+                            report_folder = os.path.join(report_folder, extension[1:])
+                        processor.save_report(output_folder=report_folder)
+                        failed = len(subset) - len(signals)
+                        if failed:
+                            collect(errors, "preprocessing",
+                                    f"Batch {batch_idx + 1}: {failed} {extension} file(s) failed", None)
+                        metadata_parts.append(metadata)
+                        signal_parts.append(signals)
+                    except Exception as e:
+                        collect(errors, "preprocessing",
+                                f"Batch {batch_idx + 1} {extension} processing failed", str(e))
+                if not signal_parts:
                     continue
+                # Sorting by the original batch positions keeps cohort scaling deterministic.
+                batch_df = pd.concat(metadata_parts).sort_index()
+                ecg_signals_df = pd.concat(signal_parts).sort_index()
                 if len(ecg_signals_df) == 0:
                     collect(errors, "preprocessing", f"No valid signals in batch {batch_idx + 1}", None)
                     continue
@@ -315,10 +333,13 @@ class AnalysisPipeline:
                     )
                 
                 # Append processed batch
+                # Only saved signals count as successfully preprocessed metadata.
+                batch_df = batch_df[batch_df['ecg_path'].isin(cleaned_signals_df['ecg_path'])]
                 processed_df = pd.concat([processed_df, batch_df], ignore_index=True)
                 
                 # Clear memory
                 del ecg_signals_df, scaled_signals_df, cleaned_signals_df, batch_df
+                del metadata_parts, signal_parts, metadata, signals, subset
                 
             except Exception as e:
                 collect(errors, "preprocessing", f"Batch {batch_idx + 1} failed", str(e))
@@ -358,6 +379,7 @@ class AnalysisPipeline:
             return None, None
 
     @staticmethod
+    @torch.no_grad()
     def _run_analysis_impl(
         df: pd.DataFrame,
         batch_size: int,
@@ -375,7 +397,8 @@ class AnalysisPipeline:
                 'hugging_face_api_key': hugging_face_api_key
             }
         )
-        
+        signal_processing_model.model.eval()
+
         if "77" in signal_processing_model_name:
             # Load models
             diagnosis_classifier_model = HeartWiseModelFactory.create_model(
@@ -385,6 +408,7 @@ class AnalysisPipeline:
                     'hugging_face_api_key': hugging_face_api_key
                 }
             )
+            diagnosis_classifier_model.model.eval()
             
             # Compute bert diagnoses predictions
             predictions = []

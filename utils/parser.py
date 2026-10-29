@@ -26,7 +26,7 @@ class HearWiseArgs:
         parser.add_argument('--data_path', help='Path to the data rows csv file', type=str, required=True)
         parser.add_argument('--batch_size', help='Batch size', type=int, required=True)
         parser.add_argument('--output_folder', help='Path to the output folder', type=str, required=True)
-        parser.add_argument('--hugging_face_api_key_path', help='Path to the Hugging Face API key', type=str, required=True)
+        parser.add_argument('--hugging_face_api_key_path', help='Optional API-key JSON (created empty if missing)', type=str, default='api_key.json')
         parser.add_argument('--use_wcr', help='Use WCR for signal processing', type=HearWiseArgs.str2bool, required=True)
         parser.add_argument('--use_efficientnet', help='Use EfficientNet for signal processing', type=HearWiseArgs.str2bool, required=True)
         parser.add_argument('--ecg_signals_path', help='Path to the ECG signals files', type=str, required=True)

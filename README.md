@@ -44,16 +44,17 @@ This pipeline offers 3 modes of processing:
    cd DeepECG_Docker
    ```
 
-2. 🔑 Set up your HuggingFace API key:
-   - Create a HuggingFace account if you don't have one yet
-   - Ask for access to the DeepECG models needed in the [heartwise-ai/DeepECG](https://huggingface.co/collections/heartwise/deepecg-models-66ce09c7d620749ad819fa0d) repository
-   - Create an API key in the HuggingFace website in `User Settings` -> `API Keys` -> `Create API Key` -> `Read`
-   - Add your API key in the following format in the `api_key.json` file in the root directory:
-     ```json
-     {
-       "huggingface_api_key": "your_api_key_here"
-     }
-     ```
+2. 🔑 Initialize the local credential file (Python 3):
+   ```bash
+   python -m utils.credentials
+   ```
+   This creates an ignored `api_key.json` with an empty `HUGGING_FACE_API_KEY`
+   and preserves an existing file. `api_key.example.json` is the tracked template.
+   Public, ungated models work with the key left empty. For private or gated
+   models, obtain read access on Hugging Face and enter your token in the local
+   `api_key.json`. Never commit this file. Setup and inference also create an empty
+   file automatically when the configured path is missing.
+
 3. 📄 Populate a csv file containing the data to be processed, example: inputs/data_rows_template.csv (see [Usage](#usage) for more details)
    - If using DICOMs, update the root path in [extract_metada_from_dicoms.py](utils/extract_metada_from_dicoms.py) then run the script to extract the metadata from the DICOMs
       ```
@@ -67,7 +68,7 @@ This pipeline offers 3 modes of processing:
 
 5. 🚀 Run the docker container: (see [Docker](#docker) for more details)
    ```
-   docker run --gpus all -v $(pwd)/inputs:/app/inputs -v $(pwd)/outputs:/app/outputs -v $(pwd)/ecg_signals:/app/ecg_signals:ro -v $(pwd)/preprocessing:/app/preprocessing -i deepecg-docker
+   docker run --gpus all -v $(pwd)/api_key.json:/app/api_key.json:ro -v $(pwd)/inputs:/app/inputs -v $(pwd)/outputs:/app/outputs -v $(pwd)/ecg_signals:/app/ecg_signals:ro -v $(pwd)/preprocessing:/app/preprocessing -i deepecg-docker
    ```
 
 6. Connect to the container
@@ -86,13 +87,16 @@ This pipeline offers 3 modes of processing:
 DeepECG_Docker/
 │
 ├── models/
+│   ├── manifest.json                 # Pinned Hugging Face revisions
 │   ├── bert_classifier.py
 │   ├── efficientnet_wrapper.py
 │   ├── heartwise_models_factory.py
 │   └── resnet_wrapper.py
 │
 ├── inputs/
-│   └── data_rows_template.csv
+│   ├── data_rows_template.csv          # Mixed NPY/XML example
+│   ├── data_rows_template_npy.csv      # NPY-only example
+│   └── data_rows_template_xml.csv      # XML-only example
 │
 ├── outputs/
 │   ├── batch_1/                    # Preprocessing reports per batch
@@ -189,9 +193,26 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
 
 ## 📄 Usage
 
+You can run XML inputs alone, NPY inputs alone, or both formats together in one
+CSV and one pipeline run. Choose the corresponding template:
+
+| Input formats | Template |
+| --- | --- |
+| NPY and XML together | [data_rows_template.csv](inputs/data_rows_template.csv) — first row NPY, second row XML |
+| NPY only | [data_rows_template_npy.csv](inputs/data_rows_template_npy.csv) |
+| XML only | [data_rows_template_xml.csv](inputs/data_rows_template_xml.csv) |
+
+The combined template contains the exact rows from the NPY-only and XML-only
+templates, preserving their filenames, diagnosis text, and outcome labels.
+
+The pipeline chooses each file's decoder from its extension; no format flag is
+needed. XML and NPY signals are processed together, with one combined probabilities
+CSV and metrics JSON/CSV per selected model and task.
+
 1. Prepare your input data:
-   - Create a CSV file with the following template in [inputs/data_rows_template.csv](inputs/data_rows_template.csv):
-   - For each model, add two columns with the following format:
+   - Copy the appropriate template and use each row with its matching ECG file, diagnosis text, and outcome labels. When substituting another ECG, update those values together.
+   - The supplied rows use `dummy_ecg.npy` and `dummy_ecg.xml`. These share a filename stem, so the current pipeline rejects running them together: both would map to `dummy_ecg.base64`. To run this example as a mixed cohort, give the files distinct stems and update their corresponding CSV filenames, keeping each file's diagnosis and labels unchanged.
+   - For each task, add two columns with the following format:
      ```
      'ecg_machine_diagnosis': '77_classes_ecg_file_name',
      'afib_5y': 'afib_ecg_file_name',
@@ -207,7 +228,7 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
    - `lvef_50` (int): Binary classification of LVEF < 50%
    - `lvef_50_ecg_file_name` (string): The ECG signal **file names** LVEF < 50%
    - Place your input CSV file in the `inputs/` directory
-   - Change the `data_rows_template.csv` filename in the `heartwise.config` file
+   - Select your CSV with `--csv_file_name`, for example: `bash run_pipeline.bash --mode full_run --csv_file_name data_rows_template.csv`. Use `data_rows_template_npy.csv` or `data_rows_template_xml.csv` to run either format alone.
 
 2. Pipeline configuration:
    - When using docker, you only need to change the actual csv filename. Edit the [heartwise.config](heartwise.config) file to set the desired configuration:
@@ -228,7 +249,140 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
 3. Notes:
    - **Single ECG processing**: When running the pipeline with only one ECG file, metrics computation (AUC, F1, etc.) is automatically skipped since these metrics require multiple samples. Predictions are still generated and saved normally.
 
+## Testing
+
+Run the complete pipeline once, including BERT and all eight signal models, on
+50 approved de-identified ECGs (25 XML and 25 equivalent decoded NPY files) and
+compare with saved reference predictions:
+
+```bash
+python scripts/test_ecg_reproducibility.py \
+  --ecg-dir /mnt/data1/datasets/unit_tests/ECGs \
+  --input-csv "$PWD/tests/fixtures/reproducibility/data_rows_reproducibility_50.csv" \
+  --reference "$PWD/tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json" \
+  --api-key-file "$PWD/api_key.json" \
+  --work-dir /path/to/new/private/test-results \
+  --gpu 0
+```
+
+The default ECG folder is `/mnt/data1/datasets/unit_tests/ECGs`; use `--ecg-dir`
+to override it on another machine. The CSV selects exactly 25 XMLs and 25 NPYs;
+extra files in that folder are not included. The NPYs contain the same decoded
+signals as their original XMLs, before shared scaling and cleaning.
+
+The work directory must be new. Omit `--gpu` to use CPU. The test builds once with
+`--pull --no-cache` from a source-only context, downloads BERT and the eight
+signal models at the reference's Hugging Face commit revisions, verifies their
+file hashes, then runs the actual `main.py --mode full_run` pipeline once with
+network disabled. The run starts with empty preprocessing and output folders;
+the source ECG directory and downloaded model weights are mounted read-only.
+No ECG data or API keys are copied into the image.
+
+The test requires every ECG in every model output, finite probabilities in
+`[0, 1]`, successful preprocessing reports, identical preprocessed signal hashes,
+and identical raw BERT and signal-model probabilities. It rejects missing or duplicate rows and missing
+model outputs. `--atol` explicitly permits an absolute probability tolerance;
+the default is zero. A nonzero exit means the test did not pass. The input CSV
+and ECG hashes must match the reference. Environment differences (package versions,
+fairseq commit, Python, CUDA, and GPU model) are reported separately.
+
+The fixed reference is `tests/fixtures/reproducibility/data_rows_reproducibility_50.reference.json`
+(the default for `--reference`). It contains raw predictions for all 50 ECGs:
+BERT's 77 probabilities, both signal models' 77 probabilities, and six binary
+model probabilities per ECG. It was saved from the validated full pipeline run.
+The test never regenerates or overwrites it. The reference and input CSV live in
+`tests/fixtures/reproducibility/`; actual ECG files remain outside git. Replacing
+the reference requires reviewing and accepting new expected results.
+
+Artifacts include `report.json`, input/source hashes in `provenance.json`, model
+revisions and file hashes in `models.json`, package versions, the fairseq commit,
+image metadata, a copy of the reference, and logs and outputs under `run/`.
+`run/outputs/` contains the model CSVs; `report.json` contains overall pass/fail,
+the maximum absolute difference and count of differing values for each model,
+and preprocessing/environment comparisons. Keep the entire
+private work directory to preserve the evidence and downloaded snapshots.
+The test checks a fresh build against the saved results. Package
+versions and upstream Git repositories in the general Docker build are still
+floating; this is not yet a guarantee of identical results across future rebuilds
+or different hardware.
+
+The input CSV follows `inputs/data_rows_template.csv`: diagnosis text,
+binary outcome labels, and the four corresponding filename columns. Each row
+must use the same ECG for every task. The prepared 50-record CSV contains XML
+diagnosis text and synthetic binary labels obtained by thresholding the saved
+WCR probabilities at 0.5. These labels are test inputs, not observed clinical
+outcomes. The pipeline calculates metrics as usual; metrics against synthetic
+labels must not be interpreted as clinical performance. The regression check
+compares raw probabilities, not metrics or thresholded predictions. Preprocessing
+scales signals using the whole cohort, so keep the same ECG selection when
+comparing results.
+
+Synthetic regression checks (run inside the image with `tests/` and `scripts/`
+mounted under `/app`) cover strict output validation, XML worker isolation, and
+evaluation mode. Credential and download tests use synthetic snapshots:
+
+```bash
+python -m unittest discover -s tests -p test_reproducibility.py -v
+python tests/test_error_collector.py
+python -m unittest discover -s tests -p test_model_downloads.py -v
+```
+
 ## 🐳 Docker
+
+The image contains an empty `api_key.json`. Public models can run without a
+credential mount. To use a token, initialize the host file as described above,
+then mount it read-only as shown below. Actual credentials are excluded from the
+build context and must never be copied into the image.
+
+Optional preloading downloads the pinned model files during the build. Without a key:
+
+```bash
+docker build --build-arg RUN_MODELS_SETUP=true -t deepecg-docker .
+```
+
+To preload models requiring access, pass the local key as a temporary BuildKit secret:
+
+```bash
+docker build --build-arg RUN_MODELS_SETUP=true \
+  --secret id=hf_api_key,src=api_key.json -t deepecg-docker .
+```
+
+Preloading prints each model's availability and a summary. Denied access,
+unavailable revisions, and download failures are reported without blocking the
+image build. It downloads files without instantiating the models. Runtime inference
+loads only models selected by the CSV tasks and the model settings. An unavailable
+unselected model does not block inference; a selected model that cannot be downloaded
+or loaded produces an error and a nonzero exit status.
+
+### Pinned models and cached downloads
+
+`models/manifest.json` records each registered model's Hugging Face repository
+and exact 40-character commit SHA. Docker preloading and runtime downloads use
+this same manifest. The nine reproducibility models retain the revisions in the
+saved reference; the legacy BERT model has its own pinned revision.
+
+Snapshots are stored under `weights/<model>/<owner>--<repository>/<commit>/`.
+Before publishing a completion marker, setup fetches the pinned repository file
+list and verifies that every file is present with the expected size. An offline
+fallback to a partial download cannot become a complete cache. Cache hits check
+that all recorded files exist with the expected sizes; the reproducibility test
+additionally verifies their SHA-256 hashes against the reference. Concurrent
+downloads are locked, interrupted downloads can be retried, and changing a
+revision uses a separate directory. Old unversioned `weights/<model>/` files are
+left untouched and are not trusted or reused automatically. Mount `/app/weights`
+to a persistent host directory if downloads should survive container removal.
+
+An empty key explicitly uses anonymous access. If access fails, the message
+explains whether to supply credentials/check permissions, verify a revision,
+or check connectivity/cache permissions. Hugging Face may hide private repositories
+as unavailable, so an anonymous failure does not prove that a repository is missing.
+
+To update a model, obtain its exact Hugging Face commit SHA, change its entry in
+`models/manifest.json`, and review the resulting predictions. The reproducibility
+test rejects a manifest revision that differs from its reference. For an intentional
+model update, separately review and approve new reference files and expected
+probabilities; the test never overwrites the reference automatically. A model
+revision change does not pin Python packages, CUDA, or other image dependencies.
 
 ### Interactive shell (recommended for Cursor / IDE terminals)
 
@@ -237,6 +391,7 @@ If `docker run -it ...` hangs or shows a blank screen in Cursor’s terminal, st
 **1. Start the container (no `-it`):**
 ```bash
 docker run -d --gpus all --name deepecg \
+  -v $(pwd)/api_key.json:/app/api_key.json:ro \
   -v $(pwd)/inputs:/app/inputs \
   -v $(pwd)/outputs:/app/outputs \
   -v $(pwd)/ecg_signals:/app/ecg_signals:ro \
@@ -260,9 +415,32 @@ When you’re done, exit the shell (`exit`) and stop the container: `docker stop
 
 After running the pipeline, the `outputs/` folder contains the following files:
 
+### Mixed XML and NPY inputs
+
+A task's file column can contain both XML and NPY paths, including uppercase
+extensions. Each file is decoded with its own loader. Within each batch of up to
+10,000 unique signal files, successful records are restored to their input order
+before shared scaling and cleaning. The batch size and cohort-dependent scaling
+are unchanged: changing the cohort or batch boundaries can change predictions.
+
+XML and NPY predictions are combined per model/task: one `*_probabilities.csv`,
+one metrics JSON, and one metrics CSV. Metrics cover the combined successfully
+analysed records. Failed files are reported, excluded from inference in `full_run`
+(even if old preprocessed files exist), and cause a nonzero exit status.
+
+Only `.xml` and `.npy` are accepted by signal preprocessing. Sources must have
+unique filename stems because preprocessed files retain the existing `<stem>.base64`
+naming. For example, `record.xml` and `record.npy` must be renamed to distinct
+stems; the pipeline rejects this collision before preprocessing rather than
+overwriting one signal.
+
 ### Preprocessing Reports (per batch)
 
 Located in `outputs/batch_X/` where X is the batch number:
+
+For batches containing both formats, reports are stored separately under
+`outputs/batch_X/xml/` and `outputs/batch_X/npy/`. Homogeneous batches retain the
+existing location. NPY reports have no `xml_type` column.
 
 **`ecg_processing_detailed_report.csv`** - Per-file processing status:
 
