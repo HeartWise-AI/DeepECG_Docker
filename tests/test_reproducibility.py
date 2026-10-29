@@ -258,7 +258,7 @@ class PipelineTests(unittest.TestCase):
         model = FakeModel()
         batch = {'ecg_signal': torch.ones(2, 12), 'file_name': ['one', 'two'], 'diagnosis': torch.tensor([0, 1])}
         with patch('utils.analysis_pipeline.HeartWiseModelFactory.create_model', return_value=model) as factory, \
-             patch('utils.analysis_pipeline.create_dataloader', return_value=[batch]):
+             patch('utils.analysis_pipeline.create_signal_dataloader', return_value=[batch]):
             args = dict(df=None, batch_size=2, diagnosis_classifier_device='cpu',
                         signal_processing_device='cpu', signal_processing_model_name='wcr_afib_5y',
                         diagnosis_classifier_model_name=None, hugging_face_api_key='')
@@ -286,7 +286,7 @@ class PipelineTests(unittest.TestCase):
         batch = {'ecg_signal': torch.ones(2, 12), 'file_name': ['one', 'two'],
                  'diagnosis': ['Synthetic normal', 'Synthetic abnormal']}
         with patch('utils.analysis_pipeline.HeartWiseModelFactory.create_model', side_effect=[signal, bert]), \
-             patch('utils.analysis_pipeline.create_dataloader', return_value=[batch]), \
+             patch('utils.analysis_pipeline.create_signal_dataloader', return_value=[batch]), \
              patch('utils.analysis_pipeline.compute_metrics', return_value={'checked': True}) as metrics:
             result, output = AnalysisPipeline._run_analysis_impl(
                 df=None, batch_size=2, diagnosis_classifier_device='cpu', signal_processing_device='cpu',

@@ -11,7 +11,7 @@ from sklearn.metrics import (
     roc_curve
 )
 from utils.files_handler import XMLProcessor, NPYProcessor, ECGFileHandler, validate_signal_paths
-from data.project_dataset import create_dataloader
+from data.project_dataset import create_signal_dataloader
 from data.image_dataset import create_image_dataloader
 from models import HeartWiseModelFactory
 from utils.constants import (
@@ -429,7 +429,7 @@ class AnalysisPipeline:
             ground_truth = []
             probabities_rows = []
             logger.info("Creating dataloader (batch_size=%d)...", batch_size)
-            dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
+            dataloader = create_signal_dataloader(df, batch_size=batch_size, shuffle=False)
                         
             for batch in tqdm(dataloader, total=len(dataloader)):
                 diagnosis = batch['diagnosis']
@@ -478,7 +478,7 @@ class AnalysisPipeline:
             ), df_probabilities
         
         else:
-            dataloader = create_dataloader(df, batch_size=batch_size, shuffle=False)
+            dataloader = create_signal_dataloader(df, batch_size=batch_size, shuffle=False)
             predictions = []
             ground_truth = []
             probabilities_rows = []

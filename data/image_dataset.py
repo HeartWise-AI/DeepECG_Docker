@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader, Dataset
 from utils.image_preprocessing import load_ecg_image
 
 
-class ImageDataset(Dataset):
+class ECGImageDataset(Dataset):
     """PyTorch Dataset that yields diagnosis, the preprocessed ECG page image and file name per row.
 
     Rows may have no label (inference only): a missing numeric label is NaN, a missing
@@ -41,6 +41,6 @@ def create_image_dataloader(
     text_labels: bool = False,
     num_workers: int = 0
 ):
-    """Build a DataLoader over the given DataFrame (diagnosis, ecg_path, file_name) using ImageDataset."""
-    dataset = ImageDataset(df, preprocessing=preprocessing, text_labels=text_labels)
+    """Build a DataLoader over the given DataFrame using ECGImageDataset."""
+    dataset = ECGImageDataset(df, preprocessing=preprocessing, text_labels=text_labels)
     return DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
