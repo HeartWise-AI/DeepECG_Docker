@@ -425,11 +425,13 @@ at 5 years**. Images are preprocessed exactly as in training (grayscale, stretch
 CLIP normalization); it expects ECG pages rendered like the training images.
 
 **1. Weights (Hugging Face).** Like every other model, the weights are downloaded from the private
-Hugging Face repository [`heartwise/deepecg_png`](https://huggingface.co/heartwise/deepecg_png) into
-`weights/deepecg_png/` (~340 MB: encoder, probes, validation thresholds, provenance), at build time
-with `RUN_MODELS_SETUP=true` or on first use; the five task models share it. To publish new weights,
-export them on the machine with the DeepECG-PNG checkpoints (DeepECG-PNG's own Python environment)
-and push them:
+Hugging Face repository [`heartwise/deepecg_png`](https://huggingface.co/heartwise/deepecg_png), at the
+commit pinned in `models/manifest.json` (entry `deepecg_png`), into
+`weights/deepecg_png/heartwise--deepecg_png/<commit>/` (~340 MB: encoder, probes, validation thresholds,
+provenance), at build time with `RUN_MODELS_SETUP=true` or on first use; the five task models share it.
+Without that manifest entry the image models stop with `heartwise/deepecg_png: expected one entry in
+models/manifest.json`. To publish new weights, export them on the machine with the DeepECG-PNG
+checkpoints (DeepECG-PNG's own Python environment), push them, then pin the new commit in the manifest:
 ```bash
 /path/to/DeepECG-PNG/.venv/bin/python tools/export_deepecg_png.py \
   --deepecg-png-repo /path/to/DeepECG-PNG --out weights/deepecg_png --push-to-hub
@@ -450,9 +452,16 @@ other value is treated as missing (with a warning). Images that are missing or c
 skipped and listed (`missing_files_<ts>.csv`, `unreadable_images_<ts>.csv`); the other images still run.
 The image probes use the image only (no age or sex input).
 
+Each image is opened with its own format's decoder only, after a header check: a `.png` must be a real,
+non-animated PNG and a `.jpg` / `.jpeg` a real single-picture JPEG (no MPO), both at most 50 megapixels
+(ECG pages are ~1–3). Anything else, e.g. a TIFF renamed `.png`, is refused and listed as unreadable, so
+no other Pillow decoder is ever reached. The model was trained on PNG renders: on JPEG copies of the same validation pages (quality 75–95)
+the binary-task probabilities moved by 0.002 on average (at most 0.019), and 1–3 of 192 calls flipped.
+
 **3. Run.** `image_models: deepecg_png` is the default in `heartwise.config`; no other setting is needed:
 ```bash
 docker run -d --gpus all --name deepecg \
+  -v $(pwd)/api_key.json:/app/api_key.json:ro \
   -v $(pwd)/inputs:/app/inputs \
   -v $(pwd)/outputs:/app/outputs \
   -v /path/to/pngs:/app/ecg_signals:ro \
@@ -465,7 +474,7 @@ docker exec -it deepecg ./run_pipeline.bash --mode full_run --csv_file_name my_p
 `<model>_<ts>_<task>_probabilities.csv` (e.g. `deepecg_png_lvef_equal_under_40_<ts>_lvef_40_probabilities.csv`,
 same columns as the signal models; for the 77 classes, *Lead misplacement* and *Brugada* have no probe
 and stay empty) and the metrics `<model>_<ts>_<task>.json` / `.csv` (empty when the task has no labels).
-The validation Youden thresholds of the binary probes are in `weights/deepecg_png/thresholds.json`.
+The validation Youden thresholds of the binary probes are in the snapshot's `thresholds.json`.
 
 With a GPU (`signal_processing_device: cuda:0`) the encoder runs once per batch for all five tasks
 (features of up to 500k images are kept between tasks; for larger CSVs, split them to keep that speed-up).

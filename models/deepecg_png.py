@@ -2,8 +2,10 @@
 
 A SigLIP-2 ViT-B/16 image encoder (DeepECG-PNG run ux5uajqm) and the linear probes fitted
 on its frozen 768-d features. Like the other models, the weights are downloaded from the
-Hugging Face repository ``heartwise/deepecg_png`` into ``weights/deepecg_png`` (by
-models_setup.py at build time, or on first use). The repository holds the folder written by
+Hugging Face repository ``heartwise/deepecg_png``, at the commit pinned in models/manifest.json
+(entry ``deepecg_png``; without it the image models stop with an error), into
+``weights/deepecg_png/heartwise--deepecg_png/<commit>`` (by models_setup.py at build time, or on
+first use). The repository holds the folder written by
 ``tools/export_deepecg_png.py --push-to-hub``; the five task models share it:
 
 * ``encoder.safetensors`` + ``config.json``: the CLIP vision tower, its config, the 2D axial
@@ -273,7 +275,7 @@ class DeepECGPNGWrapper(HeartWiseModelFactory):
             self.bank = _get_bank(map_location, hugging_face_api_key)
         except ValueError as e:
             # e.g. a corrupt json: HeartWiseModelFactory would swallow a ValueError as "model not found"
-            raise RuntimeError(f"invalid DeepECG-PNG weights in {os.path.abspath(WEIGHTS_DIR)}: "
+            raise RuntimeError(f"invalid DeepECG-PNG weights ({HF_REPO_ID}, under {os.path.abspath(WEIGHTS_DIR)}): "
                                f"{type(e).__name__}: {e}") from e
         self.output_names = list(self.bank.labels_77) if self.outputs == (ALL_77,) else list(self.outputs)
         if self.outputs == (ALL_77,):

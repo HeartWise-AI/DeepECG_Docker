@@ -439,3 +439,123 @@ def test_feature_cache_drops_the_oldest_batches(world, monkeypatch):
     again = [bank.features(b) for b in batches]
     assert all(torch.equal(a, b) for a, b in zip(first, again))     # recomputed or cached: same values
 
+
+
+# ---------------------------------------------------------------------------- image header checks
+# Only Pillow's PNG and JPEG decoders are ever reached: every image is opened with its own
+# format's decoder only, after a header check (open_ecg_image).
+import struct  # noqa: E402
+import zlib  # noqa: E402
+
+from utils.image_preprocessing import (  # noqa: E402
+    MAX_IMAGE_PIXELS, MAX_PNG_CHUNKS, open_ecg_image, open_jpeg, open_png)
+
+
+def _png_chunk(kind, data):
+    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+
+
+def _jpeg_segment(marker, data):
+    return b'\xff' + bytes([marker]) + struct.pack('>H', len(data) + 2) + data
+
+
+def _sof(width, height):
+    return _jpeg_segment(0xC0, struct.pack('>BHHB', 8, height, width, 1) + b'\x01\x11\x00')
+
+
+def test_png_header_check_refuses_animated_oversized_and_disguised_files(tmp_path):
+    page = tmp_path / 'page.png'
+    draw_page(str(page), 1)
+    with open_png(str(page)) as im:
+        assert im.format == 'PNG'
+    frames = [Image.new('RGB', (40, 20), c) for c in ('white', 'black')]
+    frames[0].save(tmp_path / 'anim.png', save_all=True, append_images=frames[1:], format='PNG')
+    with pytest.raises(ValueError, match='animated'):
+        open_png(str(tmp_path / 'anim.png'))
+    side = int(MAX_IMAGE_PIXELS ** 0.5) + 10
+    huge = struct.pack('>IIBBBBB', side, side, 8, 0, 0, 0, 0)
+    (tmp_path / 'huge.png').write_bytes(b'\x89PNG\r\n\x1a\n' + _png_chunk(b'IHDR', huge))
+    with pytest.raises(ValueError, match='declares'):
+        open_png(str(tmp_path / 'huge.png'))
+    small = struct.pack('>IIBBBBB', 100, 100, 8, 0, 0, 0, 0)
+    big = struct.pack('>IIBBBBB', 20000, 20000, 8, 0, 0, 0, 0)
+    (tmp_path / 'two_ihdr.png').write_bytes(b'\x89PNG\r\n\x1a\n' + _png_chunk(b'IHDR', small)
+                                           + _png_chunk(b'IHDR', big) + _png_chunk(b'IEND', b''))
+    with pytest.raises(ValueError, match='more than one IHDR'):
+        open_png(str(tmp_path / 'two_ihdr.png'))
+    padding = _png_chunk(b'prVt', b'') * (MAX_PNG_CHUNKS + 1)
+    (tmp_path / 'hidden_actl.png').write_bytes(b'\x89PNG\r\n\x1a\n' + _png_chunk(b'IHDR', small) + padding
+                                              + _png_chunk(b'acTL', struct.pack('>II', 2, 0))
+                                              + _png_chunk(b'IEND', b''))
+    with pytest.raises(ValueError, match='chunks before its image data'):
+        open_png(str(tmp_path / 'hidden_actl.png'))
+    (tmp_path / 'tiff.png').write_bytes(b'II*\x00' + b'\x00' * 100)
+    with pytest.raises(ValueError, match='not a PNG'):
+        open_png(str(tmp_path / 'tiff.png'))
+
+
+def test_jpeg_header_check_refuses_mpo_oversized_and_disguised_files(tmp_path):
+    page = tmp_path / 'page.png'
+    draw_page(str(page), 2)
+    Image.open(page).convert('RGB').save(tmp_path / 'page.jpg', quality=95)
+    with open_jpeg(str(tmp_path / 'page.jpg')) as im:
+        assert im.format == 'JPEG' and im.size == (125, 62)
+    frames = [Image.new('RGB', (40, 20), c) for c in ('white', 'black')]
+    frames[0].save(tmp_path / 'multi.jpg', format='MPO', save_all=True, append_images=frames[1:])
+    with pytest.raises(ValueError, match='MPO'):
+        open_jpeg(str(tmp_path / 'multi.jpg'))
+    # a progressive scan bomb and a truncated file
+    scan = _jpeg_segment(0xDA, b'\x01\x01\x00\x00\x3f\x00') + b'\x00' * 4
+    (tmp_path / 'scans.jpg').write_bytes(b'\xff\xd8' + _jpeg_segment(0xC2, struct.pack('>BHHB', 8, 100, 100, 1)
+                                         + b'\x01\x11\x00') + scan * 150 + b'\xff\xd9')
+    with pytest.raises(ValueError, match='more than 100 scans'):
+        open_jpeg(str(tmp_path / 'scans.jpg'))
+    (tmp_path / 'cut.jpg').write_bytes((tmp_path / 'page.jpg').read_bytes()[:-200])
+    with pytest.raises(ValueError, match='truncated'):
+        open_jpeg(str(tmp_path / 'cut.jpg'))
+    for progressive in (False, True):                    # real files: still fine
+        Image.open(page).convert('RGB').save(tmp_path / 'p.jpg', quality=90, progressive=progressive)
+        with open_jpeg(str(tmp_path / 'p.jpg')) as im:
+            assert im.format == 'JPEG'
+    side = int(MAX_IMAGE_PIXELS ** 0.5) + 10
+    (tmp_path / 'huge.jpg').write_bytes(b'\xff\xd8' + _sof(side, side) + _jpeg_segment(0xDA, b'\x01\x01\x00\x00\x3f\x00'))
+    with pytest.raises(ValueError, match='declares'):
+        open_jpeg(str(tmp_path / 'huge.jpg'))
+    (tmp_path / 'two_sof.jpg').write_bytes(b'\xff\xd8' + _sof(10, 10) + _sof(20000, 20000)
+                                          + _jpeg_segment(0xDA, b'\x01\x01\x00\x00\x3f\x00'))
+    with pytest.raises(ValueError, match='more than one frame header'):
+        open_jpeg(str(tmp_path / 'two_sof.jpg'))
+    (tmp_path / 'no_sof.jpg').write_bytes(b'\xff\xd8' + _jpeg_segment(0xDA, b'\x01\x01\x00\x00\x3f\x00'))
+    with pytest.raises(ValueError, match='before its frame header'):
+        open_jpeg(str(tmp_path / 'no_sof.jpg'))
+    (tmp_path / 'png_inside.jpg').write_bytes(page.read_bytes())
+    with pytest.raises(ValueError, match='not a JPEG'):
+        open_jpeg(str(tmp_path / 'png_inside.jpg'))
+    Image.open(page).convert('RGB').save(tmp_path / 'tiff_inside.jpg', format='TIFF')
+    with pytest.raises(ValueError, match='not a JPEG'):
+        open_ecg_image(str(tmp_path / 'tiff_inside.jpg'))
+    with pytest.raises(ValueError, match='unsupported image type'):
+        open_ecg_image(str(tmp_path / 'page.gif'))
+    # the model reads a JPEG page exactly as Pillow decodes it
+    gray = np.asarray(Image.open(tmp_path / 'page.jpg').convert('L').resize((32, 32), Image.BILINEAR), np.float32)
+    want = (torch.from_numpy(gray).mul(1.0 / 255) - PREPROCESSING['mean'][0]) / PREPROCESSING['std'][0]
+    assert torch.allclose(load_ecg_image(str(tmp_path / 'page.jpg'), PREPROCESSING)[0], want, atol=1e-6)
+
+
+def test_disguised_images_are_skipped_and_listed(world):
+    """A TIFF named .png / .jpg never reaches another decoder: listed as unreadable, the rest runs."""
+    page = Image.open(world / 'pngs' / 'ecg_3.png').convert('RGB')
+    page.save(world / 'pngs' / 'fake.png', format='TIFF')
+    page.save(world / 'pngs' / 'fake.jpg', format='TIFF')
+    pipeline.UNREADABLE_IMAGES.clear()
+    out = run(world, task_csv(['ecg_0.png', 'fake.png', 'fake.jpg']), 'fakes')
+    assert pd.read_csv(_one(out, '_shd_probabilities.csv'))['file_name'].tolist() == ['ecg_0.png']
+    bad = pd.read_csv(_one(out, 'unreadable_images_'))
+    assert sorted(os.path.basename(p) for p in bad['ecg_path']) == ['fake.jpg', 'fake.png']
+
+
+def test_a_signal_task_with_no_labelled_rows_does_not_crash(tmp_path):
+    """Pre-existing pandas trap: an empty frame made `df[mask]` a column selection (KeyError)."""
+    df = pd.DataFrame({'afib_5y': [None, None], 'afib_ecg_file_name': ['a.npy', 'b.npy']})
+    out = pipeline.create_analysis_dataframe(df, 'afib_5y', 'afib_ecg_file_name', str(tmp_path))
+    assert out.empty and list(out.columns) == ['diagnosis', 'ecg_path']

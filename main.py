@@ -3,7 +3,6 @@ import sys
 import warnings
 import pandas as pd
 from datetime import datetime
-from PIL import Image
 
 warnings.filterwarnings("ignore", message=".*_register_pytree_node.*deprecated", category=FutureWarning)
 
@@ -27,6 +26,7 @@ from utils.files_handler import (
     load_df,
     validate_signal_paths,
 )
+from utils.image_preprocessing import open_ecg_image
 from utils.log_config import get_logger
 
 logger = get_logger(__name__)
@@ -219,7 +219,9 @@ def create_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg_file_
     )
         
     # Remove files that do not exist
-    df_analysis = df_analysis[df_analysis['ecg_path'].apply(os.path.exists)]
+    # astype(bool): on an empty frame apply() returns an object Series that pandas would read as
+    # a column selection (KeyError 'diagnosis') instead of a row mask
+    df_analysis = df_analysis[df_analysis['ecg_path'].apply(os.path.exists).astype(bool)]
     if processed_paths is not None:
         df_analysis = df_analysis[df_analysis['ecg_path'].isin(processed_paths)]
     # reset index to 0
@@ -284,7 +286,7 @@ def image_error(path: str) -> str | None:
     """Decode the image once; return None if it reads, else the error (cached per path)."""
     if path not in UNREADABLE_IMAGES:
         try:
-            with Image.open(path) as image:
+            with open_ecg_image(path) as image:   # header checked, own decoder only, as the model reads it
                 image.load()
             UNREADABLE_IMAGES[path] = None
         except Exception as e:
@@ -382,13 +384,15 @@ def main(args: HearWiseArgs):
             df=df,
             diagnosis_to_file_columns=task_columns
         )
-        file_references = df[existing_file_columns].stack() if existing_file_columns else pd.Series(dtype=str)
-        signal_references = file_references[file_references.map(input_type_of).eq(SIGNAL)]
-        has_signals = not signal_references.empty
+        # dropna: pandas 3 keeps the NaN of rows without a file in stack()
+        file_references = df[existing_file_columns].stack().dropna() if existing_file_columns else pd.Series(dtype=str)
+        is_signal = file_references.map(input_type_of).eq(SIGNAL)
+        has_signals = bool(is_signal.any())
         # Include missing sources: their labels must not resolve to another ECG's output.
+        # Only signal files are preprocessed into .base64 outputs; images are read as they are.
         validate_signal_paths(
             os.path.join(args.ecg_signals_path, name)
-            for name in signal_references
+            for name in file_references[is_signal]
         )
         set_up_directories(args)
 

@@ -23,6 +23,12 @@ hugging_face_api_key_path=$(get_param "hugging_face_api_key_path")
 # Models per input type (signal_models, image_models) and optional per-task overrides
 # (<task>_signal_models, <task>_image_models), passed as "key:model,model;key:model"
 models=$(grep -E '^[a-z0-9_]+_models:' heartwise.config | sed 's/[[:space:]]//g' | paste -sd';' -)
+# Deprecated (use signal_models), still honoured when an old config sets them and has no signal_models
+use_wcr=$(get_param "use_wcr")
+use_efficientnet=$(get_param "use_efficientnet")
+deprecated_args=()
+[ -n "$use_wcr" ] && deprecated_args+=(--use_wcr "$use_wcr")
+[ -n "$use_efficientnet" ] && deprecated_args+=(--use_efficientnet "$use_efficientnet")
 ecg_signals_path=$(get_param "ecg_signals_path")
 mode=$(get_param "mode")
 preprocessing_folder=$(get_param "preprocessing_folder")
@@ -79,7 +85,8 @@ run_pipeline() {
         --ecg_signals_path $ecg_signals_path \
         --mode $run_mode \
         --preprocessing_folder $preprocessing_folder \
-        --preprocessing_n_workers $preprocessing_n_workers
+        --preprocessing_n_workers $preprocessing_n_workers \
+        "${deprecated_args[@]}"
 }
 
 # Main execution based on mode
