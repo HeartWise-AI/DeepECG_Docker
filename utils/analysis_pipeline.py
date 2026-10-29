@@ -11,7 +11,7 @@ from sklearn.metrics import (
     roc_curve
 )
 from utils.files_handler import XMLProcessor, NPYProcessor, ECGFileHandler, validate_signal_paths
-from data.project_dataset import create_signal_dataloader
+from data.ecg_signal_dataset import create_signal_dataloader
 from data.image_dataset import create_image_dataloader
 from models import HeartWiseModelFactory
 from utils.constants import (
