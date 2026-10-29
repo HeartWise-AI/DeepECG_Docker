@@ -45,7 +45,7 @@ def input_type_of(file_name) -> str:
 
 
 # Models available per task and per input type. heartwise.config picks among them
-# (signal_models / image_models, optionally <task>_signal_models / <task>_image_models).
+# with signal_models and image_models.
 MODEL_MAPPING = {
     'ecg_machine_diagnosis': {
         SIGNAL: {'efficientnet': EfficientNetV2_77_classes.name, 'wcr': WCR_77_classes.name},
