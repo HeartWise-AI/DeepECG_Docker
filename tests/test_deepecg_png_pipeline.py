@@ -115,6 +115,14 @@ def draw_page(path, k):
 class FakeBert:
     """Stands in for BertClassifier_En_Fr: report text -> 77 probabilities."""
     calls = 0
+    eval_calls = 0
+
+    def __init__(self):
+        self.model = self
+
+    def eval(self):
+        FakeBert.eval_calls += 1
+        return self
 
     def __call__(self, texts):
         FakeBert.calls += 1
@@ -140,6 +148,7 @@ def world(tmp_path, monkeypatch):
         draw_page(str(pngs / f'ecg_{k}.png'), k)
     real_factory = analysis_pipeline.HeartWiseModelFactory
     FakeBert.calls = 0
+    FakeBert.eval_calls = 0
 
     class Factory:
         @staticmethod
@@ -229,6 +238,7 @@ def test_labels_and_reports_give_metrics(world):
     shd_probs = pd.read_csv(_one(out, 'deepecg_siglip2_shd_', '_probabilities.csv'))
     assert len(shd_probs) == 12 and shd_probs['ground_truth'].isna().sum() == 1
     assert FakeBert.calls > 0
+    assert FakeBert.eval_calls > 0
     with open(_one(out, '_ecg_machine_diagnosis.json')) as f:
         m77 = json.load(f)
     assert all(m77[p]['auc'] is None or np.isnan(m77[p]['auc']) for p in NO_HEAD)   # no probe: no metric

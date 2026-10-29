@@ -553,6 +553,10 @@ class AnalysisPipeline:
                         'hugging_face_api_key': hugging_face_api_key
                     }
                 )
+                # Match the signal pipeline: disable dropout before using BERT as
+                # deterministic 77-class ground truth for the image model.
+                if hasattr(diagnosis_classifier_model, 'model'):
+                    diagnosis_classifier_model.model.eval()
             bert_thresholds = np.array([BERT_THRESHOLDS[pattern]['threshold'] for pattern in ECG_PATTERNS])
             probabilities_rows, ground_truth, predictions = [], [], []
             with torch.no_grad():
