@@ -1,0 +1,9 @@
+dataset_label,deepecg_class
+AFIB,Afib|Atrial flutter
+AFL,Afib|Atrial flutter
+N_RHYTHM,Sinusal
+PVC,Premature ventricular complex
+PAC,Premature atrial complex
+BRADY,Bradycardia
+TACHY,Atrial tachycardia (>= 100 BPM)
+BIGEMINY,Regularly irregular

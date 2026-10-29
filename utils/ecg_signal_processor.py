@@ -15,8 +15,9 @@ logger = get_logger(__name__)
 class ECGSignalProcessor:
     """Scale, clean, and process multi-lead ECG signals (spectral scaling, peak detection, lead processing)."""
 
-    def __init__(self, fs=250):
+    def __init__(self, fs=250, ref_lead=0):
         self.fs = fs
+        self.ref_lead = ref_lead  # lead used for the cohort spectrum; must carry signal (single-lead input)
 
     def compute_magnitude_spectrum(self, signal: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Return (fft_freq, magnitude_spectrum) for the given 1D signal."""
@@ -45,7 +46,7 @@ class ECGSignalProcessor:
     
     def scale_ecg_signals(self, df: pd.DataFrame, power_ratio: float) -> pd.DataFrame:
         """Scale ECG signals in df to match the target power_ratio (e.g. PTBXL); returns df with updated ecg_signal column."""
-        _, mean_magnitude_spectrum = self.plot_mean_spectrum(np.array(df['ecg_signal'].tolist())[:, :, 0])
+        _, mean_magnitude_spectrum = self.plot_mean_spectrum(np.array(df['ecg_signal'].tolist())[:, :, self.ref_lead])
         new_avg_power = self.compute_average_spectral_power(mean_magnitude_spectrum)
         factor = power_ratio / new_avg_power
         
@@ -261,7 +262,7 @@ class ECGSignalProcessor:
         input_data = np.array(df['ecg_signal'].tolist())
         logger.debug("Input shape: %s", input_data.shape)
         peak_ranges = self.detect_peaks_with_sliding_window(
-            input_data[:, :, 0],
+            input_data[:, :, self.ref_lead],
             window_size=window_size,
             std_threshold=std_threshold
         )

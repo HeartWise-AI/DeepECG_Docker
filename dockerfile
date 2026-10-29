@@ -30,6 +30,7 @@ RUN git clone https://github.com/HeartWise-AI/fairseq-signals && \
 
 # Copy the rest of the application code into the container
 COPY data/ data/
+COPY ingestion/ ingestion/
 COPY models/ models/
 COPY utils/ utils/
 COPY thresholds/ thresholds/
