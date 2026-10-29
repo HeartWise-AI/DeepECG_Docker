@@ -1,18 +1,14 @@
 """DeepECG SigLIP2 models for ECG page images.
 
-A SigLIP-2 ViT-B/16 image encoder (DeepECG-PNG run ux5uajqm) and the linear probes fitted
-on its frozen 768-d features. Like the other models, the weights are downloaded from the
-Hugging Face repository ``heartwise/deepecg_png``, at the commit pinned in models/manifest.json
-(entry ``deepecg_png``; without it the image models stop with an error), into
-``weights/deepecg_png/heartwise--deepecg_png/<commit>`` (by models_setup.py at build time, or on
-first use). The repository holds the folder written by
-``tools/export_deepecg_png.py --push-to-hub``; the five task models share it:
+A SigLIP-2 ViT-B/16 image encoder (DeepECG-PNG run ux5uajqm) and five linear probes fitted
+on its frozen 768-d features. Like the signal models, every repository and immutable revision
+comes from ``models/manifest.json``. The shared encoder is downloaded from
+``heartwise/SigLIP-2_BaseEncoder``; the 77-class, SHD, LVEF and iAFib5 classifiers are each
+downloaded from their own pinned repository.
 
-* ``encoder.safetensors`` + ``config.json``: the CLIP vision tower, its config, the 2D axial
-  RoPE it was trained with and the image preprocessing (grayscale, 224x224, CLIP mean/std);
-* ``heads.safetensors`` + ``heads.json``: the probes (SHD / LVEF<=40 / LVEF<50, iAFib5,
-  77 classes) as plain weight matrices;
-* ``thresholds.json``: the validation Youden thresholds of the binary probes.
+The encoder snapshot supplies ``image_encoder.safetensors`` and ``config.json``. Each classifier
+snapshot supplies ``classifier.safetensors``, ``head.json``, the same ``config.json`` and its
+``thresholds.json``. All five task models share one in-process encoder.
 
 Every task model takes a batch of preprocessed images (B, 3, 224, 224) from
 ``utils.image_preprocessing.load_ecg_image`` and returns probabilities (B, k).
@@ -22,7 +18,6 @@ import json
 import os
 import types
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -35,17 +30,29 @@ from utils.log_config import get_logger
 
 logger = get_logger(__name__)
 
-WEIGHTS_NAME = "deepecg_png"
-HF_REPO_ID = f"heartwise/{WEIGHTS_NAME}"
-WEIGHTS_DIR = os.path.join("weights", WEIGHTS_NAME)
 ALL_77 = "77_classes"   # pseudo output: every 77-class label, in ECG_PATTERNS order
 
+MODEL_REPOSITORIES = {
+    "siglip2_base_encoder": "heartwise/SigLIP-2_BaseEncoder",
+    "siglip2_77_classes": "heartwise/SigLIP2_77_classes",
+    "siglip2_afib_5y": "heartwise/SigLIP2_AFIB_5Y",
+    "siglip2_lvef_equal_under_40": "heartwise/SigLIP2_LVEF_equal_under_40",
+    "siglip2_lvef_under_50": "heartwise/SigLIP2_LVEF_under_50",
+    "siglip2_shd": "heartwise/SigLIP2_SHD",
+}
+BASE_MODEL_KEY = "siglip2_base_encoder"
+BASE_REPO_ID = MODEL_REPOSITORIES[BASE_MODEL_KEY]
 
-def download_weights(hugging_face_api_key: str) -> str:
-    """The folder holding the DeepECG-PNG weights, downloaded from Hugging Face if absent."""
+
+def download_weights(model_key: str, hugging_face_api_key: str) -> str:
+    """Download one manifest-pinned SigLIP2 repository using the standard model cache."""
+    try:
+        repo_id = MODEL_REPOSITORIES[model_key]
+    except KeyError:
+        raise RuntimeError(f"Unknown SigLIP2 model key: {model_key}") from None
     return HuggingFaceWrapper.get_model(
-        repo_id=HF_REPO_ID,
-        local_dir=WEIGHTS_DIR,
+        repo_id=repo_id,
+        local_dir=os.path.join("weights", model_key),
         hugging_face_api_key=hugging_face_api_key
     )
 
@@ -138,15 +145,24 @@ class DeepECG_SigLIP2_Encoder(nn.Module):
             layer.self_attn.forward = types.MethodType(_rope_attention_forward, layer.self_attn)
 
     def load_weights(self, path: str) -> None:
-        """Load the exported vision tower; any missing or unexpected tensor is an error
-        (``position_ids`` is a buffer some transformers versions persist)."""
+        """Load the published vision tower and reject unmapped or incomplete tensors."""
         try:
-            state = load_file(path)
+            published = load_file(path)
         except Exception as e:
             raise RuntimeError(f"cannot read {path}: {type(e).__name__}: {e}") from e
-        not_fp32 = sorted(k for k, v in state.items() if v.dtype != torch.float32)
+        not_fp32 = sorted(k for k, v in published.items() if v.dtype != torch.float32)
         if not_fp32:
             raise RuntimeError(f"{path}: encoder tensors must be float32 ({not_fp32[:3]} are not)")
+        prefix = "backbone.vision_model."
+        projection = {
+            "classifier.1.weight", "classifier.1.bias", "_fc_layer.weight", "_fc_layer.bias"
+        }
+        unmapped = sorted(key for key in published if not key.startswith(prefix) and key not in projection)
+        if unmapped:
+            raise RuntimeError(f"{path}: unmapped encoder tensors {unmapped[:5]}")
+        state = {key[len(prefix):]: value for key, value in published.items() if key.startswith(prefix)}
+        if not state:
+            raise RuntimeError(f"{path}: no tensors use the documented {prefix!r} prefix")
         missing, unexpected = _vision_tower(self.backbone).load_state_dict(state, strict=False)
         missing = [k for k in missing if not k.endswith("position_ids")]
         unexpected = [k for k in unexpected if not k.endswith("position_ids")]
@@ -160,59 +176,151 @@ class DeepECG_SigLIP2_Encoder(nn.Module):
 
 # ---------------------------------------------------------------------------- encoder + probes
 class _DeepECG_SigLIP2_Bank:
-    """The encoder and every probe, loaded once per (folder, device) and shared by the
-    task models. Features of a batch are kept (float32, oldest batches dropped first), so
-    the five tasks run the encoder once per batch rather than five times."""
+    """One shared encoder plus lazily loaded, independently pinned classifier heads."""
 
     MAX_CACHED_ROWS = 500_000
 
-    def __init__(self, folder: str, device: torch.device):
-        for name in ("config.json", "encoder.safetensors", "heads.json", "heads.safetensors", "thresholds.json"):
-            if not os.path.exists(os.path.join(folder, name)):
-                raise FileNotFoundError(
-                    f"DeepECG-PNG weights not found: {os.path.join(folder, name)} (expected from the "
-                    f"Hugging Face repository {HF_REPO_ID}; delete {folder} to download it again)")
-        with open(os.path.join(folder, "config.json")) as f:
-            self.config = json.load(f)
-        with open(os.path.join(folder, "heads.json")) as f:
-            self.heads_meta = json.load(f)
-        with open(os.path.join(folder, "thresholds.json")) as f:
-            self.thresholds = {k: float(v) for k, v in json.load(f)["thresholds"].items()}
+    def __init__(self, encoder_folder: str, device: torch.device):
+        self.encoder_folder = os.path.abspath(encoder_folder)
+        config_path = self._required(self.encoder_folder, "config.json", BASE_REPO_ID)
+        encoder_path = self._required(
+            self.encoder_folder, "image_encoder.safetensors", BASE_REPO_ID)
+        self.config = self._read_json(config_path)
         self.device = device
         self.encoder = DeepECG_SigLIP2_Encoder(self.config)
-        self.encoder.load_weights(os.path.join(folder, "encoder.safetensors"))
+        self.encoder.load_weights(encoder_path)
         self.encoder.eval().to(device)
-        heads_path = os.path.join(folder, "heads.safetensors")
-        try:
-            tensors = load_file(heads_path)
-        except Exception as e:
-            raise RuntimeError(f"cannot read {heads_path}: {type(e).__name__}: {e}") from e
-        dim = int(self.config["vision_config"]["hidden_size"])
+        self.encoder_sha256 = self._sha256(encoder_path)
+        image_size = int(self.config["vision_config"]["image_size"])
+        if tuple(int(v) for v in self.config["preprocessing"]["resize"]) != (image_size, image_size):
+            raise RuntimeError(
+                f"{config_path}: preprocessing resize does not match the encoder's image_size")
         self.heads = {}
-        self.where = {}   # output name -> (head, row)
-        for head, meta in self.heads_meta["heads"].items():
-            k = len(meta["outputs"])
-            h = {name: tensors[f"{head}.{name}"].double() for name in ("weight", "bias")}
-            shapes = {"weight": (k, dim), "bias": (k,)}
-            if meta.get("standardize"):
-                h["mean"] = tensors[f"{head}.mean"].double()
-                h["scale"] = tensors[f"{head}.scale"].double()
-                shapes.update({"mean": (dim,), "scale": (dim,)})
-            wrong = {n: tuple(h[n].shape) for n, shape in shapes.items() if tuple(h[n].shape) != shape}
-            if wrong:
-                raise RuntimeError(f"{heads_path}: head {head} has shapes {wrong}, expected {shapes}")
-            self.heads[head] = h
-            for j, out in enumerate(meta["outputs"]):
-                self.where[out] = (head, j)
-        if tuple(int(v) for v in self.config["preprocessing"]["resize"]) != (int(self.config["vision_config"]["image_size"]),) * 2:
-            raise RuntimeError(f"{folder}/config.json: preprocessing resize does not match the encoder's image_size")
-        self.labels_77 = list(self.heads_meta["labels_77"])
         self._features = {}
         self._cached_rows = 0
 
+    @staticmethod
+    def _required(folder: str, name: str, repo_id: str) -> str:
+        path = os.path.join(folder, name)
+        if not os.path.isfile(path):
+            raise FileNotFoundError(
+                f"SigLIP2 weights not found: {path} (expected from {repo_id}; "
+                f"delete {folder} to download it again)")
+        return path
+
+    @staticmethod
+    def _read_json(path: str) -> dict:
+        try:
+            with open(path) as stream:
+                value = json.load(stream)
+        except Exception as e:
+            raise RuntimeError(f"cannot read {path}: {type(e).__name__}: {e}") from e
+        if not isinstance(value, dict):
+            raise RuntimeError(f"{path}: expected a JSON object")
+        return value
+
+    @staticmethod
+    def _sha256(path: str) -> str:
+        digest = hashlib.sha256()
+        with open(path, "rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest()
+
+    def load_head(self, folder: str, model_key: str, expected_outputs) -> dict:
+        """Load and validate one classifier repository, caching it by snapshot path."""
+        folder = os.path.abspath(folder)
+        if folder in self.heads:
+            return self.heads[folder]
+        repo_id = MODEL_REPOSITORIES[model_key]
+        config_path = self._required(folder, "config.json", repo_id)
+        metadata_path = self._required(folder, "head.json", repo_id)
+        classifier_path = self._required(folder, "classifier.safetensors", repo_id)
+        thresholds_path = self._required(folder, "thresholds.json", repo_id)
+
+        config = self._read_json(config_path)
+        metadata = self._read_json(metadata_path)
+        threshold_document = self._read_json(thresholds_path)
+        if config != self.config:
+            raise RuntimeError(f"{config_path}: head configuration differs from {BASE_REPO_ID}")
+        outputs = metadata.get("outputs")
+        if not isinstance(outputs, list) or not outputs or not all(isinstance(v, str) for v in outputs):
+            raise RuntimeError(f"{metadata_path}: outputs must be a non-empty string list")
+        if expected_outputs == ALL_77:
+            if len(outputs) != 77 or len(set(outputs)) != 77:
+                raise RuntimeError(f"{metadata_path}: expected 77 unique outputs, found {len(outputs)}")
+        elif outputs != list(expected_outputs):
+            raise RuntimeError(f"{metadata_path}: outputs {outputs} do not match {list(expected_outputs)}")
+        if metadata.get("name") != repo_id:
+            raise RuntimeError(f"{metadata_path}: model name does not match {repo_id}")
+
+        encoder = metadata.get("encoder", {})
+        if (encoder.get("repo") != BASE_REPO_ID
+                or encoder.get("file") != "image_encoder.safetensors"
+                or encoder.get("sha256") != self.encoder_sha256):
+            raise RuntimeError(f"{metadata_path}: classifier does not match the pinned base encoder")
+
+        classifier = metadata.get("classifier", {})
+        dim = int(self.config["vision_config"]["hidden_size"])
+        standardize = classifier.get("standardize") is True
+        expected_shapes = {"weight": (len(outputs), dim), "bias": (len(outputs),)}
+        if standardize:
+            expected_shapes.update({"mean": (dim,), "scale": (dim,)})
+        declared_shapes = {
+            name: tuple(shape) for name, shape in classifier.get("tensors", {}).items()
+            if isinstance(shape, list)
+        }
+        if (classifier.get("file") != "classifier.safetensors"
+                or classifier.get("type") != "linear"
+                or classifier.get("input_dim") != dim
+                or classifier.get("dtype") != "float32"
+                or classifier.get("activation") != "sigmoid"
+                or declared_shapes != expected_shapes):
+            raise RuntimeError(f"{metadata_path}: unsupported or inconsistent classifier metadata")
+        try:
+            tensors = load_file(classifier_path)
+        except Exception as e:
+            raise RuntimeError(f"cannot read {classifier_path}: {type(e).__name__}: {e}") from e
+        if set(tensors) != set(expected_shapes):
+            raise RuntimeError(
+                f"{classifier_path}: tensors {sorted(tensors)} do not match {sorted(expected_shapes)}")
+        wrong_shapes = {
+            name: tuple(tensors[name].shape) for name, shape in expected_shapes.items()
+            if tuple(tensors[name].shape) != shape
+        }
+        wrong_dtypes = [name for name, tensor in tensors.items() if tensor.dtype != torch.float32]
+        if wrong_shapes:
+            raise RuntimeError(f"{classifier_path}: tensor shapes {wrong_shapes}, expected {expected_shapes}")
+        if wrong_dtypes:
+            raise RuntimeError(f"{classifier_path}: classifier tensors must be float32 ({wrong_dtypes})")
+
+        raw_thresholds = threshold_document.get("thresholds")
+        if not isinstance(raw_thresholds, dict):
+            raise RuntimeError(f"{thresholds_path}: thresholds must be an object")
+        try:
+            thresholds = {name: float(value) for name, value in raw_thresholds.items()}
+        except (TypeError, ValueError) as e:
+            raise RuntimeError(f"{thresholds_path}: thresholds must be numeric") from e
+        if expected_outputs == ALL_77:
+            if thresholds:
+                raise RuntimeError(f"{thresholds_path}: the 77-class probability head must not define cutoffs")
+        elif set(thresholds) != set(outputs) or any(not 0 <= value <= 1 for value in thresholds.values()):
+            raise RuntimeError(f"{thresholds_path}: expected one [0, 1] cutoff for {outputs}")
+
+        head = {
+            "outputs": outputs,
+            "thresholds": thresholds,
+            "tensors": {name: tensor.float().cpu() for name, tensor in tensors.items()},
+            "standardize": standardize,
+            "repo_id": repo_id,
+        }
+        self.heads[folder] = head
+        logger.info("SigLIP2 classifier loaded from %s", folder)
+        return head
+
     @torch.no_grad()
     def features(self, images: torch.Tensor) -> torch.Tensor:
-        """Pooled CLS features (B, 768), float64 on the CPU, as the probes were fitted."""
+        """Pooled CLS features (B, 768), float32 on the CPU."""
         x = images.detach().to("cpu", torch.float32).contiguous()
         key = hashlib.blake2b(x.numpy().tobytes(), digest_size=16).hexdigest() + str(tuple(x.shape))
         if key not in self._features:
@@ -222,45 +330,37 @@ class _DeepECG_SigLIP2_Bank:
                 self._cached_rows -= len(self._features.pop(oldest))
             self._features[key] = feats
             self._cached_rows += len(feats)
-        return self._features[key].double()
+        return self._features[key]
 
-    def probabilities(self, images: torch.Tensor, outputs: list) -> torch.Tensor:
-        """(B, len(outputs)) sigmoid probabilities, float64; NaN for an output with no head."""
-        z = self.features(images)
-        cache = {}
-        cols = []
-        for out in outputs:
-            if out not in self.where:
-                cols.append(torch.full((len(z),), float("nan"), dtype=torch.float64))
-                continue
-            head, j = self.where[out]
-            if head not in cache:
-                h = self.heads[head]
-                x = (z - h["mean"]) / h["scale"] if "mean" in h else z
-                cache[head] = torch.sigmoid(x @ h["weight"].T + h["bias"])
-            cols.append(cache[head][:, j])
-        return torch.stack(cols, dim=1)
+    def probabilities(self, images: torch.Tensor, head: dict) -> torch.Tensor:
+        """Apply one classifier head to a minibatch's shared encoder features."""
+        features = self.features(images)
+        tensors = head["tensors"]
+        if head["standardize"]:
+            features = (features - tensors["mean"]) / tensors["scale"]
+        return torch.sigmoid(features @ tensors["weight"].T + tensors["bias"])
 
 
 _BANKS = {}
 
 
 def _get_bank(device: torch.device, hugging_face_api_key: str) -> _DeepECG_SigLIP2_Bank:
-    folder = os.path.abspath(download_weights(hugging_face_api_key))
+    folder = os.path.abspath(download_weights(BASE_MODEL_KEY, hugging_face_api_key))
     key = (folder, str(device))
     if key not in _BANKS:
         _BANKS[key] = _DeepECG_SigLIP2_Bank(folder, device)
-        logger.info("DeepECG-PNG weights loaded from %s on %s", folder, device)
+        logger.info("SigLIP2 base encoder loaded from %s on %s", folder, device)
     return _BANKS[key]
 
 
 # ---------------------------------------------------------------------------- task models
 class DeepECG_SigLIP2_Wrapper(HeartWiseModelFactory):
-    """Base of the DeepECG-PNG task models. Inputs are images, not signals."""
+    """Base of the SigLIP2 task models. Inputs are ECG page images, not signals."""
 
     name = 'deepecg_siglip2'
-    input_type = 'image'          # utils.constants.IMAGE: fed ECG page images, not signals
-    outputs = ()
+    input_type = 'image'
+    model_key = None
+    expected_outputs = ()
 
     def __init__(
         self,
@@ -268,53 +368,52 @@ class DeepECG_SigLIP2_Wrapper(HeartWiseModelFactory):
         map_location: torch.device,
         hugging_face_api_key: str
     ):
-        if not self.outputs:
-            raise RuntimeError(f"{model_name} is the DeepECG-PNG base class; use one of its task models")
+        if self.model_key is None:
+            raise RuntimeError(f"{model_name} is the SigLIP2 base class; use one of its task models")
         self.device = map_location
         try:
             self.bank = _get_bank(map_location, hugging_face_api_key)
-        except ValueError as e:
-            # e.g. a corrupt json: HeartWiseModelFactory would swallow a ValueError as "model not found"
-            raise RuntimeError(f"invalid DeepECG-PNG weights ({HF_REPO_ID}, under {os.path.abspath(WEIGHTS_DIR)}): "
-                               f"{type(e).__name__}: {e}") from e
-        self.output_names = list(self.bank.labels_77) if self.outputs == (ALL_77,) else list(self.outputs)
-        if self.outputs == (ALL_77,):
-            missing = [] if any(o in self.bank.where for o in self.output_names) else ["the 77-class probe"]
-        else:
-            missing = [o for o in self.output_names if o not in self.bank.where]
-        if missing:
-            raise RuntimeError(f"{model_name}: no probe for {missing} in {HF_REPO_ID}")
-        # validation Youden threshold of a binary task, from the weights' thresholds.json
-        # (None for the 77 classes, which are reported as probabilities)
-        self.decision_threshold = (self.bank.thresholds[self.output_names[0]]
-                                   if len(self.output_names) == 1 else None)
+            head_folder = download_weights(self.model_key, hugging_face_api_key)
+            self.head = self.bank.load_head(head_folder, self.model_key, self.expected_outputs)
+        except (KeyError, TypeError, ValueError) as e:
+            repo_id = MODEL_REPOSITORIES.get(self.model_key, self.model_key)
+            raise RuntimeError(
+                f"invalid SigLIP2 weights ({repo_id}): {type(e).__name__}: {e}") from e
+        self.output_names = list(self.head["outputs"])
+        self.decision_threshold = (
+            self.head["thresholds"][self.output_names[0]] if len(self.output_names) == 1 else None)
         self.preprocessing = self.bank.config["preprocessing"]
         logger.info("Model %s loaded on %s", model_name, map_location)
 
     def __call__(self, images: torch.Tensor) -> torch.Tensor:
-        return self.bank.probabilities(images, self.output_names)
+        return self.bank.probabilities(images, self.head)
 
 
 class DeepECG_SigLIP2_77_classes(DeepECG_SigLIP2_Wrapper):
     name = 'deepecg_siglip2_77_classes'
-    outputs = (ALL_77,)
+    model_key = 'siglip2_77_classes'
+    expected_outputs = ALL_77
 
 
 class DeepECG_SigLIP2_AFIB_5Y(DeepECG_SigLIP2_Wrapper):
     name = 'deepecg_siglip2_afib_5y'
-    outputs = ('iAFib5',)
+    model_key = 'siglip2_afib_5y'
+    expected_outputs = ('iAFib5',)
 
 
 class DeepECG_SigLIP2_LVEF_Equal_Under_40(DeepECG_SigLIP2_Wrapper):
     name = 'deepecg_siglip2_lvef_equal_under_40'
-    outputs = ('LVEF_le40',)
+    model_key = 'siglip2_lvef_equal_under_40'
+    expected_outputs = ('LVEF_le40',)
 
 
 class DeepECG_SigLIP2_LVEF_Under_50(DeepECG_SigLIP2_Wrapper):
     name = 'deepecg_siglip2_lvef_under_50'
-    outputs = ('LVEF_lt50',)
+    model_key = 'siglip2_lvef_under_50'
+    expected_outputs = ('LVEF_lt50',)
 
 
 class DeepECG_SigLIP2_SHD(DeepECG_SigLIP2_Wrapper):
     name = 'deepecg_siglip2_shd'
-    outputs = ('SHD',)
+    model_key = 'siglip2_shd'
+    expected_outputs = ('SHD',)

@@ -424,18 +424,13 @@ DeepECG-PNG reads ECG **page images (PNG)** instead of signals: a SigLIP-2 ViT-B
 at 5 years**. Images are preprocessed exactly as in training (grayscale, stretched to 224×224,
 CLIP normalization); it expects ECG pages rendered like the training images.
 
-**1. Weights (Hugging Face).** Like every other model, the weights are downloaded from the private
-Hugging Face repository [`heartwise/deepecg_png`](https://huggingface.co/heartwise/deepecg_png), at the
-commit pinned in `models/manifest.json` (entry `deepecg_png`), into
-`weights/deepecg_png/heartwise--deepecg_png/<commit>/` (~340 MB: encoder, probes, validation thresholds,
-provenance), at build time with `RUN_MODELS_SETUP=true` or on first use; the five task models share it.
-Without that manifest entry the image models stop with `heartwise/deepecg_png: expected one entry in
-models/manifest.json`. To publish new weights, export them on the machine with the DeepECG-PNG
-checkpoints (DeepECG-PNG's own Python environment), push them, then pin the new commit in the manifest:
-```bash
-/path/to/DeepECG-PNG/.venv/bin/python tools/export_deepecg_png.py \
-  --deepecg-png-repo /path/to/DeepECG-PNG --out weights/deepecg_png --push-to-hub
-```
+**1. Weights (Hugging Face).** The SigLIP2 models use the same pinned manifest download path as the
+signal models. `models/manifest.json` identifies one shared base encoder
+([`heartwise/SigLIP-2_BaseEncoder`](https://huggingface.co/heartwise/SigLIP-2_BaseEncoder)) and five
+independent classifier repositories: 77 classes, SHD, LVEF ≤ 40%, LVEF < 50%, and incident AFib at
+5 years. Each immutable snapshot is stored under `weights/<manifest-key>/<repository>/<commit>/`,
+either by `models_setup.py` or on first use. The encoder is loaded once per process/device; each task
+loads its own `classifier.safetensors`, metadata, and thresholds from its pinned repository.
 
 **2. Input CSV.** The same per-task CSV as for signals, with image file names in the file columns
 (template: [inputs/data_rows_template_png.csv](inputs/data_rows_template_png.csv)). Signals and images
@@ -472,8 +467,8 @@ docker exec -it deepecg ./run_pipeline.bash --mode full_run --csv_file_name my_p
 
 **4. Outputs** (in `output_folder`), as for the other models: per task,
 `<model>_<ts>_<task>_probabilities.csv` (e.g. `deepecg_siglip2_lvef_equal_under_40_<ts>_lvef_40_probabilities.csv`,
-same columns as the signal models; for the 77 classes, *Lead misplacement* and *Brugada* have no probe
-and stay empty) and the metrics `<model>_<ts>_<task>.json` / `.csv` (empty when the task has no labels).
+with the same columns as the signal models) and the metrics `<model>_<ts>_<task>.json` / `.csv` (empty
+when the task has no labels). The 77-class classifier returns all 77 probabilities.
 The validation Youden thresholds of the binary probes are in the snapshot's `thresholds.json`.
 
 With a GPU (`signal_processing_device: cuda:0`) the encoder runs once per batch for all five tasks

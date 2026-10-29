@@ -12,6 +12,7 @@ classifier is replaced by a stub, so nothing is downloaded):
   * the preprocessing is the training preprocessing.
 """
 import json
+import hashlib
 import os
 import sys
 
@@ -34,13 +35,13 @@ from utils.image_preprocessing import load_ecg_image  # noqa: E402
 os.chdir(_cwd)
 
 THRESHOLDS = {'SHD': 0.5, 'LVEF_le40': 0.3, 'LVEF_lt50': 0.4, 'iAFib5': 0.2}
-NO_HEAD = ['Lead misplacement', 'Brugada']
+NO_HEAD = []
 PREPROCESSING = {'resize': [32, 32], 'resize_mode': 'stretch', 'color_mode': 'grayscale',
                  'mean': [0.48145466, 0.4578275, 0.40821073], 'std': [0.26862954, 0.26130258, 0.27577711]}
 
 
 def write_tiny_weights(folder):
-    """A random 1-layer CLIP tower (32x32 images, 2x2 patch grid) + probes, exported format."""
+    """Write one tiny base encoder plus five classifier repositories in the pinned layout."""
     from safetensors.torch import save_file
     from transformers import CLIPVisionConfig, CLIPVisionModel
     torch.manual_seed(0)
@@ -50,31 +51,57 @@ def write_tiny_weights(folder):
                   initializer_range=0.02, initializer_factor=1.0)
     tower = siglip2_wrapper._vision_tower(CLIPVisionModel(CLIPVisionConfig(**vision)))
     os.makedirs(folder, exist_ok=True)
-    save_file({k: v.contiguous() for k, v in tower.state_dict().items() if not k.endswith('position_ids')},
-              os.path.join(folder, 'encoder.safetensors'))
-    with open(os.path.join(folder, 'config.json'), 'w') as f:
-        json.dump({'vision_config': vision, 'rope': {'mode': '2d', 'grid': 2, 'head_dim': 16, 'theta': 10000.0},
-                   'preprocessing': PREPROCESSING}, f)
+    base_folder = os.path.join(folder, 'siglip2_base_encoder')
+    os.makedirs(base_folder, exist_ok=True)
+    encoder_path = os.path.join(base_folder, 'image_encoder.safetensors')
+    save_file({f'backbone.vision_model.{k}': v.contiguous()
+               for k, v in tower.state_dict().items() if not k.endswith('position_ids')},
+              encoder_path)
+    config = {'vision_config': vision, 'rope': {'mode': '2d', 'grid': 2, 'head_dim': 16, 'theta': 10000.0},
+              'preprocessing': PREPROCESSING}
+    with open(os.path.join(base_folder, 'config.json'), 'w') as f:
+        json.dump(config, f)
+    with open(encoder_path, 'rb') as f:
+        encoder_sha = hashlib.sha256(f.read()).hexdigest()
     g = torch.Generator().manual_seed(1)
-    labels = [p for p in ECG_PATTERNS if p not in NO_HEAD]
-    tensors = {
-        'shd_lvef.weight': torch.randn(3, 32, generator=g, dtype=torch.float64),
-        'shd_lvef.bias': torch.zeros(3, dtype=torch.float64),
-        'iaf5.weight': torch.randn(1, 32, generator=g, dtype=torch.float64),
-        'iaf5.bias': torch.zeros(1, dtype=torch.float64),
-        'cls77.weight': torch.randn(len(labels), 32, generator=g, dtype=torch.float64),
-        'cls77.bias': torch.zeros(len(labels), dtype=torch.float64),
-        'cls77.mean': torch.zeros(32, dtype=torch.float64),
-        'cls77.scale': torch.ones(32, dtype=torch.float64),
+    specs = {
+        'siglip2_77_classes': (list(ECG_PATTERNS), {}),
+        'siglip2_afib_5y': (['iAFib5'], {'iAFib5': THRESHOLDS['iAFib5']}),
+        'siglip2_lvef_equal_under_40': (['LVEF_le40'], {'LVEF_le40': THRESHOLDS['LVEF_le40']}),
+        'siglip2_lvef_under_50': (['LVEF_lt50'], {'LVEF_lt50': THRESHOLDS['LVEF_lt50']}),
+        'siglip2_shd': (['SHD'], {'SHD': THRESHOLDS['SHD']}),
     }
-    save_file(tensors, os.path.join(folder, 'heads.safetensors'))
-    with open(os.path.join(folder, 'heads.json'), 'w') as f:
-        json.dump({'heads': {'shd_lvef': {'outputs': ['SHD', 'LVEF_le40', 'LVEF_lt50'], 'standardize': False},
-                             'iaf5': {'outputs': ['iAFib5'], 'standardize': False},
-                             'cls77': {'outputs': labels, 'standardize': True}},
-                   'labels_77': list(ECG_PATTERNS)}, f)
-    with open(os.path.join(folder, 'thresholds.json'), 'w') as f:
-        json.dump({'thresholds': THRESHOLDS}, f)
+    for model_key, (outputs, thresholds) in specs.items():
+        head_folder = os.path.join(folder, model_key)
+        os.makedirs(head_folder, exist_ok=True)
+        tensors = {
+            'weight': torch.randn(len(outputs), 32, generator=g, dtype=torch.float32),
+            'bias': torch.zeros(len(outputs), dtype=torch.float32),
+        }
+        save_file(tensors, os.path.join(head_folder, 'classifier.safetensors'))
+        with open(os.path.join(head_folder, 'config.json'), 'w') as f:
+            json.dump(config, f)
+        with open(os.path.join(head_folder, 'head.json'), 'w') as f:
+            json.dump({
+                'name': siglip2_wrapper.MODEL_REPOSITORIES[model_key],
+                'outputs': outputs,
+                'encoder': {
+                    'repo': siglip2_wrapper.BASE_REPO_ID,
+                    'file': 'image_encoder.safetensors',
+                    'sha256': encoder_sha,
+                },
+                'classifier': {
+                    'file': 'classifier.safetensors',
+                    'type': 'linear',
+                    'tensors': {'weight': [len(outputs), 32], 'bias': [len(outputs)]},
+                    'dtype': 'float32',
+                    'input_dim': 32,
+                    'standardize': False,
+                    'activation': 'sigmoid',
+                },
+            }, f)
+        with open(os.path.join(head_folder, 'thresholds.json'), 'w') as f:
+            json.dump({'thresholds': thresholds}, f)
 
 
 def draw_page(path, k):
@@ -102,7 +129,10 @@ class FakeBert:
 def world(tmp_path, monkeypatch):
     weights = tmp_path / 'weights'
     write_tiny_weights(str(weights))
-    monkeypatch.setattr(siglip2_wrapper, 'download_weights', lambda key: str(weights))
+    monkeypatch.setattr(
+        siglip2_wrapper, 'download_weights',
+        lambda model_key, token: str(weights / model_key)
+    )
     siglip2_wrapper._BANKS.clear()
     pngs = tmp_path / 'pngs'
     pngs.mkdir()
@@ -237,23 +267,29 @@ def test_preprocessing_matches_the_training_recipe(tmp_path):
 
 def test_weights_come_from_hugging_face(tmp_path, monkeypatch):
     calls = []
+    root = tmp_path / 'hf'
+    write_tiny_weights(str(root))
 
     def get_model(repo_id, local_dir, hugging_face_api_key):
         calls.append((repo_id, local_dir, hugging_face_api_key))
-        write_tiny_weights(str(tmp_path / 'hf'))
-        return str(tmp_path / 'hf')
+        return str(root / os.path.basename(local_dir))
     monkeypatch.setattr(siglip2_wrapper.HuggingFaceWrapper, 'get_model', staticmethod(get_model))
     siglip2_wrapper._BANKS.clear()
     siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), 'token')
-    assert calls == [('heartwise/deepecg_png', os.path.join('weights', 'deepecg_png'), 'token')]
+    assert calls == [
+        ('heartwise/SigLIP-2_BaseEncoder', os.path.join('weights', 'siglip2_base_encoder'), 'token'),
+        ('heartwise/SigLIP2_SHD', os.path.join('weights', 'siglip2_shd'), 'token'),
+    ]
     siglip2_wrapper._BANKS.clear()
 
 
 def test_incomplete_download_says_which_repository(tmp_path, monkeypatch):
-    monkeypatch.setattr(siglip2_wrapper, 'download_weights', lambda key: str(tmp_path / 'empty'))
-    (tmp_path / 'empty').mkdir()
+    monkeypatch.setattr(
+        siglip2_wrapper, 'download_weights',
+        lambda model_key, token: str(tmp_path / 'empty' / model_key)
+    )
     siglip2_wrapper._BANKS.clear()
-    with pytest.raises(FileNotFoundError, match='heartwise/deepecg_png'):
+    with pytest.raises(FileNotFoundError, match='heartwise/SigLIP-2_BaseEncoder'):
         siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
 
 
@@ -384,15 +420,19 @@ def test_parser_reads_the_model_selection(monkeypatch):
 
 
 @pytest.mark.parametrize('break_it, message', [
-    (lambda d: (d / 'heads.json').write_text('{not json'), 'invalid DeepECG-PNG weights'),
-    (lambda d: (d / 'thresholds.json').write_text(json.dumps({'thresholds': {'SHD': 'high'}})),
-     'invalid DeepECG-PNG weights'),
-    (lambda d: (d / 'encoder.safetensors').write_bytes(b''), 'cannot read'),
+    (lambda d: (d / 'siglip2_shd/head.json').write_text('{not json'), 'cannot read'),
+    (lambda d: (d / 'siglip2_shd/thresholds.json').write_text(
+        json.dumps({'thresholds': {'SHD': 'high'}})), 'thresholds must be numeric'),
+    (lambda d: (d / 'siglip2_base_encoder/image_encoder.safetensors').write_bytes(b''), 'cannot read'),
 ])
 def test_broken_weights_give_a_clear_error(tmp_path, monkeypatch, break_it, message):
-    write_tiny_weights(str(tmp_path / 'w'))
-    break_it(tmp_path / 'w')
-    monkeypatch.setattr(siglip2_wrapper, 'download_weights', lambda key: str(tmp_path / 'w'))
+    folder = tmp_path / 'w'
+    write_tiny_weights(str(folder))
+    break_it(folder)
+    monkeypatch.setattr(
+        siglip2_wrapper, 'download_weights',
+        lambda model_key, token: str(folder / model_key)
+    )
     siglip2_wrapper._BANKS.clear()
     with pytest.raises(RuntimeError, match=message):
         siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
@@ -402,25 +442,31 @@ def test_wrong_rope_dtype_or_head_shape_is_refused(tmp_path, monkeypatch):
     from safetensors.torch import load_file, save_file
     folder = tmp_path / 'w'
     write_tiny_weights(str(folder))
-    monkeypatch.setattr(siglip2_wrapper, 'download_weights', lambda key: str(folder))
-    cfg = json.loads((folder / 'config.json').read_text())
+    monkeypatch.setattr(
+        siglip2_wrapper, 'download_weights',
+        lambda model_key, token: str(folder / model_key)
+    )
+    base_folder = folder / 'siglip2_base_encoder'
+    cfg = json.loads((base_folder / 'config.json').read_text())
     bad = {**cfg, 'rope': {**cfg['rope'], 'grid': 3}}
-    (folder / 'config.json').write_text(json.dumps(bad))
+    (base_folder / 'config.json').write_text(json.dumps(bad))
     siglip2_wrapper._BANKS.clear()
     with pytest.raises(RuntimeError, match='RoPE settings'):
         siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
-    (folder / 'config.json').write_text(json.dumps(cfg))
-    enc = load_file(str(folder / 'encoder.safetensors'))
-    save_file({k: v.half() for k, v in enc.items()}, str(folder / 'encoder.safetensors'))
+    (base_folder / 'config.json').write_text(json.dumps(cfg))
+    encoder_path = base_folder / 'image_encoder.safetensors'
+    enc = load_file(str(encoder_path))
+    save_file({k: v.half() for k, v in enc.items()}, str(encoder_path))
     siglip2_wrapper._BANKS.clear()
     with pytest.raises(RuntimeError, match='float32'):
         siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
-    save_file(enc, str(folder / 'encoder.safetensors'))
-    heads = load_file(str(folder / 'heads.safetensors'))
-    heads['shd_lvef.weight'] = heads['shd_lvef.weight'][:2]
-    save_file(heads, str(folder / 'heads.safetensors'))
+    write_tiny_weights(str(folder))
+    classifier_path = folder / 'siglip2_shd/classifier.safetensors'
+    tensors = load_file(str(classifier_path))
+    tensors['weight'] = tensors['weight'][:0]
+    save_file(tensors, str(classifier_path))
     siglip2_wrapper._BANKS.clear()
-    with pytest.raises(RuntimeError, match='head shd_lvef has shapes'):
+    with pytest.raises(RuntimeError, match='tensor shapes'):
         siglip2_wrapper.DeepECG_SigLIP2_SHD('deepecg_siglip2_shd', torch.device('cpu'), '')
     siglip2_wrapper._BANKS.clear()
     with pytest.raises(RuntimeError, match='base class'):
