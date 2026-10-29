@@ -28,8 +28,8 @@ class HearWiseArgs:
         parser.add_argument('--batch_size', help='Batch size', type=int, required=True)
         parser.add_argument('--output_folder', help='Path to the output folder', type=str, required=True)
         parser.add_argument('--hugging_face_api_key_path', help='Optional API-key JSON (created empty if missing)', type=str, default='api_key.json')
-        parser.add_argument('--models', help='Models to run, from heartwise.config: "key:model,model;..." with keys '
-                            'signal_models, image_models and optional <task>_signal_models / <task>_image_models',
+        parser.add_argument('--models', help='Models to run, from heartwise.config: '
+                            '"signal_models:model,...;image_models:model,..."',
                             type=HearWiseArgs.parse_models, default={})
         parser.add_argument('--ecg_signals_path', help='Path to the ECG signals files', type=str, required=True)
         parser.add_argument('--mode', help='Mode of the script', type=str, required=True)

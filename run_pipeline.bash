@@ -20,8 +20,7 @@ data_path=$(get_param "data_path")
 batch_size=$(get_param "batch_size")
 output_folder=$(get_param "output_folder")
 hugging_face_api_key_path=$(get_param "hugging_face_api_key_path")
-# Models per input type (signal_models, image_models) and optional per-task overrides
-# (<task>_signal_models, <task>_image_models), passed as "key:model,model;key:model"
+# Models per input type (signal_models, image_models), passed as "key:model,model;key:model"
 models=$(grep -E '^[a-z0-9_]+_models:' heartwise.config | sed 's/[[:space:]]//g' | paste -sd';' -)
 ecg_signals_path=$(get_param "ecg_signals_path")
 mode=$(get_param "mode")

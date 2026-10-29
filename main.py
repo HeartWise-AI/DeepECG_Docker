@@ -311,9 +311,8 @@ def select_models(args: HearWiseArgs, diagnosis_column: str, input_type: str) ->
     """
     Names of the models to run on the rows of a task whose files are of input_type.
 
-    heartwise.config chooses them: `<task>_<input type>_models` if set, else
-    `<input type>_models`, else DEFAULT_MODELS. A chosen model the task does not have is
-    skipped (e.g. efficientnet for shd).
+    heartwise.config chooses them with `<input type>_models`, otherwise DEFAULT_MODELS
+    applies. A chosen model the task does not have is skipped (e.g. efficientnet for shd).
 
     Args:
         args: Configuration (`models` from heartwise.config).
@@ -324,10 +323,7 @@ def select_models(args: HearWiseArgs, diagnosis_column: str, input_type: str) ->
         Model names (MODEL_MAPPING values), possibly empty.
     """
     models = getattr(args, 'models', None) or {}
-    chosen = next((models[key] for key in (f'{diagnosis_column}_{input_type}_models', f'{input_type}_models')
-                   if key in models), None)
-    if chosen is None:
-        chosen = DEFAULT_MODELS[input_type]
+    chosen = models.get(f'{input_type}_models', DEFAULT_MODELS[input_type])
     available = MODEL_MAPPING[diagnosis_column][input_type]
     return [available[family] for family in chosen if family in available]
 
@@ -339,8 +335,6 @@ def validate_model_selection(models: dict) -> None:
         ValueError: On the first invalid key or model.
     """
     keys = {f'{input_type}_models': input_type for input_type in INPUT_TYPES}
-    keys.update({f'{task}_{input_type}_models': input_type
-                 for task in MODEL_MAPPING for input_type in INPUT_TYPES})
     for key, families in models.items():
         if key not in keys:
             raise ValueError(f"Unknown model selection '{key}' in heartwise.config "

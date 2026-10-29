@@ -245,7 +245,6 @@ CSV and metrics JSON/CSV per selected model and task.
      - `hugging_face_api_key_path`: The path to the file containing the HuggingFace API key. Example: `/app/api_key.json`.
      - `signal_models`: Models run on signal files (`.xml`, `.npy`), comma-separated, among `efficientnet`, `wcr`. Example: `efficientnet,wcr`.
      - `image_models`: Models run on ECG page images (`.png`, `.jpg`, `.jpeg`), among `deepecg_siglip2`. Example: `deepecg_siglip2`.
-     - Optional per-task choice, overriding the two lines above for one task: `<task>_signal_models` / `<task>_image_models`, with `<task>` one of `ecg_machine_diagnosis`, `afib_5y`, `lvef_40`, `lvef_50`, `shd`. Example: `lvef_40_signal_models: efficientnet`. An empty value runs no model for that task and input type; rows left without a model are reported as errors.
      - `data_path`: The path to the input CSV file containing the data. Example: `/app/inputs/data_rows_template.csv`.
      - `mode`: The mode of the pipeline (overwriten by docker command line). Example: `analysis` | `preprocessing` | `full_run`.
      - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/app/ecg_signals`.

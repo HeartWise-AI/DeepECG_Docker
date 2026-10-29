@@ -7,7 +7,7 @@ classifier is replaced by a stub, so nothing is downloaded):
     image models, signal rows to the signal preprocessing and models, in the same CSV;
   * the usual per-task CSV: predictions for every task, with or without labels; with labels
     and report text, metrics for every task;
-  * heartwise.config chooses the models per input type and per task;
+  * heartwise.config chooses the models per input type;
   * PNG rows never reach the signal preprocessing; a missing PNG is reported and skipped;
   * the preprocessing is the training preprocessing.
 """
@@ -360,28 +360,21 @@ def test_image_rows_without_an_image_model_are_reported(world):
     assert not any(f.endswith('_probabilities.csv') for f in os.listdir(out))
 
 
-def test_per_task_model_selection_overrides_the_default(world):
-    out = run(world, task_csv(['ecg_0.png', 'ecg_1.png']), 'override',
-              models={'image_models': ['deepecg_siglip2'], 'lvef_40_image_models': []}, expect_exit=1)
-    assert os.path.exists(_one(out, 'deepecg_siglip2_shd_', '_probabilities.csv'))
-    assert not any('lvef_40' in f for f in os.listdir(out))
-
-
 def test_select_models():
     import argparse
     ns = argparse.Namespace(models={})
     assert pipeline.select_models(ns, 'lvef_40', SIGNAL) == ['efficientnetv2_lvef_equal_under_40', 'wcr_lvef_equal_under_40']
     assert pipeline.select_models(ns, 'lvef_40', IMAGE) == ['deepecg_siglip2_lvef_equal_under_40']
     assert pipeline.select_models(ns, 'shd', SIGNAL) == []           # no signal model for shd
-    ns.models = {'signal_models': ['wcr'], 'afib_5y_signal_models': ['efficientnet']}
+    ns.models = {'signal_models': ['wcr']}
     assert pipeline.select_models(ns, 'lvef_50', SIGNAL) == ['wcr_lvef_under_50']
-    assert pipeline.select_models(ns, 'afib_5y', SIGNAL) == ['efficientnetv2_afib_5y']
+    assert pipeline.select_models(ns, 'afib_5y', SIGNAL) == ['wcr_afib_5y']
 
 
 @pytest.mark.parametrize('models, message', [
     ({'signal_models': ['resnet']}, "Unknown signal model"),
     ({'image_models': ['efficientnet']}, "Unknown image model"),
-    ({'lvef_45_image_models': ['deepecg_siglip2']}, "Unknown model selection"),
+    ({'lvef_40_image_models': ['deepecg_siglip2']}, "Unknown model selection"),
 ])
 def test_unknown_model_selection_is_refused(world, capsys, models, message):
     run(world, task_csv(['ecg_0.png']), 'badconfig', models=models, expect_exit=1)
@@ -417,10 +410,10 @@ def test_parser_reads_the_model_selection(monkeypatch):
     monkeypatch.setattr(sys, 'argv', base)
     args = pipeline.HearWiseArgs.parse_arguments()
     assert args.models == {}
-    monkeypatch.setattr(sys, 'argv', base + ['--models', 'signal_models:efficientnet,wcr;image_models:deepecg_siglip2;'
-                                                         'lvef_40_signal_models:'])
+    monkeypatch.setattr(sys, 'argv', base + ['--models',
+                                             'signal_models:efficientnet,wcr;image_models:deepecg_siglip2'])
     assert pipeline.HearWiseArgs.parse_arguments().models == {
-        'signal_models': ['efficientnet', 'wcr'], 'image_models': ['deepecg_siglip2'], 'lvef_40_signal_models': []}
+        'signal_models': ['efficientnet', 'wcr'], 'image_models': ['deepecg_siglip2']}
 
 
 @pytest.mark.parametrize('break_it, message', [
