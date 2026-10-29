@@ -26,6 +26,7 @@ ecg_signals_path=$(get_param "ecg_signals_path")
 mode=$(get_param "mode")
 preprocessing_folder=$(get_param "preprocessing_folder")
 preprocessing_n_workers=$(get_param "preprocessing_n_workers")
+single_lead=$(get_param "single_lead")
 
 # Overwrite mode by command line argument
 # Parse command-line arguments
@@ -79,7 +80,8 @@ run_pipeline() {
         --ecg_signals_path $ecg_signals_path \
         --mode $run_mode \
         --preprocessing_folder $preprocessing_folder \
-        --preprocessing_n_workers $preprocessing_n_workers
+        --preprocessing_n_workers $preprocessing_n_workers \
+        ${single_lead:+--single_lead $single_lead}
 }
 
 # Main execution based on mode

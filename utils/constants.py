@@ -484,9 +484,9 @@ _WCR_THRESHOLDS_PATH = os.path.join(
 )
 
 
-def _load_wcr_thresholds() -> dict:
-    """Load WCR thresholds from JSON file (single source of truth)."""
-    with open(_WCR_THRESHOLDS_PATH, "r") as f:
+def load_thresholds(path: str = _WCR_THRESHOLDS_PATH) -> dict:
+    """Load thresholds from a JSON file in the thresholds/ format (default: WCR, the single source of truth)."""
+    with open(path, "r") as f:
         raw = json.load(f)
     thresholds = {}
     for label, metrics in raw.items():
@@ -505,7 +505,7 @@ def _load_wcr_thresholds() -> dict:
     return thresholds
 
 
-WCR_THRESHOLDS = _load_wcr_thresholds()
+WCR_THRESHOLDS = load_thresholds()
 
 WCR_COLUMN_CONVERSION = [15, 23, 16, 1, 57, 63, 73, 41, 39, 36, 2, 29, 30, 65, 34, 12, 55, 56, 21, 8, 42, 71,
                          37, 50, 13, 38, 46, 24, 49, 9, 66, 26, 40, 4, 22, 0, 11, 74, 64, 7, 76, 58, 33, 70, 17, 6, 28,

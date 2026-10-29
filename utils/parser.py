@@ -33,4 +33,5 @@ class HearWiseArgs:
         parser.add_argument('--mode', help='Mode of the script', type=str, required=True)
         parser.add_argument('--preprocessing_folder', help='Path to the preprocessing folder', type=str, required=True)
         parser.add_argument('--preprocessing_n_workers', help='Number of workers for the preprocessing', type=int, default=16)
+        parser.add_argument('--single_lead', help="Single-lead NPY input: 'all' copies the lead to all 12 leads, a lead name (I ... V6) puts it in that lead only; 'none' = 12-lead input", type=str, default='none')
         return parser.parse_args()

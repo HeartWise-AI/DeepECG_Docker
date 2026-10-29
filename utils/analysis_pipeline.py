@@ -10,7 +10,7 @@ from sklearn.metrics import (
     f1_score, 
     roc_curve
 )
-from utils.files_handler import XMLProcessor, NPYProcessor, ECGFileHandler, validate_signal_paths
+from utils.files_handler import XMLProcessor, NPYProcessor, ECGFileHandler, validate_signal_paths, single_lead_slots
 from data.project_dataset import create_dataloader
 from models import HeartWiseModelFactory
 from utils.constants import (
@@ -244,8 +244,48 @@ def _log_wcr_threshold_warnings(df_probabilities: pd.DataFrame, sig_columns: lis
             )
 
 
+# Signals scaled together: the PTB-XL power scaling uses the mean spectrum of each batch.
+PREPROCESSING_BATCH_SIZE = 10000
+
+
+def load_model(model_name: str, device, hugging_face_api_key: str):
+    """Create a model with the factory, in eval mode (no dropout)."""
+    model = HeartWiseModelFactory.create_model(
+        {
+            'model_name': model_name,
+            'map_location': torch.device(device),
+            'hugging_face_api_key': hugging_face_api_key
+        }
+    )
+    model.model.eval()
+    return model
+
+
+def predict_77_classes(model, model_name: str, ecg_tensor: torch.Tensor) -> torch.Tensor:
+    """77-class probabilities in ECG_PATTERNS order (WCR outputs are reordered)."""
+    sig_prob = model(ecg_tensor)
+    if "wcr" in model_name.lower():
+        sig_prob = sig_prob[:, WCR_COLUMN_CONVERSION]
+    return sig_prob
+
+
 class AnalysisPipeline:
     """Orchestrates ECG preprocessing (NPY/XML) and model-based analysis with metrics."""
+
+    @staticmethod
+    def preprocess_signals(ecg_signals_df: pd.DataFrame, n_workers: int, ref_lead: int = 0) -> pd.DataFrame:
+        """Scale a batch of (2500, 12) signals to the PTB-XL spectral power, then remove line-noise peaks."""
+        ecg_signal_processor = ECGSignalProcessor(ref_lead=ref_lead)
+        logger.info("Scaling ECG signals...")
+        scaled_signals_df = ecg_signal_processor.scale_ecg_signals(
+            df=ecg_signals_df,
+            power_ratio=PTBXL_POWER_RATIO
+        )
+        logger.info("Processing ECG signals...")
+        return ecg_signal_processor.clean_and_process_ecg_leads(
+            df=scaled_signals_df,
+            max_workers=n_workers
+        )
 
     @staticmethod
     def save_and_preprocess_data(
@@ -254,17 +294,20 @@ class AnalysisPipeline:
         preprocessing_folder: str,
         preprocessing_n_workers: int,
         errors: list[str] | None = None,
+        single_lead: str | None = None,
     ) -> pd.DataFrame | None:
         """
         Preprocess ECG files from df (NPY or XML), scale and clean signals, and save as .base64.
 
         Decode each format separately within a batch, restoring input order before
         shared scaling/cleaning. Failed files are excluded and reported via errors.
+        single_lead ('all' or a lead name) expands single-lead NPY files to 12 leads.
         Returns None if no data was successfully processed.
         """
         validate_signal_paths(df['ecg_path'])
-        ecg_signal_processor = ECGSignalProcessor()
-        batch_size = 10000
+        slots = single_lead_slots(single_lead)
+        ref_lead = slots[0] if slots else 0
+        batch_size = PREPROCESSING_BATCH_SIZE
         total_batches = (len(df) + batch_size - 1) // batch_size
         processed_df = pd.DataFrame()
 
@@ -280,7 +323,7 @@ class AnalysisPipeline:
                 
                 extensions = batch_df['ecg_path'].map(lambda path: os.path.splitext(path)[1].lower())
                 metadata_parts, signal_parts = [], []
-                for extension, processor_type in (('.xml', XMLProcessor), ('.npy', NPYProcessor)):
+                for extension, processor_type in (('.xml', XMLProcessor), ('.npy', lambda: NPYProcessor(single_lead))):
                     subset = batch_df[extensions == extension].copy()
                     if subset.empty:
                         continue
@@ -313,16 +356,8 @@ class AnalysisPipeline:
                 if len(ecg_signals_df) == 0:
                     collect(errors, "preprocessing", f"No valid signals in batch {batch_idx + 1}", None)
                     continue
-                logger.info("Scaling ECG signals...")
-                scaled_signals_df = ecg_signal_processor.scale_ecg_signals(
-                    df=ecg_signals_df, 
-                    power_ratio=PTBXL_POWER_RATIO
-                )
-                
-                logger.info("Processing ECG signals...")
-                cleaned_signals_df = ecg_signal_processor.clean_and_process_ecg_leads(
-                    df=scaled_signals_df,
-                    max_workers=preprocessing_n_workers
+                cleaned_signals_df = AnalysisPipeline.preprocess_signals(
+                    ecg_signals_df, preprocessing_n_workers, ref_lead
                 )
                 
                 logger.info("Saving processed signals...")
@@ -338,7 +373,7 @@ class AnalysisPipeline:
                 processed_df = pd.concat([processed_df, batch_df], ignore_index=True)
                 
                 # Clear memory
-                del ecg_signals_df, scaled_signals_df, cleaned_signals_df, batch_df
+                del ecg_signals_df, cleaned_signals_df, batch_df
                 del metadata_parts, signal_parts, metadata, signals, subset
                 
             except Exception as e:
@@ -390,25 +425,15 @@ class AnalysisPipeline:
         hugging_face_api_key: str,
     ) -> tuple[dict, pd.DataFrame]:
         """Internal implementation: load models, run inference, return (metrics, df_probabilities)."""
-        signal_processing_model = HeartWiseModelFactory.create_model(
-            {
-                'model_name': signal_processing_model_name,
-                'map_location': torch.device(signal_processing_device),
-                'hugging_face_api_key': hugging_face_api_key
-            }
+        signal_processing_model = load_model(
+            signal_processing_model_name, signal_processing_device, hugging_face_api_key
         )
-        signal_processing_model.model.eval()
 
         if "77" in signal_processing_model_name:
             # Load models
-            diagnosis_classifier_model = HeartWiseModelFactory.create_model(
-                {
-                    'model_name': diagnosis_classifier_model_name,
-                    'map_location': torch.device(diagnosis_classifier_device),
-                    'hugging_face_api_key': hugging_face_api_key
-                }
+            diagnosis_classifier_model = load_model(
+                diagnosis_classifier_model_name, diagnosis_classifier_device, hugging_face_api_key
             )
-            diagnosis_classifier_model.model.eval()
             
             # Compute bert diagnoses predictions
             predictions = []
@@ -435,9 +460,7 @@ class AnalysisPipeline:
                 diag_binary = torch.where(diag_prob >= bert_thresholds_tensor, 1, 0)
 
                 # Append batch data 
-                sig_prob = signal_processing_model(ecg_tensor)   
-                if "wcr" in signal_processing_model_name.lower():
-                    sig_prob = sig_prob[:, WCR_COLUMN_CONVERSION]
+                sig_prob = predict_77_classes(signal_processing_model, signal_processing_model_name, ecg_tensor)
                         
                 for i in range(len(diag_binary)):
                     ground_truth.append(diag_binary[i].detach().cpu().numpy())

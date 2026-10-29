@@ -20,6 +20,7 @@ from utils.files_handler import (
     save_df,
     load_df,
     validate_signal_paths,
+    single_lead_slots,
 )
 from utils.log_config import get_logger
 
@@ -64,6 +65,7 @@ def save_and_perform_preprocessing(args: HearWiseArgs, df: pd.DataFrame, errors:
         preprocessing_folder=args.preprocessing_folder,
         preprocessing_n_workers=args.preprocessing_n_workers,
         errors=errors,
+        single_lead=args.single_lead,
     )
 
 def perform_analysis(
@@ -236,6 +238,7 @@ def main(args: HearWiseArgs):
         df = load_df(args.data_path)
         logger.info("DataFrame loaded: %d rows", len(df))
 
+        single_lead_slots(args.single_lead)  # reject a bad --single_lead before any work
         existing_diagnosis_columns, existing_file_columns = validate_dataframe(
             df=df,
             diagnosis_to_file_columns=DIAGNOSIS_TO_FILE_COLUMNS
