@@ -172,7 +172,7 @@ def run(tmp_path, df, name, mode='full_run', models=None, expect_exit=None):
     ns = argparse.Namespace(
         diagnosis_classifier_device='cpu', signal_processing_device='cpu', data_path=str(csv),
         batch_size=5, output_folder=str(out), hugging_face_api_key_path=str(tmp_path / 'key.json'),
-        models=IMAGE_ONLY if models is None else models, use_wcr=None, use_efficientnet=None,
+        models=IMAGE_ONLY if models is None else models,
         ecg_signals_path=str(tmp_path / 'pngs'), mode=mode,
         preprocessing_folder=str(tmp_path / f'prep_{name}'), preprocessing_n_workers=1)
     (tmp_path / 'key.json').write_text(json.dumps({'HUGGING_FACE_API_KEY': ''}))
@@ -369,15 +369,12 @@ def test_per_task_model_selection_overrides_the_default(world):
 
 def test_select_models():
     import argparse
-    ns = argparse.Namespace(models={}, use_wcr=None, use_efficientnet=None)
+    ns = argparse.Namespace(models={})
     assert pipeline.select_models(ns, 'lvef_40', SIGNAL) == ['efficientnetv2_lvef_equal_under_40', 'wcr_lvef_equal_under_40']
     assert pipeline.select_models(ns, 'lvef_40', IMAGE) == ['deepecg_siglip2_lvef_equal_under_40']
     assert pipeline.select_models(ns, 'shd', SIGNAL) == []           # no signal model for shd
     ns.models = {'signal_models': ['wcr'], 'afib_5y_signal_models': ['efficientnet']}
     assert pipeline.select_models(ns, 'lvef_50', SIGNAL) == ['wcr_lvef_under_50']
-    assert pipeline.select_models(ns, 'afib_5y', SIGNAL) == ['efficientnetv2_afib_5y']
-    # deprecated flags still work when the config has no signal_models
-    ns = argparse.Namespace(models={}, use_wcr=False, use_efficientnet=True)
     assert pipeline.select_models(ns, 'afib_5y', SIGNAL) == ['efficientnetv2_afib_5y']
 
 
@@ -419,14 +416,11 @@ def test_parser_reads_the_model_selection(monkeypatch):
             '--ecg_signals_path', 'e', '--mode', 'analysis', '--preprocessing_folder', 'p']
     monkeypatch.setattr(sys, 'argv', base)
     args = pipeline.HearWiseArgs.parse_arguments()
-    assert args.models == {} and args.use_wcr is None and args.use_efficientnet is None
+    assert args.models == {}
     monkeypatch.setattr(sys, 'argv', base + ['--models', 'signal_models:efficientnet,wcr;image_models:deepecg_siglip2;'
                                                          'lvef_40_signal_models:'])
     assert pipeline.HearWiseArgs.parse_arguments().models == {
         'signal_models': ['efficientnet', 'wcr'], 'image_models': ['deepecg_siglip2'], 'lvef_40_signal_models': []}
-    monkeypatch.setattr(sys, 'argv', base + ['--use_wcr', 'False', '--use_efficientnet', 'True'])
-    args = pipeline.HearWiseArgs.parse_arguments()
-    assert args.use_wcr is False and args.use_efficientnet is True
 
 
 @pytest.mark.parametrize('break_it, message', [

@@ -312,9 +312,8 @@ def select_models(args: HearWiseArgs, diagnosis_column: str, input_type: str) ->
     Names of the models to run on the rows of a task whose files are of input_type.
 
     heartwise.config chooses them: `<task>_<input type>_models` if set, else
-    `<input type>_models`, else DEFAULT_MODELS (the deprecated use_wcr / use_efficientnet
-    flags still remove a signal model). A chosen model the task does not have is skipped
-    (e.g. efficientnet for shd).
+    `<input type>_models`, else DEFAULT_MODELS. A chosen model the task does not have is
+    skipped (e.g. efficientnet for shd).
 
     Args:
         args: Configuration (`models` from heartwise.config).
@@ -328,8 +327,7 @@ def select_models(args: HearWiseArgs, diagnosis_column: str, input_type: str) ->
     chosen = next((models[key] for key in (f'{diagnosis_column}_{input_type}_models', f'{input_type}_models')
                    if key in models), None)
     if chosen is None:
-        chosen = [family for family in DEFAULT_MODELS[input_type]
-                  if getattr(args, f'use_{family}', None) is not False]
+        chosen = DEFAULT_MODELS[input_type]
     available = MODEL_MAPPING[diagnosis_column][input_type]
     return [available[family] for family in chosen if family in available]
 

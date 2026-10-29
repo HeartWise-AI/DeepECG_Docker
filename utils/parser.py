@@ -4,18 +4,6 @@ import argparse
 
 class HearWiseArgs:
     """Parse and validate command-line arguments for the ECG pipeline."""
-
-    @staticmethod
-    def str2bool(v):
-        """Convert string to bool (e.g. 'true'/'false', 'yes'/'no'). Raises ArgumentTypeError if invalid."""
-        if isinstance(v, bool):
-            return v
-        if v.lower() in ('yes', 'true', 't', 'y', '1'):
-            return True
-        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-            return False
-        else:
-            raise argparse.ArgumentTypeError('Boolean value expected.')
     
     @staticmethod
     def parse_models(v):
@@ -43,9 +31,6 @@ class HearWiseArgs:
         parser.add_argument('--models', help='Models to run, from heartwise.config: "key:model,model;..." with keys '
                             'signal_models, image_models and optional <task>_signal_models / <task>_image_models',
                             type=HearWiseArgs.parse_models, default={})
-        # Deprecated (replaced by signal_models): still accepted for older configs and scripts
-        parser.add_argument('--use_wcr', help='Deprecated: use signal_models', type=HearWiseArgs.str2bool, default=None)
-        parser.add_argument('--use_efficientnet', help='Deprecated: use signal_models', type=HearWiseArgs.str2bool, default=None)
         parser.add_argument('--ecg_signals_path', help='Path to the ECG signals files', type=str, required=True)
         parser.add_argument('--mode', help='Mode of the script', type=str, required=True)
         parser.add_argument('--preprocessing_folder', help='Path to the preprocessing folder', type=str, required=True)

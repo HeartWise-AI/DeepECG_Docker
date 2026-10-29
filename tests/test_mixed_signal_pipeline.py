@@ -204,7 +204,7 @@ def test_full_run_combines_outputs_per_model_and_excludes_stale_failed_files(tmp
     args = SimpleNamespace(
         mode='full_run', data_path=str(tmp_path / 'input.csv'), ecg_signals_path=str(tmp_path),
         output_folder=str(tmp_path / 'outputs'), preprocessing_folder=str(preprocessed),
-        preprocessing_n_workers=3, use_wcr=True, use_efficientnet=True, batch_size=2,
+        preprocessing_n_workers=3, batch_size=2,
         signal_processing_device='cpu', diagnosis_classifier_device='cpu',
         hugging_face_api_key_path=str(tmp_path / 'key.json'),
     )
@@ -235,7 +235,7 @@ def test_blank_file_cells_are_not_checked_as_signal_paths(tmp_path, monkeypatch)
     args = SimpleNamespace(
         mode='preprocessing', data_path=str(tmp_path / 'input.csv'), ecg_signals_path=str(tmp_path),
         output_folder=str(tmp_path / 'outputs'), preprocessing_folder=str(tmp_path / 'preprocessed'),
-        preprocessing_n_workers=1, use_wcr=True, use_efficientnet=True,
+        preprocessing_n_workers=1,
     )
     pipeline.main(args)
     assert (tmp_path / 'preprocessed' / 'one.base64').exists()
