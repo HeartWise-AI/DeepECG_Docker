@@ -14,7 +14,8 @@ from utils.constants import (
     INPUT_TYPES,
     SIGNAL,
     IMAGE,
-    input_type_of
+    input_type_of,
+    source_format_of
 )
 from utils.parser import HearWiseArgs
 from utils.analysis_pipeline import AnalysisPipeline
@@ -26,7 +27,8 @@ from utils.files_handler import (
     load_df,
     validate_signal_paths,
 )
-from utils.image_preprocessing import open_ecg_image
+from utils.image_preprocessing import check_ecg_page
+from data.image_dataset import PAGE_ERRORS, clear_page_errors
 from utils.log_config import get_logger
 
 logger = get_logger(__name__)
@@ -276,18 +278,24 @@ def create_image_analysis_dataframe(df: pd.DataFrame, diagnosis_column: str, ecg
         n_labelled = int(df_analysis['diagnosis'].map(lambda t: pd.notna(t) and bool(str(t).strip())).sum())
     else:
         n_labelled = int(df_analysis['diagnosis'].notna().sum())
-    logger.info("Image rows for %s: %d (%d with a label)", diagnosis_column, len(df_analysis), n_labelled)
+    formats = ", ".join(f"{fmt} {n}" for fmt, n in
+                        sorted(df_analysis['ecg_path'].map(source_format_of).value_counts().items()))
+    logger.info("Image rows for %s: %d (%d with a label%s)", diagnosis_column, len(df_analysis), n_labelled,
+                f"; {formats}" if formats else "")
     return df_analysis
 
 # Images that could not be decoded, path -> error (checked once per file per run)
 UNREADABLE_IMAGES: dict[str, str | None] = {}
 
 def image_error(path: str) -> str | None:
-    """Decode the image once; return None if it reads, else the error (cached per path)."""
+    """
+    Check the image once; return None if it can be used, else the error (cached per path).
+    A PNG / JPEG is decoded as the model reads it; a PDF gets the checks that need no page
+    extraction (its page is extracted when the model reads it; see check_ecg_page).
+    """
     if path not in UNREADABLE_IMAGES:
         try:
-            with open_ecg_image(path) as image:   # header checked, own decoder only, as the model reads it
-                image.load()
+            check_ecg_page(path)   # header checked, own decoder only (PDF: no page extraction yet)
             UNREADABLE_IMAGES[path] = None
         except Exception as e:
             UNREADABLE_IMAGES[path] = f"{type(e).__name__}: {e}"
@@ -348,16 +356,17 @@ def main(args: HearWiseArgs):
     """
     Run the pipeline: load data, optionally preprocess and/or run analysis, and print any collected errors.
 
-    The input type of every ECG file is detected from its extension (images: .png/.jpg/.jpeg,
-    signals: anything else); each task runs the models heartwise.config selects for that input
-    type. Mode controls whether preprocessing, analysis, or both run. Errors are collected
-    and printed at the end under "Errors encountered:".
+    The input type of every ECG file is detected from its extension (images: .png/.jpg/.jpeg
+    pages and .pdf reports, signals: anything else); each task runs the models heartwise.config
+    selects for that input type. Mode controls whether preprocessing, analysis, or both run.
+    Errors are collected and printed at the end under "Errors encountered:".
     """
     if args.mode not in {Mode.PREPROCESSING, Mode.ANALYSIS, Mode.FULL_RUN}:
         raise ValueError(f"Invalid mode: {args.mode}. Please choose from 'preprocessing', 'analysis', or 'full_run'.")
 
     errors: list[str] = []
     UNREADABLE_IMAGES.clear()
+    clear_page_errors()
 
     try:
         validate_model_selection(getattr(args, 'models', None) or {})
@@ -464,6 +473,10 @@ def main(args: HearWiseArgs):
 
                         if metrics is None or df_probabilities is None:
                             continue
+                        if df_probabilities.empty:   # every row was a PDF without a readable ECG
+                            logger.warning("No %s ECG could be read for %s; %s skipped.",
+                                           input_type, diagnosis_column, model_name)
+                            continue
 
                         current_date = datetime.now().strftime('%Y%m%d_%H%M%S')
                         logger.info("Saving metrics and probabilities...")
@@ -488,6 +501,7 @@ def main(args: HearWiseArgs):
                         logger.info("Metrics and probabilities saved.")
 
             unreadable = {p: e for p, e in UNREADABLE_IMAGES.items() if e is not None}
+            unreadable.update(PAGE_ERRORS)   # PDFs whose page could not be extracted during inference
             if unreadable:
                 current_date = datetime.now().strftime('%Y%m%d_%H%M%S')
                 unreadable_path = os.path.join(args.output_folder, f'unreadable_images_{current_date}.csv')
@@ -496,6 +510,7 @@ def main(args: HearWiseArgs):
                 logger.warning("%d unreadable images listed in %s", len(unreadable), unreadable_path)
     except Exception as e:
         errors.append(f"[main] Fatal: {e}")
+    clear_page_errors()   # reported above: no state left for a later run or a direct DataLoader
 
     if errors:
         print("Errors encountered:")
