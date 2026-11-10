@@ -38,6 +38,8 @@ def task_metrics(y, s, patients, thr=None, n_boot=1000, seed=0):
 
 def _groups(patients):
     """Window indices per patient, in np.unique order, without one full pass per patient."""
+    if len(patients) == 0:  # a task with no labelled window (e.g. no clean sinus in a small sample)
+        return []
     _, inv = np.unique(patients, return_inverse=True)
     order = np.argsort(inv, kind='stable')
     return np.split(order, np.flatnonzero(np.diff(inv[order])) + 1)

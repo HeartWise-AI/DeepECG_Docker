@@ -163,6 +163,15 @@ def test_per_patient_groups_match_naive():
     assert got.patient.tolist() == ['p0', 'p1', 'p2']
 
 
+def test_task_without_labelled_windows_gives_empty_metrics_not_a_crash():
+    """A small sample can leave a task with no labelled window (e.g. no clean sinus, so no bradycardia label).
+    The run must still finish and report the other tasks."""
+    y, s, patients = np.full(4, np.nan), np.linspace(0, 1, 4), np.array(['p00000'] * 4)
+    assert metrics.per_patient(y, s, patients, thr=0.5).empty
+    m = metrics.task_metrics(y, s, patients, thr=0.5, n_boot=10)
+    assert m['n_pos'] == 0 and m['n_neg'] == 0 and np.isnan(m['auroc']) and np.isnan(m['sensitivity'])
+
+
 def test_parse_patients_only_accepts_patient_ids():
     assert run.parse_patients('p00000-p00002,p00020') == ['p00000', 'p00001', 'p00002', 'p00020']
     assert run.parse_patients('p00000-p00002,p00001') == ['p00000', 'p00001', 'p00002']

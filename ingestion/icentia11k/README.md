@@ -31,13 +31,14 @@ python -m ingestion.icentia11k.run --data <icentia root> --patients p00000-p0000
     [--thresholds <thresholds.json>] [--model wcr|efficientnet] [--device cuda:0]
 ```
 
-In the Docker image (the dataset and your `heartwise.config` mounted read-only, outputs owned by you, weights
-cached in `weights/`):
+In the Docker image (the dataset, your `heartwise.config` and your `api_key.json` mounted read-only, outputs
+owned by you, weights cached in `weights/`). The key file must be mounted even when it is empty: the image's own
+copy is readable by root only, and the command runs as you.
 
 ```bash
 docker run --rm --gpus '"device=0"' --user "$(id -u):$(id -g)" -e HOME=/tmp \
     -v <icentia root>:/data/icentia:ro -v <out folder>:/out -v "$PWD/weights:/app/weights" \
-    -v "$PWD/heartwise.config:/app/heartwise.config:ro" \
+    -v "$PWD/heartwise.config:/app/heartwise.config:ro" -v "$PWD/api_key.json:/app/api_key.json:ro" \
     --entrypoint python deepecg-docker -m ingestion.icentia11k.run \
     --data /data/icentia --patients p00000-p00009 --out /out
 ```
