@@ -7,7 +7,6 @@ pyarrow
 fastparquet
 tqdm
 statsmodels
-wfdb==4.3.1
 torchmetrics
 pillow==13.0.0
 safetensors==0.8.0

@@ -41,5 +41,3 @@ notebooks/outputs
 fairseq-signals/
 !api_key.example.json
 !models/manifest.json
-# label mappings of the external-validation datasets
-!ingestion/*/mapping.csv
