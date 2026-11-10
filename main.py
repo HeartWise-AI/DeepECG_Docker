@@ -374,7 +374,7 @@ def main(args: HearWiseArgs):
             if any(select_models(args, diagnosis_column, input_type) for input_type in INPUT_TYPES)
         }
 
-        single_lead_slots(getattr(args, 'single_lead', None))  # reject a bad --single_lead before any work
+        single_lead_slots(getattr(args, 'single_lead', None))  # reject a bad single_lead before any work
         existing_diagnosis_columns, existing_file_columns = validate_dataframe(
             df=df,
             diagnosis_to_file_columns=task_columns

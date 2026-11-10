@@ -10,6 +10,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import main as pipeline
+from utils import analysis_pipeline
 from utils.analysis_pipeline import AnalysisPipeline, predict_77_classes
 from utils.constants import WCR_COLUMN_CONVERSION
 from utils.ecg_signal_processor import ECGSignalProcessor
@@ -94,6 +95,20 @@ def test_predict_77_classes_reorders_wcr_outputs_only():
     x = torch.zeros(2, 12, 2500)
     assert predict_77_classes(model, 'wcr_77_classes', x)[0].tolist() == [float(i) for i in WCR_COLUMN_CONVERSION]
     assert predict_77_classes(model, 'efficientnetv2_77_classes', x)[0].tolist() == list(map(float, range(77)))
+
+
+def test_load_model_requires_eval_mode_for_signal_models(monkeypatch):
+    """A signal model or BERT scored in train mode (dropout on) gives wrong probabilities, so a model that
+    load_model cannot put in eval mode must fail, not load silently. Image models set their own mode."""
+    def factory(model):
+        monkeypatch.setattr(analysis_pipeline.HeartWiseModelFactory, 'create_model', staticmethod(lambda config: model))
+        return analysis_pipeline.load_model('any', 'cpu', None)
+    net = torch.nn.Dropout().train()
+    assert factory(SimpleNamespace(model=net)).model.training is False
+    with pytest.raises(AttributeError):
+        factory(SimpleNamespace())
+    image_model = SimpleNamespace(input_type=analysis_pipeline.IMAGE)
+    assert factory(image_model) is image_model
 
 
 def test_main_rejects_a_bad_single_lead(monkeypatch, capsys):

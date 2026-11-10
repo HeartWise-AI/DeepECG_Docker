@@ -1,5 +1,6 @@
 """Icentia-11k adapter on synthetic WFDB records (no access to the real dataset)."""
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -180,6 +181,20 @@ class FakeModel:
         return torch.sigmoid(x.mean(dim=(1, 2)))[:, None].repeat(1, 77)
 
 
+def _config(tmp_path, single_lead):
+    """A heartwise.config holding the one key the runner reads."""
+    path = tmp_path / 'heartwise.config'
+    path.write_text(f'mode: full_run\nsingle_lead: {single_lead}\n')
+    return str(path)
+
+
+def test_single_lead_comes_from_heartwise_config(tmp_path):
+    assert run.config_single_lead(_config(tmp_path, 'aVF')) == 'aVF'
+    (tmp_path / 'heartwise.config').write_text('mode: full_run\n')  # key absent: 12-lead, as in the main pipeline
+    assert run.config_single_lead(str(tmp_path / 'heartwise.config')) == 'none'
+    assert run.config_single_lead('heartwise.config') == 'none'  # the repository default
+
+
 def test_cli_end_to_end(tmp_path, monkeypatch):
     pdir = tmp_path / 'data' / 'p00' / 'p00000'
     pdir.mkdir(parents=True)
@@ -188,16 +203,17 @@ def test_cli_end_to_end(tmp_path, monkeypatch):
     _write_segment(pdir, 'p00000_s02', 2500 * 2, _sinus(5000), fs=500)         # wrong sampling rate
     model = FakeModel()
     monkeypatch.setattr(run, 'load_model', lambda *args: model)
+    monkeypatch.setattr(run, 'CONFIG_PATH', _config(tmp_path, 'V1'))
     out = tmp_path / 'out'
     run.main(['--data', str(tmp_path / 'data'), '--patients', 'p00000-p00001', '--out', str(out),
-              '--single_lead', 'V1', '--device', 'cpu', '--bootstrap', '0',
+              '--device', 'cpu', '--bootstrap', '0',
               '--hugging_face_api_key_path', str(tmp_path / 'key.json')])
     df = pd.read_parquet(out / 'p00000_windows.parquet')
     assert len(df) == 2 and df.segment.unique().tolist() == ['p00000_s00']
     assert df['N_RHYTHM'].tolist() == [1, 1] and df['gt::Sinusal'].tolist() == [1, 1]
     x = np.concatenate(model.inputs)
     assert x.shape == (2, 12, 2500) and np.isfinite(x).all() and x[:, 6].any()
-    assert np.abs(np.delete(x, 6, axis=1)).max() < 1e-6  # --single_lead V1: the other leads stay zero
+    assert np.abs(np.delete(x, 6, axis=1)).max() < 1e-6  # single_lead: V1 -> the other leads stay zero
     assert np.isfinite(np.load(out / 'p00000_probs.npy')).all()
     m = json.loads((out / 'run_manifest.json').read_text())
     assert m['missing_patients'] == ['p00001'] and m['lead_slots'] == ['V1']
@@ -207,6 +223,7 @@ def test_cli_end_to_end(tmp_path, monkeypatch):
 
 def test_cli_refuses_bad_out_and_empty_runs(tmp_path, monkeypatch):
     monkeypatch.setattr(run, 'load_model', lambda *args: FakeModel())
+    monkeypatch.setattr(run, 'CONFIG_PATH', _config(tmp_path, 'all'))
     args = ['--patients', 'p00000', '--device', 'cpu', '--hugging_face_api_key_path', str(tmp_path / 'key.json')]
     (tmp_path / 'data').mkdir()
     with pytest.raises(SystemExit, match='inside --data'):
@@ -215,7 +232,30 @@ def test_cli_refuses_bad_out_and_empty_runs(tmp_path, monkeypatch):
     (tmp_path / 'used' / 'x').write_text('')
     with pytest.raises(SystemExit, match='new or empty'):
         run.main(args + ['--data', str(tmp_path / 'data'), '--out', str(tmp_path / 'used')])
-    with pytest.raises(SystemExit, match="'all' or a lead name"):
-        run.main(args + ['--data', str(tmp_path / 'data'), '--out', str(tmp_path / 'o'), '--single_lead', 'none'])
     with pytest.raises(SystemExit, match='no patients'):
         run.main(args + ['--data', str(tmp_path / 'data'), '--out', str(tmp_path / 'o')])
+    with pytest.raises(SystemExit):  # single-lead control is heartwise.config only: there is no flag
+        run.main(args + ['--data', str(tmp_path / 'data'), '--out', str(tmp_path / 'o2'), '--single_lead', 'all'])
+    monkeypatch.setattr(run, 'CONFIG_PATH', _config(tmp_path, 'none'))
+    with pytest.raises(SystemExit, match="must be 'all' or a lead name, not 'none'"):
+        run.main(args + ['--data', str(tmp_path / 'data'), '--out', str(tmp_path / 'o2')])
+    assert not (tmp_path / 'o2').exists()  # refused before the output folder is created
+
+
+def test_out_folder_is_locked_for_one_run(tmp_path, monkeypatch):
+    """Two runs must never write into the same --out: the second stops while the first holds the folder."""
+    monkeypatch.setattr(run, 'load_model', lambda *args: FakeModel())
+    monkeypatch.setattr(run, 'CONFIG_PATH', _config(tmp_path, 'all'))
+    (tmp_path / 'data').mkdir()
+    out = tmp_path / 'out'
+    out.mkdir()
+    args = ['--patients', 'p00000', '--device', 'cpu', '--hugging_face_api_key_path', str(tmp_path / 'key.json'),
+            '--data', str(tmp_path / 'data'), '--out', str(out)]
+    held = run.lock_out(str(out))
+    try:
+        with pytest.raises(SystemExit, match='in use by another run'):
+            run.main(args)
+    finally:
+        os.close(held)
+    with pytest.raises(SystemExit, match='no patients'):  # released: the folder can be used again
+        run.main(args)

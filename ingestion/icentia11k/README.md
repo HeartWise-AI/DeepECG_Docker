@@ -4,7 +4,7 @@ Scores a DeepECG 77-class model (`wcr_77_classes` by default) on Icentia-11k sin
 the beat and rhythm annotations. BERT is not used: the ground truth comes from the annotations.
 
 ```
-.hea/.dat ─► 10 s windows ─► 12-lead input (--single_lead) ─► pipeline preprocessing ─► model ─► 77 probabilities ─┐
+.hea/.dat ─► 10 s windows ─► 12-lead input (single_lead) ─► pipeline preprocessing ─► model ─► 77 probabilities ─┐
 .atr ──────► same windows ─► window labels (labels.py) ─► --mapping ─► ground truth ─────────────────────────────┴─► metrics
 ```
 
@@ -22,16 +22,22 @@ main pipeline's own (`utils/files_handler.py`, `utils/analysis_pipeline.py`). On
 
 ## Run it
 
+Set `single_lead` in `heartwise.config` first, as for the main pipeline: `all` copies the lead into all 12 leads,
+a lead name (`I` … `V6`) puts it in that lead only. With `none` the runner stops. The file is read from the
+working directory.
+
 ```bash
 python -m ingestion.icentia11k.run --data <icentia root> --patients p00000-p00009 --out <new folder> \
-    [--single_lead all] [--thresholds <thresholds.json>] [--model wcr|efficientnet] [--device cuda:0]
+    [--thresholds <thresholds.json>] [--model wcr|efficientnet] [--device cuda:0]
 ```
 
-In the Docker image (the dataset mounted read-only, outputs owned by you, weights cached in `weights/`):
+In the Docker image (the dataset and your `heartwise.config` mounted read-only, outputs owned by you, weights
+cached in `weights/`):
 
 ```bash
 docker run --rm --gpus '"device=0"' --user "$(id -u):$(id -g)" -e HOME=/tmp \
     -v <icentia root>:/data/icentia:ro -v <out folder>:/out -v "$PWD/weights:/app/weights" \
+    -v "$PWD/heartwise.config:/app/heartwise.config:ro" \
     --entrypoint python deepecg-docker -m ingestion.icentia11k.run \
     --data /data/icentia --patients p00000-p00009 --out /out
 ```
@@ -40,8 +46,7 @@ docker run --rm --gpus '"device=0"' --user "$(id -u):$(id -g)" -e HOME=/tmp \
 |---|---|
 | `--data` | Dataset root, laid out as `p00/p00000/p00000_s00.{hea,dat,atr}`. Only read. |
 | `--patients` | `p00000-p00009`, `p00000,p00020`, or a mix. Only `pNNNNN` IDs. A missing patient is logged and skipped. |
-| `--out` | New or empty folder, not inside `--data`. |
-| `--single_lead` | `all` (default) copies the lead into all 12 leads; a lead name (`I` … `V6`) puts it in that lead only. |
+| `--out` | New or empty folder, not inside `--data`. Locked while a run uses it: a second run on the same folder stops (on NFS the lock may not hold across machines). |
 | `--mapping` | CSV `dataset_label,deepecg_class` (default: `mapping.csv` here). Class names are checked against the 77. |
 | `--thresholds` | JSON in the `thresholds/` format (`{"<task>": {"threshold": 0.5}, ...}`), keyed by mapping task. Used for sensitivity and specificity; without it only AUROC and AUPRC are reported. Pick thresholds on separate tuning data. |
 | `--model` | `wcr` (DeepECG-SSL, default) or `efficientnet` (DeepECG-SL). |
@@ -100,7 +105,7 @@ p00765, p05104): 16 patients, 335,200 windows.
 
   The small differences come from the pipeline preprocessing (the reference used raw mV) and from the reference's
   TF32 / float16 outputs; they were not separated. All are well inside the reference's patient-bootstrap CIs.
-- The single-lead path of `main.py` (`--single_lead all` and `V1`, 10,000 windows of p00000 as 10 s NPY files)
+- The single-lead path of `main.py` (`single_lead: all` and `V1`, 10,000 windows of p00000 as 10 s NPY files)
   gives the same probabilities as this runner, bit for bit.
 - Speed: about 60–80 s per patient (20,950 windows) on one A6000. When the cleaning step finds line-noise peaks
   (p00003), it runs on all 12 leads and the patient takes about 190 s.

@@ -260,8 +260,8 @@ def load_model(model_name: str, device, hugging_face_api_key: str):
             'hugging_face_api_key': hugging_face_api_key
         }
     )
-    if hasattr(model, 'model'):
-        model.model.eval()
+    if getattr(model, 'input_type', SIGNAL) != IMAGE:
+        model.model.eval()  # signal models and BERT must wrap a .model; one without it fails here, not silently
     return model
 
 

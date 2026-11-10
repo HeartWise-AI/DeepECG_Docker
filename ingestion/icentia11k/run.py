@@ -1,14 +1,16 @@
 """Validate a DeepECG 77-class model on Icentia-11k (single-lead Holter) against its beat and rhythm annotations.
 
-Per patient: segments -> 10 s windows -> 12-lead input (--single_lead) -> the pipeline's preprocessing -> model
--> 77 probabilities; window labels from the annotations -> --mapping -> per-task AUROC, AUPRC, sensitivity and
-specificity, with patient-bootstrap CIs. BERT is not used. The dataset is only read. Missing patients and
-unreadable segments are skipped and listed in run_manifest.json.
+Per patient: segments -> 10 s windows -> 12-lead input (single_lead in heartwise.config) -> the pipeline's
+preprocessing -> model -> 77 probabilities; window labels from the annotations -> --mapping -> per-task AUROC,
+AUPRC, sensitivity and specificity, with patient-bootstrap CIs. BERT is not used. The dataset is only read.
+Missing patients and unreadable segments are skipped and listed in run_manifest.json. --out is locked while a
+run uses it, so a second run on the same folder stops.
 
     python -m ingestion.icentia11k.run --data <icentia root> --patients p00000-p00009 --out <new folder> \
-        [--single_lead all] [--thresholds <thresholds.json>] [--model wcr] [--device cuda:0]
+        [--thresholds <thresholds.json>] [--model wcr] [--device cuda:0]
 """
 import argparse
+import fcntl
 import os
 import re
 import time
@@ -26,6 +28,32 @@ from utils.files_handler import LEAD_ORDER, expand_single_lead, save_json, singl
 
 PATIENT_ID = re.compile(r'p\d{5}')
 DEFAULT_MAPPING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mapping.csv')
+CONFIG_PATH = 'heartwise.config'  # in the working directory, as for run_pipeline.bash
+
+
+def config_single_lead(path):
+    """single_lead from heartwise.config: the main pipeline's setting, so there is one place to set it."""
+    with open(path) as f:
+        for line in f:
+            key, _, value = line.partition(':')
+            if key == 'single_lead':
+                return value.strip()
+    return 'none'
+
+
+def lock_out(out):
+    """Exclusive flock on the --out folder itself, held until the returned fd is closed.
+
+    There is no lock file to delete by mistake, and the OS releases the lock when the process ends, even on
+    kill -9. On NFS, flock may not be honoured across machines.
+    """
+    fd = os.open(out, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise SystemExit(f'--out {out} is in use by another run')
+    return fd
 
 
 def parse_patients(spec):
@@ -110,8 +138,6 @@ def main(argv=None):
     p.add_argument('--data', required=True, help='Icentia-11k root (the folder with p00/ ... p10/)')
     p.add_argument('--patients', required=True, help='e.g. p00000-p00009 or p00000,p00003')
     p.add_argument('--out', required=True, help='output folder; must be new or empty')
-    p.add_argument('--single_lead', default='all',
-                   help="'all' copies the lead to all 12 leads; a lead name (I ... V6) puts it in that lead only")
     p.add_argument('--mapping', default=DEFAULT_MAPPING, help="CSV: dataset_label,deepecg_class ('A|B' = combined)")
     p.add_argument('--thresholds', help='JSON in the thresholds/ format, keyed by mapping task (sensitivity/specificity)')
     p.add_argument('--model', choices=['wcr', 'efficientnet'], default='wcr', help='DeepECG-SSL (wcr) or DeepECG-SL')
@@ -125,23 +151,34 @@ def main(argv=None):
     out, data = os.path.realpath(a.out), os.path.realpath(a.data)
     if out == data or out.startswith(data + os.sep):
         raise SystemExit('--out must not be inside --data (the dataset is read-only)')
-    if os.path.exists(out) and (not os.path.isdir(out) or os.listdir(out)):
-        raise SystemExit(f'--out {out} must be a new or empty folder')
     try:
         patient_ids = parse_patients(a.patients)
-        slots = single_lead_slots(a.single_lead)
+        single_lead = config_single_lead(CONFIG_PATH)
+        slots = single_lead_slots(single_lead)
         if slots is None:
-            raise ValueError("--single_lead must be 'all' or a lead name")
+            raise ValueError(f"single_lead in {CONFIG_PATH} must be 'all' or a lead name, not {single_lead!r}")
         class_map = mapping.load_mapping(a.mapping, labels.DATASET_LABELS)
         thresholds = task_thresholds(a.thresholds, class_map)
     except (ValueError, FileNotFoundError) as e:
         raise SystemExit(str(e))
     if a.batch_size < 1:
         raise SystemExit('--batch_size must be at least 1')
+    if os.path.exists(out) and not os.path.isdir(out):
+        raise SystemExit(f'--out {out} must be a new or empty folder')
+    os.makedirs(out, exist_ok=True)
+    lock = lock_out(out)  # before the emptiness check, so of two runs on one folder the second always stops
+    try:
+        if os.listdir(out):
+            raise SystemExit(f'--out {out} must be a new or empty folder')
+        run_patients(a, out, patient_ids, slots, class_map, thresholds)
+    finally:
+        os.close(lock)
 
+
+def run_patients(a, out, patient_ids, slots, class_map, thresholds):
+    """Score the patients and write the outputs into the locked, empty folder `out`."""
     model_name = MODEL_MAPPING['ecg_machine_diagnosis'][SIGNAL][a.model]
     model = load_model(model_name, a.device, read_api_key(a.hugging_face_api_key_path)['HUGGING_FACE_API_KEY'])
-    os.makedirs(out, exist_ok=True)
 
     def score(windows_mv):
         return score_windows(windows_mv, slots, model, model_name, a.device, a.batch_size, a.preprocessing_n_workers)
@@ -179,8 +216,7 @@ def main(argv=None):
     patients = all_df.patient.to_numpy()
     pooled, per_pat = [], []
     for task in class_map:
-        y = all_df['gt::' + task].to_numpy(dtype=float)
-        y[~valid] = np.nan
+        y = np.where(valid, all_df['gt::' + task].to_numpy(dtype=float), np.nan)  # to_numpy can be read-only
         s = all_df['score::' + task].to_numpy()
         thr = thresholds.get(task)
         pooled.append({'task': task, 'threshold': thr, **metrics.task_metrics(y, s, patients, thr, n_boot=a.bootstrap)})

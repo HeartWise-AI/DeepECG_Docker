@@ -262,7 +262,7 @@ CSV and metrics JSON/CSV per selected model and task.
 ### Single-lead input
 
 An NPY file can hold one lead instead of twelve: shape `(2500,)`, `(2500, 1)` or `(1, 2500)` (10 s at 250 Hz;
-longer signals are downsampled as for 12-lead files). Set `single_lead` in `heartwise.config` (or `--single_lead`):
+longer signals are downsampled as for 12-lead files). Set `single_lead` in `heartwise.config`:
 
 | `single_lead` | 12-lead input given to the models |
 | --- | --- |
@@ -272,7 +272,8 @@ longer signals are downsampled as for 12-lead files). Set `single_lead` in `hear
 
 Single-lead signals then go through the same preprocessing and models as 12-lead ECGs and give the same
 output files (77 probabilities per ECG). The PTB-XL power scaling and line-noise cleaning use the lead that has the signal (lead I for 12-lead
-input). XML files are always read as 12-lead.
+input). XML files are always read as 12-lead. With a lead name, every file of the run is scaled and cleaned on
+that lead, 12-lead files included, so run 12-lead and single-lead files separately.
 
 Long annotated recordings (Holter) are scored with a dataset adapter in [`ingestion/`](ingestion/), which
 cuts them into 10 s windows and uses the same 12-lead input, preprocessing and models in memory. See
