@@ -15,6 +15,28 @@ from utils.log_config import get_logger
 
 logger = get_logger(__name__)
 
+# Lead order of the (samples, 12) arrays the models receive.
+LEAD_ORDER = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
+
+
+def single_lead_slots(single_lead: str | None) -> list[int] | None:
+    """Lead slots that receive a single-lead signal: 'all' (copy to all 12) or one lead name; None = 12-lead input."""
+    if single_lead in (None, '', 'none'):
+        return None
+    if single_lead == 'all':
+        return list(range(len(LEAD_ORDER)))
+    if single_lead in LEAD_ORDER:
+        return [LEAD_ORDER.index(single_lead)]
+    raise ValueError(f"single_lead must be 'none', 'all' or one of {LEAD_ORDER}, got {single_lead!r}")
+
+
+def expand_single_lead(signal: np.ndarray, slots: list[int]) -> np.ndarray:
+    """(..., samples) -> (..., samples, 12): the signal goes into `slots`, the other leads are zero."""
+    out = np.zeros(signal.shape + (len(LEAD_ORDER),), dtype=signal.dtype)
+    out[..., slots] = signal[..., None]
+    return out
+
+
 def load_df(path: str) -> pd.DataFrame:
     """Load a DataFrame from a .csv or .parquet file. Raises ValueError for other extensions."""
     if path.endswith('.csv'):
@@ -210,9 +232,10 @@ def validate_signal_paths(paths) -> None:
 class NPYProcessor:
     """Load and validate NPY ECG files, producing normalized lead arrays."""
 
-    def __init__(self):
+    def __init__(self, single_lead: str | None = None):
         self.report = []
         self.expected_shape = (2500, 12)
+        self.single_lead_slots = single_lead_slots(single_lead)
 
     def process_single_file(self, file_path: str) -> tuple[tuple[str, str, str], str, np.ndarray]:
         """Parse one NPY file; return (report_entry, file_id, lead_array) or (report_entry, file_id, None) on failure."""
@@ -227,6 +250,12 @@ class NPYProcessor:
             # Shape corrections
             if lead_array.shape[-1] == 1:
                 lead_array = lead_array.squeeze(-1)
+            if lead_array.ndim == 2 and lead_array.shape[0] == 1:
+                lead_array = lead_array[0]
+            if lead_array.ndim == 1:  # single lead: build the 12-lead input
+                if self.single_lead_slots is None:
+                    return (file_id, 'Failed', 'Single-lead signal: set single_lead'), file_id, None
+                lead_array = expand_single_lead(lead_array, self.single_lead_slots)
             if lead_array.shape[0] == 12:  # transpose if needed
                 lead_array = lead_array.transpose(1, 0)
 
@@ -399,8 +428,7 @@ class XMLProcessor:
 
     def _process_clsa_xml(self, data_dict: dict, file_id: str) -> None:
         try:            
-            correct_lead_order = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
-            leads = {lead: None for lead in correct_lead_order}
+            leads = {lead: None for lead in LEAD_ORDER}
             
             for i, lead in enumerate(data_dict['RestingECGMeasurements.MeasurementTable.LeadOrder'].replace(' ', '').split(',')):
                 lead_data = data_dict[f'StripData.WaveformData.{i}'].lstrip('\t').split(',')
@@ -422,15 +450,13 @@ class XMLProcessor:
                 if leads[lead] is None:
                     logger.warning("CLSA file %s: lead %s missing, filling with NaN", file_id, lead)
                     leads[lead] = np.full(non_empty_lead_dim, np.nan)
-            self.full_leads_array = np.vstack([leads[lead] for lead in correct_lead_order])
+            self.full_leads_array = np.vstack([leads[lead] for lead in LEAD_ORDER])
         except Exception as e:
             raise ValueError(f"Error processing CLSA XML for file {file_id}: {str(e)}") from e
 
     def _process_mhi_xml(self, data_dict: dict, file_id: str) -> None:
         try:
-            correct_lead_order = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
-                                    
-            leads = {lead: None for lead in correct_lead_order}
+            leads = {lead: None for lead in LEAD_ORDER}
         
             for i in range(12):
                 lead_id = f'Waveform.1.LeadData.{i}.LeadID'
@@ -454,7 +480,7 @@ class XMLProcessor:
                 if leads[lead] is None:
                     logger.warning("MHI file %s: lead %s missing, filling with NaN", file_id, lead)
                     leads[lead] = np.full(non_empty_lead_dim, np.nan)
-            self.full_leads_array = np.vstack([leads[lead] for lead in correct_lead_order])
+            self.full_leads_array = np.vstack([leads[lead] for lead in LEAD_ORDER])
         except Exception as e:
             raise ValueError(f"Error processing MHI XML for file {file_id}: {str(e)}") from e
 
