@@ -156,7 +156,7 @@ def main(argv=None):
         single_lead = config_single_lead(CONFIG_PATH)
         slots = single_lead_slots(single_lead)
         if slots is None:
-            raise ValueError(f"single_lead in {CONFIG_PATH} must be 'all' or a lead name, not {single_lead!r}")
+            raise ValueError(f"single_lead in {CONFIG_PATH} must be 'all' or lead names, not {single_lead!r}")
         class_map = mapping.load_mapping(a.mapping, labels.DATASET_LABELS)
         thresholds = task_thresholds(a.thresholds, class_map)
     except (ValueError, FileNotFoundError) as e:

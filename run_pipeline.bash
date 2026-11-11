@@ -80,7 +80,7 @@ run_pipeline() {
         --mode $run_mode \
         --preprocessing_folder $preprocessing_folder \
         --preprocessing_n_workers $preprocessing_n_workers \
-        ${single_lead:+--single_lead $single_lead}
+        ${single_lead:+--single_lead "$single_lead"}
 }
 
 # Main execution based on mode

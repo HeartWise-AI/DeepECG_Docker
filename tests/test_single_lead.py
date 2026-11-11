@@ -31,8 +31,12 @@ def test_single_lead_slots():
     assert single_lead_slots('none') is None and single_lead_slots(None) is None
     assert single_lead_slots('all') == list(range(12))
     assert single_lead_slots('V1') == [LEAD_ORDER.index('V1')] == [6]
-    with pytest.raises(ValueError):
-        single_lead_slots('V7')
+    assert single_lead_slots('V1,V2,V3,V4,V5,V6') == [6, 7, 8, 9, 10, 11]
+    assert single_lead_slots('II, V1') == [1, 6]  # spaces around the names are ignored
+    assert single_lead_slots('V1,II') == [6, 1]  # order kept: the first lead is the one scaled and cleaned on
+    for bad in ('V7', 'V1,V7', 'V1,V1', 'V1,', 'all,V1', 'none,V1'):
+        with pytest.raises(ValueError):
+            single_lead_slots(bad)
 
 
 def test_expand_single_lead():
@@ -41,6 +45,8 @@ def test_expand_single_lead():
     assert x.shape == (2, 2500, 12) and all(np.array_equal(x[..., k], w) for k in range(12))
     x = expand_single_lead(w[0], single_lead_slots('II'))
     assert x.shape == (2500, 12) and np.array_equal(x[:, 1], w[0]) and not np.delete(x, 1, axis=1).any()
+    x = expand_single_lead(w, single_lead_slots('V1,V2,V3,V4,V5,V6'))
+    assert all(np.array_equal(x[..., k], w) for k in range(6, 12)) and not x[..., :6].any()
 
 
 @pytest.mark.parametrize('shape', [(2500,), (2500, 1), (1, 2500)])
@@ -74,7 +80,8 @@ def test_scaling_uses_the_reference_lead():
     assert np.isfinite(out).all() and other_leads(out, 6) < 1e-6
 
 
-def test_preprocessing_writes_single_lead_signals_as_12_lead(tmp_path):
+@pytest.mark.parametrize('single_lead, filled', [('II', [1]), ('V1,V2,V3,V4,V5,V6', [6, 7, 8, 9, 10, 11])])
+def test_preprocessing_writes_single_lead_signals_as_12_lead(tmp_path, single_lead, filled):
     paths = [tmp_path / f'ecg_{i}.npy' for i in range(3)]
     for i, path in enumerate(paths):
         np.save(path, wave(amplitude=i + 1))
@@ -82,11 +89,13 @@ def test_preprocessing_writes_single_lead_signals_as_12_lead(tmp_path):
     errors = []
     result = AnalysisPipeline.save_and_preprocess_data(
         pd.DataFrame({'ecg_path': list(map(str, paths))}), str(tmp_path / 'out'), str(tmp_path / 'pre'), 2,
-        errors=errors, single_lead='II')
+        errors=errors, single_lead=single_lead)
     assert errors == [] and len(result) == 3
     for path in result.ecg_path:
         x = ECGFileHandler.load_ecg_signal(path)
-        assert x.shape == (2500, 12) and np.isfinite(x).all() and x[:, 1].any() and other_leads(x, 1) < 1e-6
+        assert x.shape == (2500, 12) and np.isfinite(x).all() and other_leads(x, filled) < 1e-6
+        assert all(x[:, k].any() for k in filled)
+        assert all(np.array_equal(x[:, k], x[:, filled[0]]) for k in filled)  # the listed leads hold the same signal
 
 
 def test_predict_77_classes_reorders_wcr_outputs_only():
