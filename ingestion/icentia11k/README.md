@@ -23,7 +23,8 @@ main pipeline's own (`utils/files_handler.py`, `utils/analysis_pipeline.py`). On
 ## Run it
 
 Set `single_lead` in `heartwise.config` first, as for the main pipeline: `all` copies the lead into all 12 leads,
-a lead name (`I` … `V6`) puts it in that lead only. With `none` the runner stops. The file is read from the
+a lead name (`I` … `V6`) puts it in that lead only, and a comma-separated list (`V1,V2,V3,V4,V5,V6`) copies it
+into those leads. With `none` the runner stops. The file is read from the
 working directory.
 
 ```bash

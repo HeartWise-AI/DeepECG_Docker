@@ -254,7 +254,7 @@ CSV and metrics JSON/CSV per selected model and task.
      - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/app/ecg_signals`.
      - `preprocessing_folder`: The path to the folder where the preprocessed files will be saved. Example: `/app/preprocessing`.
      - `preprocessing_n_workers`: The number of workers to be used for the preprocessing. Example: `16`.
-     - `single_lead`: `none` (default) for 12-lead input; `all` or a lead name for single-lead NPY files (see [Single-lead input](#single-lead-input)).
+     - `single_lead`: `none` (default) for 12-lead input; `all`, a lead name or a comma-separated list of lead names for single-lead NPY files (see [Single-lead input](#single-lead-input)).
 
 3. Notes:
    - **Single ECG processing**: When running the pipeline with only one ECG file, metrics computation (AUC, F1, etc.) is automatically skipped since these metrics require multiple samples. Predictions are still generated and saved normally.
@@ -269,11 +269,16 @@ longer signals are downsampled as for 12-lead files). Set `single_lead` in `hear
 | `none` (default) | The file must have 12 leads; a single-lead file fails. |
 | `all` | The lead is copied into all 12 leads. |
 | `I`, `II`, ..., `V6` | The lead goes into that lead only; the other 11 are zero. |
+| A list, for example `V1,V2,V3,V4,V5,V6` | The lead is copied into the listed leads; the others are zero. Each lead once, separated by commas. |
 
 Single-lead signals then go through the same preprocessing and models as 12-lead ECGs and give the same
 output files (77 probabilities per ECG). The PTB-XL power scaling and line-noise cleaning use the lead that has the signal (lead I for 12-lead
-input). XML files are always read as 12-lead. With a lead name, every file of the run is scaled and cleaned on
-that lead, 12-lead files included, so run 12-lead and single-lead files separately.
+input). XML files are always read as 12-lead. With a lead name or a list, every file of the run is scaled and
+cleaned on that lead (the first of a list), 12-lead files included, so run 12-lead and single-lead files
+separately.
+
+A lead copied into several leads, or left at zero, is not a 12-lead tracing: the models were trained on real
+12-lead ECGs, so treat single-lead results as a separate use that needs its own validation.
 
 Long annotated recordings (Holter) are scored with a dataset adapter in [`ingestion/`](ingestion/), which
 cuts them into 10 s windows and uses the same 12-lead input, preprocessing and models in memory. See

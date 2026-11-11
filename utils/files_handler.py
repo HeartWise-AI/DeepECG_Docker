@@ -20,14 +20,21 @@ LEAD_ORDER = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5
 
 
 def single_lead_slots(single_lead: str | None) -> list[int] | None:
-    """Lead slots that receive a single-lead signal: 'all' (copy to all 12) or one lead name; None = 12-lead input."""
+    """Lead slots that receive a single-lead signal; None = 12-lead input.
+
+    'all' copies the signal to all 12 leads; one lead name, or several separated by commas ('V1,V2,V3'),
+    copies it to those leads, in the order given.
+    """
     if single_lead in (None, '', 'none'):
         return None
     if single_lead == 'all':
         return list(range(len(LEAD_ORDER)))
-    if single_lead in LEAD_ORDER:
-        return [LEAD_ORDER.index(single_lead)]
-    raise ValueError(f"single_lead must be 'none', 'all' or one of {LEAD_ORDER}, got {single_lead!r}")
+    names = [name.strip() for name in single_lead.split(',')]
+    if all(name in LEAD_ORDER for name in names) and len(set(names)) == len(names):
+        return [LEAD_ORDER.index(name) for name in names]
+    raise ValueError(
+        f"single_lead must be 'none', 'all', or lead names from {LEAD_ORDER} separated by commas "
+        f"(each lead once), got {single_lead!r}")
 
 
 def expand_single_lead(signal: np.ndarray, slots: list[int]) -> np.ndarray:

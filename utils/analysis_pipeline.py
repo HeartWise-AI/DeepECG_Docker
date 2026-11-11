@@ -305,7 +305,7 @@ class AnalysisPipeline:
 
         Decode each format separately within a batch, restoring input order before
         shared scaling/cleaning. Failed files are excluded and reported via errors.
-        single_lead ('all' or a lead name) expands single-lead NPY files to 12 leads.
+        single_lead ('all', or lead names separated by commas) expands single-lead NPY files to 12 leads.
         Returns None if no data was successfully processed.
         """
         validate_signal_paths(df['ecg_path'])

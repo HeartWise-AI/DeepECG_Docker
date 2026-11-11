@@ -246,7 +246,7 @@ def test_cli_refuses_bad_out_and_empty_runs(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):  # single-lead control is heartwise.config only: there is no flag
         run.main(args + ['--data', str(tmp_path / 'data'), '--out', str(tmp_path / 'o2'), '--single_lead', 'all'])
     monkeypatch.setattr(run, 'CONFIG_PATH', _config(tmp_path, 'none'))
-    with pytest.raises(SystemExit, match="must be 'all' or a lead name, not 'none'"):
+    with pytest.raises(SystemExit, match="must be 'all' or lead names, not 'none'"):
         run.main(args + ['--data', str(tmp_path / 'data'), '--out', str(tmp_path / 'o2')])
     assert not (tmp_path / 'o2').exists()  # refused before the output folder is created
 
