@@ -95,7 +95,9 @@ def test_preprocessing_writes_single_lead_signals_as_12_lead(tmp_path, single_le
         x = ECGFileHandler.load_ecg_signal(path)
         assert x.shape == (2500, 12) and np.isfinite(x).all() and other_leads(x, filled) < 1e-6
         assert all(x[:, k].any() for k in filled)
-        assert all(np.array_equal(x[:, k], x[:, filled[0]]) for k in filled)  # the listed leads hold the same signal
+        # The listed leads hold the same signal. Not bit for bit: the FFT across the leads rounds each lead
+        # differently when some leads are zero (about 1e-6 here).
+        assert all(np.allclose(x[:, k], x[:, filled[0]], rtol=0, atol=1e-5) for k in filled)
 
 
 def test_predict_77_classes_reorders_wcr_outputs_only():
