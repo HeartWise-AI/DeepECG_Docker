@@ -225,7 +225,7 @@ CSV and metrics JSON/CSV per selected model and task.
      'lvef_50': 'lvef_50_ecg_file_name',
      'shd': 'shd_ecg_file_name'          # image models only
      ```
-   - A file column may list **signals** (`.xml`, `.npy`) or **ECG page images** (`.png`, `.jpg`, `.jpeg`), mixed
+   - A file column may list **signals** (`.xml`, `.npy`), **ECG page images** (`.png`, `.jpg`, `.jpeg`) or **ECG PDF reports** (`.pdf`), mixed
      in the same CSV: the input type of each file is detected from its extension (there is no flag), and each
      task runs the models selected in `heartwise.config` for that input type (see [DeepECG-PNG](#️-deepecg-png-ecg-images)).
    - `ecg_machine_diagnosis` (string): Diagnosis from the ECG machine
@@ -248,7 +248,7 @@ CSV and metrics JSON/CSV per selected model and task.
      - `output_folder`: The directory where the output files will be saved. Example: `/app/outputs`.
      - `hugging_face_api_key_path`: The path to the file containing the HuggingFace API key. Example: `/app/api_key.json`.
      - `signal_models`: Models run on signal files (`.xml`, `.npy`), comma-separated, among `efficientnet`, `wcr`. Example: `efficientnet,wcr`.
-     - `image_models`: Models run on ECG page images (`.png`, `.jpg`, `.jpeg`), among `deepecg_siglip2`. Example: `deepecg_siglip2`.
+     - `image_models`: Models run on ECG page images (`.png`, `.jpg`, `.jpeg`) and ECG PDF reports (`.pdf`), among `deepecg_siglip2`. Example: `deepecg_siglip2`.
      - `data_path`: The path to the input CSV file containing the data. Example: `/app/inputs/data_rows_template.csv`.
      - `mode`: The mode of the pipeline (overwriten by docker command line). Example: `analysis` | `preprocessing` | `full_run`.
      - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/app/ecg_signals`.
@@ -508,6 +508,32 @@ non-animated PNG and a `.jpg` / `.jpeg` a real single-picture JPEG (no MPO), bot
 (ECG pages are ~1–3). Anything else, e.g. a TIFF renamed `.png`, is refused and listed as unreadable, so
 no other Pillow decoder is ever reached. The model was trained on PNG renders: on JPEG copies of the same validation pages (quality 75–95)
 the binary-task probabilities moved by 0.002 on average (at most 0.019), and 1–3 of 192 calls flipped.
+
+**PDF reports.** A `.pdf` row goes to the same image models, with no flag. Its ECG is read from the
+PDF's vector drawing (pypdf): the 12 leads, in mV, from the printed grid, speed, gain, calibration pulses
+and lead labels, which must agree with each other and with the Einthoven / Goldberger lead relations.
+The leads are then redrawn as a training page (1250×625, the training renderer) and preprocessed
+exactly like a PNG. On a PDF and the PNG of its page, the model inputs are identical.
+- **Accepted:** a vector (not scanned) PDF with the standard 3×4 layout plus a 10 s lead II rhythm strip,
+  one gain and readable lead labels. Owner-password-only PDFs (print/copy restrictions, RC4 or AES) open.
+- **Multi-page PDFs:** exactly one page may look like an ECG (a red millimetre grid or a trace), and it must
+  have both; pages with neither (e.g. a text report) are ignored. With 0 or 2+ such pages the PDF is refused:
+  a page is never chosen among several. A trace here is any stroked dark line of 20+ points, so a report page
+  with a drawn signature, chart or outlined logo also makes the PDF ambiguous (filled logos, images and text
+  do not).
+- **Refused, and listed in `unreadable_images_<ts>.csv` with the reason:** anything else. That includes
+  password-protected, malformed or scanned PDFs, other layouts, and these limits: more than 20 MB, more than
+  20 pages, more than 20 MB of decoded drawing content, more than 2,000,000 drawing operators and operands
+  (1,000,000 in any one content stream), more than 100,000 text operations / 2 MB of text, or a font map
+  over 1 MB. A form drawn several times counts each time. Also refused, although the ECG may be fine:
+  traces split into pieces of fewer than 20 points.
+
+  The other rows still run, and the log gives counts only (no paths). A PDF refused for one task is not read
+  again for the next unless the file changed on disk; it stays listed with its first reason.
+- **Memory:** each PDF is extracted in memory when the model reads its row, never before and never to disk
+  (no PNG, Base64 or embedding file). The image DataLoader then runs in the main process (`num_workers` 0),
+  so one PDF is held at a time. On CPU, extracting one PDF takes ~2–3 s, and it is done again for each task
+  that lists it.
 
 **3. Run.** `image_models: deepecg_siglip2` is the default in `heartwise.config`; no other setting is needed:
 ```bash

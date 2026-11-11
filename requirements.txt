@@ -11,6 +11,10 @@ wfdb==4.3.1
 torchmetrics
 pillow==13.0.0
 safetensors==0.8.0
+# PDF inputs (utils/ecg_pdf.py, utils/ecg_page_renderer.py)
+pypdf[crypto]==6.21.4   # crypto: cryptography, for AES-encrypted (owner-password-only) PDFs
+matplotlib==3.10.9
+scipy
 git+https://github.com/HeartWise-AI/HeartWise_StatPlots.git
 
 filelock
