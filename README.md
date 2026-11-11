@@ -114,6 +114,10 @@ DeepECG_Docker/
 ├── thresholds/
 │   └── wcr_77_classes_ecg_machine_diagnosis.json  # WCR optimal thresholds (MHI training)
 │
+├── ingestion/                          # External validation on annotated datasets (no BERT)
+│   ├── mapping.py, metrics.py          # Dataset-independent: label mapping, metrics
+│   └── icentia11k/                     # Icentia-11k single-lead Holter (see its README)
+│
 ├── utils/
 │   └── ...
 │
@@ -270,6 +274,10 @@ Single-lead signals then go through the same preprocessing and models as 12-lead
 output files (77 probabilities per ECG). The PTB-XL power scaling and line-noise cleaning use the lead that has the signal (lead I for 12-lead
 input). XML files are always read as 12-lead. With a lead name, every file of the run is scaled and cleaned on
 that lead, 12-lead files included, so run 12-lead and single-lead files separately.
+
+Long annotated recordings (Holter) are scored with a dataset adapter in [`ingestion/`](ingestion/), which
+cuts them into 10 s windows and uses the same 12-lead input, preprocessing and models in memory. See
+[ingestion/icentia11k/README.md](ingestion/icentia11k/README.md).
 
 ## Testing
 
