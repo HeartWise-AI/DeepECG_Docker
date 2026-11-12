@@ -1,0 +1,11 @@
+# The main pipeline's requirements, plus what the ancestry pipeline adds. Installed on top of
+# requirements.txt so the two images share one resolved dependency set.
+-r requirements.txt
+
+# genetics: summary-statistic assembly, meta-analysis, the regressions behind every arm
+scipy
+matplotlib
+
+# the fallback ECG measurement panel, for sites with no cart measurements of their own.
+# `traits` prefers the site's own panel; this is what it uses when there is none.
+neurokit2==0.2.7
