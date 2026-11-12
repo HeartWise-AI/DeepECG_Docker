@@ -51,6 +51,23 @@ from ancestry import lib as L                                            # noqa:
 from ancestry import geno_ops as G                                       # noqa: E402
 
 
+def promote_lifted_panel(path):
+    """Make mapped GRCh37 coordinates canonical and discard rows the chain did not map."""
+    path = Path(path)
+    d = pd.read_csv(path, sep='\t', dtype={'CHR': str, 'CHR37': str})
+    if {'CHR37', 'POS37'} <= set(d.columns):
+        pos = pd.to_numeric(d.POS37, errors='coerce')
+        keep = d.CHR37.notna() & ~d.CHR37.astype(str).str.upper().eq('NA') & pos.notna()
+        d = d.loc[keep].copy()
+        d['CHR'] = d.CHR37.astype(str).str.replace('chr', '', regex=False)
+        d['POS'] = pos.loc[keep].astype(np.int64)
+        d = d.drop(columns=['CHR37', 'POS37'])
+        temporary = path.with_name(f'.{path.name}.promoted')
+        d.to_csv(temporary, sep='\t', index=False)
+        temporary.replace(path)
+    return path if len(d) else None
+
+
 def lift_panel(ref, work, build, chain):
     """Lift the ancestry-PGS panel into the site's build, once, using the vendored liftover.
 
@@ -64,6 +81,8 @@ def lift_panel(ref, work, build, chain):
     sfx = L.build_suffix(build)
     out = Path(work) / 'ref' / f'ancestry_pgs_weights_{sfx}.tsv'
     if out.exists():
+        if promote_lifted_panel(out) is None:
+            return None
         print(f'  ancestry-PGS panel already lifted: {out}')
         return out
     src = Path(ref) / 'ancestry_pgs_weights_grch38.tsv'
@@ -86,6 +105,9 @@ def lift_panel(ref, work, build, chain):
         sys.argv = argv
     if not out.exists():
         print('  liftover wrote nothing')
+        return None
+    if promote_lifted_panel(out) is None:
+        print('  liftover mapped no panel variants')
         return None
     n = sum(1 for _ in open(out)) - 1
     print(f'  wrote {out}  ({n:,} variants in {sfx}) -- `pgs` will use this automatically')

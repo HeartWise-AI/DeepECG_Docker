@@ -196,6 +196,19 @@ def roster_ids(linked_rows, geno_id_col=None):
     return pid, linked_rows[gid_col].astype(str).to_numpy()
 
 
+def canonical_proportions(covariates, ancestry_columns):
+    """Map case-resolved RFMix headers back to the canonical roster ancestry names."""
+    canonical = {c.lower(): c for c in L.ANCESTRIES}
+    props = pd.DataFrame(index=covariates.index)
+    for column in ancestry_columns:
+        name = canonical.get(str(column).lower(), column)
+        props[name] = pd.to_numeric(covariates[column], errors='coerce').to_numpy()
+    for name in L.ANCESTRIES:
+        if name not in props:
+            props[name] = 0.0
+    return props
+
+
 def main():
     ap = argparse.ArgumentParser(prog='python -m ancestry prepare', description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -293,10 +306,7 @@ def main():
     T, C, anc = recover_rows(a, prepared)
 
     # ---------------------------------------------------------------- the roster (stays here)
-    props = pd.DataFrame({c: pd.to_numeric(C[c], errors='coerce').to_numpy() for c in anc})
-    for c in L.ANCESTRIES:                       # a cohort may not carry all four
-        if c not in props:
-            props[c] = 0.0
+    props = canonical_proportions(C, anc)          # a cohort may not carry all four
     stratum = L.assign_stratum(props, ancestries=L.ANCESTRIES, gate=a.threshold)
     # PI.link preserves the RFMix genotype-side identifier under the canonical Sample column.
     # Participant ids are a different namespace whenever a linkage table is used.

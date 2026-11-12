@@ -429,14 +429,16 @@ def main():
                     'inferred arms are measured in the SAME people, which is what makes them '
                     'comparable.')
 
-    (res / 'auditability.json').write_text(json.dumps(dict(
+    auditability = dict(
         version=L.VERSION, ground_truth=how, remapped=bool(a.remap), coverage=cover,
         output_mapping_verdict=align,
         median_auroc_site=None if not np.isfinite(med) else round(med, 4),
         median_auroc_discovery=None if not np.isfinite(medd) else round(medd, 4),
         n_admixed_excluded=n_adm, split_agreement=round(agree, 4),
         n_findings_audited=int(R.finding.nunique()), arms=list(R.arm.unique()),
-        auditability=head), indent=2, default=float))
+        auditability=head)
+    (res / 'auditability.json').write_text(
+        json.dumps(PV.mask(auditability), indent=2, default=float))
 
     # a compact echo of the plate that will be drawn
     pl = R[(R.arm == arms[0][0]) & (R.metric == 'fpr') & (R.threshold_rule == 'shared 0.5') &

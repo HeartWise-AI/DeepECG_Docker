@@ -133,6 +133,19 @@ def decile_table(d, score_col, label, stratum, trait=None, weight=None):
     return out
 
 
+def restrict_to_keep(d, keep):
+    """Restrict an analysis frame to the genotype samples PLINK was told to retain."""
+    K = pd.read_csv(keep, sep=r'\s+', dtype=str)
+    cols = {str(c).lstrip('#').upper(): c for c in K.columns}
+    if 'IID' not in cols:
+        raise SystemExit(f'{keep}: no IID column in genotype keep file')
+    retained = set(K[cols['IID']].astype(str))
+    out = d[d.geno_id.astype(str).isin(retained)].copy()
+    if not len(out):
+        raise SystemExit(f'{keep}: none of the analysis_set genotype ids were retained')
+    return out
+
+
 # ------------------------------------------------------------------------------ the arms
 def trait_arm(st, d, V, ref, work, keep, meas, rows, dec_rows, threads, build='grch38',
               sources=(), want='both', tmaps=None, pinned=None):
@@ -158,7 +171,7 @@ def trait_arm(st, d, V, ref, work, keep, meas, rows, dec_rows, threads, build='g
         return None
     D = d.copy()
     for tr, S in scores.items():
-        D = D.merge(S.rename(columns={'IID': 'geno_id'}), on='geno_id', how='left')
+        D = D.merge(S.rename(columns={'IID': 'geno_id'}), on='geno_id', how='inner')
     pcs = [c for c in D.columns if c.startswith('PC')]
     C = D[['age', 'sex_num'] + pcs].to_numpy(float)
 
@@ -281,7 +294,6 @@ def ancestry_arm(st, d, V, ref, work, keep, threads, clump_r2, clump_kb, build='
         return [], [], dict(note=f'only {len(M)} ancestry-PGS variants usable here')
 
     pcs = [c for c in d.columns if c.startswith('PC')]
-    C = d[['age', 'sex_num'] + pcs].to_numpy(float)
     rows, dec_rows = [], []
 
     def score_set(S, label, tag, how_note, p_threshold=None):
@@ -296,8 +308,9 @@ def ancestry_arm(st, d, V, ref, work, keep, threads, clump_r2, clump_kb, build='
                      threads=threads)
         col = 'SCORE1_AVG' if 'SCORE1_AVG' in SC.columns else SC.columns[-1]
         D = d.merge(SC[['IID', col]].rename(columns={'IID': 'geno_id', col: 'APGS'}),
-                    on='geno_id', how='left')
-        r = L.partial(D.pheno_rint.to_numpy(float), zs(D.APGS.to_numpy()), C)
+                    on='geno_id', how='inner')
+        covariates = D[['age', 'sex_num'] + pcs].to_numpy(float)
+        r = L.partial(D.pheno_rint.to_numpy(float), zs(D.APGS.to_numpy()), covariates)
         rows.append(dict(stratum=st, arm=label, p_threshold=p_threshold, n_variants=len(S),
                          clumping=how_note,
                          **{k: r[k] for k in ('n', 'beta_sd', 'se', 'p', 'partial_r',
@@ -515,7 +528,10 @@ def main():
                 on='participant_id', how='left')
         keep = Path(work) / 'geno' / st / 'keep_unrelated.txt'
         keep = str(keep) if keep.exists() else str(Path(work) / 'geno' / st / 'keep.txt')
-        print(f'\n  --- {st}: {len(D):,} people')
+        before = len(D)
+        D = restrict_to_keep(D, keep)
+        print(f'\n  --- {st}: {len(D):,} retained people'
+              + (f' ({before - len(D):,} related/excluded)' if before != len(D) else ''))
         trait_arm(st, D, V, ref, work, keep, meas, rows, dec_rows, a.threads,
                   build=build, sources=[s for s, _ in MEAS],
                   want=a.measurement_source, tmaps=TMAPS, pinned=pinned)

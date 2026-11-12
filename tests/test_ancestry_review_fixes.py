@@ -14,6 +14,7 @@ from ancestry import genotypes as GE  # noqa: E402
 from ancestry import geno_ops as GO  # noqa: E402
 from ancestry import fairness as FA  # noqa: E402
 from ancestry import loci as LO  # noqa: E402
+from ancestry import pgs as PG  # noqa: E402
 from ancestry import prepare as PR  # noqa: E402
 from ancestry import prepare_external as PE  # noqa: E402
 from ancestry import privacy as PV  # noqa: E402
@@ -166,3 +167,41 @@ def test_aggregate_locus_z_is_oriented_to_the_discovery_effect():
     summary, _ = LO.summarise(frame, 'EUR', 'everyone')
     assert summary['aggregate_z'] > 4.8
     assert summary['aggregate_p'] < 1e-5
+
+
+def test_pgs_frame_is_restricted_to_the_unrelated_keep_file(tmp_path):
+    keep = tmp_path / 'keep_unrelated.txt'
+    keep.write_text('#FID\tIID\nfamily\t0002\n')
+    d = pd.DataFrame({'geno_id': ['0001', '0002'], 'score_logit': [0.1, 0.2]})
+    got = PG.restrict_to_keep(d, keep)
+    assert got.geno_id.tolist() == ['0002']
+
+
+def test_lifted_panel_promotes_mapped_coordinates_and_drops_gaps(tmp_path):
+    panel = tmp_path / 'panel.tsv'
+    pd.DataFrame({'CHR': ['1', '2'], 'POS': [100, 200], 'A1': ['A', 'C'],
+                  'CHR37': ['1', 'NA'], 'POS37': ['90', 'NA']}).to_csv(
+                      panel, sep='\t', index=False)
+    assert GE.promote_lifted_panel(panel) == panel
+    got = pd.read_csv(panel, sep='\t', dtype={'CHR': str})
+    assert got[['CHR', 'POS']].to_dict('records') == [{'CHR': '1', 'POS': 90}]
+    assert 'CHR37' not in got and 'POS37' not in got
+
+
+def test_lowercase_rfmix_headers_become_canonical_roster_proportions():
+    cov = pd.DataFrame({'afr': [.8], 'eas': [.1], 'sas': [.05], 'eur': [.05]})
+    got = PR.canonical_proportions(cov, ['afr', 'eas', 'sas', 'eur'])
+    assert list(got.columns) == ['AFR', 'EAS', 'SAS', 'EUR']
+    assert got.loc[0, 'AFR'] == pytest.approx(.8)
+
+
+def test_admixed_exclusion_counts_are_masked_and_audited(tmp_path):
+    raw = {'n_admixed_excluded': 3,
+           'coverage': {'n_admixed_excluded_from_genetic_split': 3}}
+    masked = PV.mask(raw)
+    assert masked['n_admixed_excluded'] == f'<{PV.MIN_CELL}'
+    assert masked['coverage']['n_admixed_excluded_from_genetic_split'] == f'<{PV.MIN_CELL}'
+    path = tmp_path / 'auditability.json'
+    path.write_text(__import__('json').dumps(raw))
+    problems = PV.audit_files([path])
+    assert len(problems) == 2

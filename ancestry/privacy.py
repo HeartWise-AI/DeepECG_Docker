@@ -12,7 +12,8 @@ MIN_CELL = 10
 
 # keys whose integer values are counts of people
 COUNT_KEYS = {"n", "n_pos", "n_neg", "n_excluded", "n_total", "admixed_n", "tp", "fp", "tn", "fn",
-              "n_persons", "n_rows"}
+              "n_persons", "n_rows", "n_admixed_excluded",
+              "n_admixed_excluded_from_genetic_split"}
 # dicts whose VALUES are all counts of people
 COUNT_DICTS = {"n_by_dominant_ancestry", "vote_count_dist", "ensemble_vote_count_dist", "confusion",
                "strata"}
