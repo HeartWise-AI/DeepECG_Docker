@@ -141,6 +141,8 @@ def match_pairs(D, caliper=2.0, seed=2000):
     for sx, g in D.groupby('sex_num'):
         a = g[g.group_genetic == 1].sample(frac=1, random_state=seed)
         b = g[g.group_genetic == 0].copy()
+        if a.empty or b.empty:
+            continue
         used = np.zeros(len(b), dtype=bool)
         bage = b.age.to_numpy(float)
         for i, (_, row) in enumerate(a.iterrows()):
@@ -177,12 +179,14 @@ def rates(y, p, grp, thr):
     return out
 
 
-def audit_finding(d, col, y, thr, n_boot, seed):
+def audit_finding(d, col, y, thr, n_boot, seed, min_per_class=PV.MIN_PER_CLASS):
     """Both metrics, both splits, with a pair-cluster bootstrap. Returns a list of rows."""
     p = d[col].to_numpy(float)
     rows = []
     for split, gcol in (('genetic', 'group_genetic'), ('inferred', 'group_inferred')):
         g = d[gcol].to_numpy()
+        counts = {(group, cls): int(((g == group) & (y == cls)).sum())
+                  for group in (0, 1) for cls in (0, 1)}
         base = rates(y, p, g, thr)
         # AUROC is here beside the two error rates on purpose.  the result to read is a PAIR of
         # statements -- the ranking is equally good in both groups (no AUROC gap) while the
@@ -194,6 +198,10 @@ def audit_finding(d, col, y, thr, n_boot, seed):
         base['auroc_eur'] = _auroc(y[g == 0], p[g == 0])
         base['auroc_non'] = _auroc(y[g == 1], p[g == 1])
         for metric in ('fpr', 'fnr', 'auroc'):
+            needed_classes = (0,) if metric == 'fpr' else (1,) if metric == 'fnr' else (0, 1)
+            if any(counts[group, cls] < min_per_class
+                   for group in (0, 1) for cls in needed_classes):
+                continue
             e, n = base[f'{metric}_eur'], base[f'{metric}_non']
             gap = n - e
             cl = d['pair_id'].to_numpy() if 'pair_id' in d.columns else None
@@ -212,8 +220,8 @@ def audit_finding(d, col, y, thr, n_boot, seed):
                              gap=round(gap, 4), gap_lo=round(lo, 4) if lo == lo else np.nan,
                              gap_hi=round(hi, 4) if hi == hi else np.nan,
                              significant=int((lo == lo) and (lo > 0 or hi < 0)),
-                             n_pos_eur=int(((y == 1) & (g == 0)).sum()),
-                             n_pos_non=int(((y == 1) & (g == 1)).sum())))
+                             n_pos_eur=counts[0, 1], n_pos_non=counts[1, 1],
+                             n_neg_eur=counts[0, 0], n_neg_non=counts[1, 0]))
     return rows
 
 

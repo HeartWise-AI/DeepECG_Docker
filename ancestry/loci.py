@@ -145,8 +145,10 @@ def summarise(M, st, kind):
     out['slope_p_vs_0'] = float(2 * stats.norm.sf(abs(slope / slope_se)))
     out['slope_p_vs_1'] = float(2 * stats.norm.sf(abs((slope - 1) / slope_se)))
     out['pearson_r'] = round(float(np.corrcoef(disc, site)[0, 1]), 4)
-    # the aggregate test: one z, the inverse-variance combination of the oriented per-lead zs
-    z = site / se
+    # The site effect is harmonised to the discovery effect allele, but discovery effects can be
+    # positive OR negative.  Orient each z toward replication before combining, otherwise equal
+    # positive and negative discovery effects cancel even when every lead reproduces perfectly.
+    z = np.sign(disc) * site / se
     out['aggregate_z'] = round(float(z.sum() / np.sqrt(len(z))), 3)
     out['aggregate_p'] = float(2 * stats.norm.sf(abs(out['aggregate_z'])))
     out['n_p05_same_sign'] = int(((T.P < ALPHA) & (np.sign(disc) == np.sign(site))).sum())

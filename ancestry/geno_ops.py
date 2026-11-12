@@ -316,7 +316,7 @@ def pcs(geno_pattern, keep, out_prefix, chroms=range(1, 23), npc=NPC, threads=4,
     # plink2 writes '#FID IID PC1 ...' when the fileset has FIDs and '#IID PC1 ...' when it does
     # not.  Both are read by NAME: taking columns by position silently shifts every PC by one in
     # whichever case was not anticipated, and nothing downstream would notice.
-    ev = pd.read_csv(f'{out_prefix}.eigenvec', sep=r'\s+')
+    ev = read_plink_output(f'{out_prefix}.eigenvec', sep=r'\s+')
     ev.columns = [c.lstrip('#') for c in ev.columns]
     if 'IID' not in ev.columns:
         raise SystemExit(f'{out_prefix}.eigenvec has no IID column: {list(ev.columns)[:6]}')
@@ -386,10 +386,16 @@ def score(bfile, weights_file, out_prefix, keep=None, threads=4):
     f = Path(f'{out_prefix}.sscore')
     if not f.exists():
         raise SystemExit(f'plink2 wrote no .sscore for {out_prefix}')
-    d = pd.read_csv(f, sep='\t')
+    d = read_plink_output(f, sep='\t')
     d.columns = [c.lstrip('#') for c in d.columns]
     d['IID'] = d.IID.astype(str)
     return d
+
+
+def read_plink_output(path, sep):
+    """Read PLINK tables without destroying leading zeroes in FID/IID identifiers."""
+    return pd.read_csv(path, sep=sep,
+                       dtype={'#FID': str, 'FID': str, '#IID': str, 'IID': str})
 
 
 def clump(bfile, assoc_file, out_prefix, p1=1.0, r2=0.1, kb=500, threads=4):

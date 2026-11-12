@@ -11,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from ancestry import genotypes as GE  # noqa: E402
+from ancestry import geno_ops as GO  # noqa: E402
+from ancestry import fairness as FA  # noqa: E402
+from ancestry import loci as LO  # noqa: E402
 from ancestry import prepare as PR  # noqa: E402
 from ancestry import prepare_external as PE  # noqa: E402
 from ancestry import privacy as PV  # noqa: E402
@@ -123,3 +126,43 @@ def test_requested_grch37_liftover_happens_before_panel_discovery(tmp_path, monk
                         lambda ref, build, work=None: calls.append(('wanted', work)) or 'variants')
     assert GE.resolve_wanted_variants(tmp_path, tmp_path / 'work', 'grch37', 'chain.gz') == 'variants'
     assert calls == [('lift', 'chain.gz'), ('wanted', tmp_path / 'work')]
+
+
+def test_fairness_suppresses_only_metrics_whose_split_denominator_is_too_small():
+    # Inferred group 1 has 40 positives but only one negative.  Its FNR has enough denominator;
+    # its FPR and AUROC do not.  Genetic groups remain balanced so both splits are exercised.
+    y = np.array([1] * 80 + [0] * 40, dtype=float)
+    inferred = np.array([0] * 40 + [1] * 40 + [1] + [0] * 39)
+    genetic = np.array([0] * 40 + [1] * 40 + [0] * 20 + [1] * 20)
+    d = pd.DataFrame({'finding_score': np.linspace(.01, .99, 120),
+                      'group_genetic': genetic,
+                      'group_inferred': inferred})
+    rows = FA.audit_finding(d, 'finding_score', y, .5, n_boot=5, seed=1)
+    inferred_metrics = {row['metric'] for row in rows if row['split'] == 'inferred'}
+    assert inferred_metrics == {'fnr'}
+    assert {row['metric'] for row in rows if row['split'] == 'genetic'} == {
+        'fpr', 'fnr', 'auroc'}
+
+
+def test_matching_skips_a_sex_stratum_with_no_european_controls():
+    d = pd.DataFrame({'sex_num': [0, 0], 'group_genetic': [1, 1], 'age': [40, 41]})
+    assert FA.match_pairs(d) is None
+
+
+def test_plink_reader_preserves_leading_zero_identifiers(tmp_path):
+    path = tmp_path / 'plink.sscore'
+    path.write_text('#FID\tIID\tSCORE1_SUM\n001\t0007\t1.25\n')
+    got = GO.read_plink_output(path, sep='\t')
+    assert got.loc[0, '#FID'] == '001'
+    assert got.loc[0, 'IID'] == '0007'
+    assert got.loc[0, 'SCORE1_SUM'] == pytest.approx(1.25)
+
+
+def test_aggregate_locus_z_is_oriented_to_the_discovery_effect():
+    disc = np.array([.2, -.2, .2, -.2, .2, -.2])
+    frame = pd.DataFrame({'status': ['tested'] * 6, 'disc_beta': disc,
+                          'site_beta': disc, 'SE': [.1] * 6,
+                          'P': [0.04] * 6, 'N_SITE': [1000] * 6})
+    summary, _ = LO.summarise(frame, 'EUR', 'everyone')
+    assert summary['aggregate_z'] > 4.8
+    assert summary['aggregate_p'] < 1e-5
