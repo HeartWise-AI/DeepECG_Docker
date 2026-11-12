@@ -38,8 +38,30 @@ notebooks/outputs
 *.ipynb_checkpoints
 
 # cloned by the dockerfile / for local runs
-fairseq-signals/
+fairseq-signals
 !api_key.example.json
 !models/manifest.json
+!ancestry/model_manifest.json
 # label mappings of the external-validation datasets
 !ingestion/*/mapping.csv
+
+# --- ancestry pipeline ---
+# The frozen discovery tables are deliberately NOT in this repository. This repository is
+# public; the tables are aggregates of UK Biobank, MHI and CLSA participants (including
+# meta-analysis allele frequencies), and whether they may be released is a data-access
+# question. They ship under reference/ in the pinned ancestry model snapshot instead,
+# so one access grant covers the weights and the numbers they are compared against.
+#
+# Only MANIFEST.txt (fingerprints, which disclose nothing) and the two builders are tracked.
+# Everything else in that directory is ignored so that a working copy of the tables sitting
+# there -- which is the normal state on a development machine -- can never be committed.
+ancestry/reference/*
+!ancestry/reference/MANIFEST.txt
+!ancestry/reference/README.md
+!ancestry/reference/_build_reference.py
+!ancestry/reference/_build_external_reference.py
+work/
+results/
+ancestry/reference/__pycache__/
+*.sbatch
+submit_all.sh

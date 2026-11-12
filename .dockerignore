@@ -9,3 +9,5 @@ api_key.json
 .git/
 inputs/
 ecg_signals/
+work/
+licenses/*.zip

@@ -1,0 +1,100 @@
+# DeepECG-Ancestry: the external-validation image.
+#
+# Built with the same Python, torch and pinned fairseq-signals commit as `dockerfile`, but kept as
+# a separate image because its genetics toolchain, inputs and release process are different.
+# Nothing here replaces or enlarges the default DeepECG image.
+#
+# Build:
+#   docker build -f dockerfile.ancestry -t deepecg-ancestry:1.0.0 .
+#   docker build -f dockerfile.ancestry --build-arg RUN_MODELS_SETUP=true \
+#       --secret id=hf_api_key,src=api_key.json -t deepecg-ancestry:1.0.0 .
+#
+# The second form bakes the pinned weights in, which is what an air-gapped partner site needs:
+# the image then reaches the network for nothing at all. Without it the weights are fetched on
+# first use, or mounted and named with SSL_CKPT / WCR_CKPT / MODELS_ROOT.
+FROM python:3.11
+
+WORKDIR /app
+
+# unzip is for the plink archives; the rest matches `dockerfile`.
+RUN apt-get update && \
+    apt-get install -y git build-essential unzip curl && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install uv
+
+COPY requirements.txt requirements.ancestry.txt ./
+
+# CUDA torch first, then the rest from PyPI -- same reason as `dockerfile`: the PyTorch index
+# mirrors Pillow without its security release.
+RUN uv pip install --system --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0 && \
+    uv pip install --system -r requirements.ancestry.txt
+
+# The same fairseq-signals commit the WCR models load through. The ancestry fold heads are
+# fairseq-signals checkpoints loaded by exactly that path, so pinning one commit for both images
+# is what makes "the same model" a true statement rather than a hopeful one.
+RUN git clone https://github.com/HeartWise-AI/fairseq-signals && \
+    cd fairseq-signals && \
+    git checkout 980e705ce957c6f46b62f0ca2cfa2d846e112bae && \
+    sed -i 's/"hydra-core<1.1"/"hydra-core==1.3.2"/; s/"omegaconf<2.1"/"omegaconf==2.3.1"/' setup.py && \
+    uv pip install --system --editable ./
+
+# ---- plink. Both of them, deliberately: plink2 does everything except --clump reliably across
+#      builds, and plink1.9's --clump is the fallback the polygenic-score step needs.
+#      Pinned by checksum, so a moved upstream build fails the build instead of changing results.
+COPY licenses/plink.SHA256SUMS.txt /opt/bin/SHA256SUMS.txt
+RUN set -eux; cd /tmp; \
+    curl -fsSL -o plink2.zip https://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_latest.zip; \
+    curl -fsSL -o plink1.zip https://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20260927.zip; \
+    unzip -qo plink2.zip plink2 -d /opt/bin; \
+    unzip -qo plink1.zip plink  -d /opt/bin; \
+    cd /opt/bin && sha256sum -c SHA256SUMS.txt; \
+    chmod +x plink2 plink; \
+    ./plink2 --version && ./plink --version | head -1; \
+    rm -f /tmp/plink2.zip /tmp/plink1.zip
+# The binaries are GPLv3 and plink2 additionally links Intel-licensed code, so their licence
+# texts travel WITH them: handing this image to another institution is a distribution, and a
+# GPL binary without its licence is not a distribution we should be making.
+COPY licenses/LICENSE.plink.GPLv3.txt   /opt/bin/LICENSE.plink.GPLv3.txt
+COPY licenses/LICENSE.plink2.intel.txt  /opt/bin/LICENSE.plink2.intel.txt
+
+# ---- the application. Only the shared model manifest/download helpers are needed; the default
+#      DeepECG entry point, configuration and task registry deliberately stay out of this image.
+COPY models/manifest.json models/manifest.json
+COPY utils/ utils/
+COPY ancestry/ ancestry/
+COPY ancestry.config run_ancestry.bash ./
+
+RUN python -m utils.credentials
+RUN chmod +x run_ancestry.bash
+
+# REFERENCE_DIR is deliberately NOT set. The frozen discovery tables are not in the repository
+# -- it is public and they are cohort aggregates -- so /app/ancestry/reference holds only their
+# MANIFEST. They ship under reference/ in the pinned ancestry snapshot. The optional preload step
+# places that snapshot under /app/weights; ancestry.lib.ref_dir() finds it there. A site given the
+# tables on a disk instead mounts them and sets REFERENCE_DIR at `docker run` time.
+ENV FAIRSEQ_ROOT=/app/fairseq-signals \
+    PLINK2=/opt/bin/plink2 \
+    PLINK1=/opt/bin/plink \
+    MPLCONFIGDIR=/tmp/mpl \
+    PYTHONUNBUFFERED=1
+
+# Fail the build if the package does not import or a mode does not parse its arguments: the
+# alternative is discovering it at a partner site, where the cost of a rebuild is a week.
+RUN python -c "import ancestry, ancestry.lib, ancestry.privacy; print('ancestry', ancestry.VERSION)" && \
+    python -m ancestry --help > /dev/null && \
+    python -c "import subprocess, sys; from ancestry.__main__ import MODES; \
+[subprocess.run([sys.executable, '-m', 'ancestry', m, '--help'], check=True, \
+stdout=subprocess.DEVNULL) for m in sorted(MODES)]; \
+print('all', len(MODES), 'modes parse their arguments')"
+
+ARG RUN_MODELS_SETUP=false
+RUN --mount=type=secret,id=hf_api_key,target=/app/api_key.json \
+    if [ "$RUN_MODELS_SETUP" = "true" ]; \
+    then echo "Preloading pinned ancestry artefacts"; \
+    python -m ancestry weights --download; \
+    else echo "Skipping ancestry weight preload"; \
+    fi
+
+ENTRYPOINT ["python", "-m", "ancestry"]
+CMD ["--help"]
