@@ -65,6 +65,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -428,21 +430,21 @@ def launcher_cmd(a):
         d = Path(str(p).replace('@', '1')).expanduser()
         d = d if d.is_dir() else d.parent
         binds.add(str(d.resolve()) if d.exists() else str(d))
-    b = ' '.join(f'-B {x}' for x in sorted(binds))
+    b = ' '.join(f'-B {_q(x)}' for x in sorted(binds))
     if a.launcher == 'none':
-        return [], f'PYTHONPATH={HERE.parent} {sys.executable} -m ancestry'
+        return [], f'PYTHONPATH={_q(HERE.parent)} {_q(sys.executable)} -m ancestry'
     if a.launcher == 'docker':
-        v = ' '.join(f'-v {x}:{x}' for x in sorted(binds))
-        return [], f'docker run --rm $GPUFLAG {v} {a.image}'
+        v = ' '.join(f'-v {_q(f"{x}:{x}")}' for x in sorted(binds))
+        return [], f'docker run --rm $GPUFLAG {v} {_q(a.image)}'
     pro = ['# --nv is added only for the GPU stage; it fails on nodes with no driver',
            f'module load apptainer 2>/dev/null || module load singularity 2>/dev/null || true']
-    return pro, f'apptainer exec $GPUFLAG {b} {a.image} python -m ancestry'
+    return pro, f'apptainer exec $GPUFLAG {b} {_q(a.image)} python -m ancestry'
 
 
 SCRIPT = """#!/bin/bash
 #SBATCH --job-name={jobname}
-#SBATCH --output={logs}/{name}-%A{tasksuffix}.out
-#SBATCH --error={logs}/{name}-%A{tasksuffix}.err
+#SBATCH --output={stdout}
+#SBATCH --error={stderr}
 #SBATCH --cpus-per-task={cpus}
 #SBATCH --mem={mem}
 #SBATCH --time={time}
@@ -470,11 +472,12 @@ def write_scripts(plan, a, site):
     for s in plan:
         extra = []
         if s.partition or site.get('partition'):
-            extra.append(f'#SBATCH --partition={s.partition or site["partition"]}')
+            extra.append('#SBATCH --partition=' + _slurm_token(
+                s.partition or site['partition'], 'partition'))
         if site.get('account'):
-            extra.append(f'#SBATCH --account={site["account"]}')
+            extra.append('#SBATCH --account=' + _slurm_token(site['account'], 'account'))
         if site.get('qos'):
-            extra.append(f'#SBATCH --qos={site["qos"]}')
+            extra.append('#SBATCH --qos=' + _slurm_token(site['qos'], 'qos'))
         if s.gpus:
             extra.append(f'#SBATCH --gres=gpu:{s.gpus}')
         taskline, taskargs, tasksuffix = '', '', ''
@@ -485,13 +488,17 @@ def write_scripts(plan, a, site):
                          + (f'%{a.max_concurrent}' if a.max_concurrent else ''))
             # the task's own arguments are read from a file rather than built from the index, so
             # the mapping from array index to (stratum, chromosome) is visible and checkable
-            taskline = (f'TASK_ARGS=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {tf})\n'
+            taskline = (f'TASK_ARGS=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {_q(tf)})\n'
                         f'echo "task ${{SLURM_ARRAY_TASK_ID}}: $TASK_ARGS"')
             taskargs = '$TASK_ARGS'
             tasksuffix = '_%a'
         f = out / f'{s.name}.sbatch'
+        suffix = f'-%A{tasksuffix}'
         f.write_text(SCRIPT.format(
-            jobname=f'{a.run_name}-{s.name}', name=s.name, logs=logs, cpus=s.cpus, mem=s.mem,
+            jobname=_slurm_token(f'{a.run_name}-{s.name}', 'run-name'), name=s.name,
+            stdout=_slurm_token(logs / f'{s.name}{suffix}.out', 'work path'),
+            stderr=_slurm_token(logs / f'{s.name}{suffix}.err', 'work path'),
+            logs=_q(logs), cpus=s.cpus, mem=s.mem,
             time=s.time, extra='\n'.join(extra), gpuflag=('--nv' if s.gpus and
                                                           a.launcher == 'apptainer'
                                                           else '--gpus all' if s.gpus and
@@ -513,7 +520,7 @@ def write_scripts(plan, a, site):
              'trap \'if (( ${#SUBMITTED[@]} )); then echo; echo "a stage was rejected. These '
              'were already submitted:"; echo "  ${SUBMITTED[*]}"; echo "cancel them before '
              'retrying:  scancel ${SUBMITTED[*]}"; fi\' ERR',
-             f'cd {out}', '']
+             f'cd {_q(out)}', '']
     for s in plan:
         dep = ''
         if s.after:
@@ -524,7 +531,7 @@ def write_scripts(plan, a, site):
     # Single-quoted on purpose: $USER is advice to READ, and expanding it here under `set -u`
     # turned a completed submission into exit 1 on any shell where USER is not exported.
     lines += ['', 'echo', "echo 'submitted. watch with: squeue -u $USER'",
-              f'echo "logs: {logs}"']
+              f'echo logs: {_q(logs)}']
     sa = out / 'submit_all.sh'
     sa.write_text('\n'.join(lines) + '\n')
     sa.chmod(0o755)
@@ -532,8 +539,19 @@ def write_scripts(plan, a, site):
 
 
 def _q(x):
-    x = str(x)
-    return x if all(c.isalnum() or c in './_@-=+:,' for c in x) else "'" + x + "'"
+    return shlex.quote(str(x))
+
+
+_SLURM_TOKEN = re.compile(r'[A-Za-z0-9_./:@+,%=-]+')
+
+
+def _slurm_token(value, label):
+    """A single value in an #SBATCH directive; refuse whitespace and control characters."""
+    value = str(value)
+    if not _SLURM_TOKEN.fullmatch(value):
+        raise SystemExit(
+            f'{label} contains characters Slurm directives cannot safely represent: {value!r}')
+    return value
 
 
 def _var(name):

@@ -14,6 +14,7 @@ This pipeline offers 3 modes of processing:
 - [Optimal Thresholds](#-optimal-thresholds)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [DeepECG-Ancestry (external validation)](#-deepecg-ancestry-external-validation)
 - [Testing](#testing)
 - [Docker](#docker)
 - [DeepECG-PNG (ECG images)](#️-deepecg-png-ecg-images)
@@ -33,6 +34,7 @@ This pipeline offers 3 modes of processing:
 - EfficientNet-based binary classification model for ECG signals (LVEF <= 40%)
 - EfficientNet-based binary classification model for ECG signals (LVEF < 50%)
 - EfficientNet-based binary classification model for ECG signals (Incident AFIB at 5 years)
+- DeepECG-Pop: the five-fold ECG ancestry score, with an external-validation pipeline
 - Dockerized deployment for easy setup and execution
 - Configurable pipeline for flexible usage
 - CPU & GPU support for accelerated processing
@@ -283,6 +285,176 @@ A lead copied into several leads, or left at zero, is not a 12-lead tracing: the
 Long annotated recordings (Holter) are scored with a dataset adapter in [`ingestion/`](ingestion/), which
 cuts them into 10 s windows and uses the same 12-lead input, preprocessing and models in memory. See
 [ingestion/icentia11k/README.md](ingestion/icentia11k/README.md).
+
+## 🧬 DeepECG-Ancestry (external validation)
+
+A separate pipeline in `ancestry/`, packaged by `dockerfile.ancestry` with the same Python,
+PyTorch and pinned `fairseq-signals` commit as the default image. It takes a partner site's ECGs,
+genotypes and ancestry calls and
+returns **one privacy-audited zip of aggregate tables**: the locus-level genetic replication of the
+ECG ancestry score, the nine ECG-trait polygenic scores, the 77-finding fairness audit on true
+versus ECG-inferred ancestry, and the eight pre-specified external-validation analyses. Nothing
+per-patient leaves the site, and the run itself needs no network.
+
+The imported ancestry implementation is based on
+[`984b7f7`](https://github.com/HeartWise-AI/DeepECG_Docker_Ancestry/commit/984b7f7bc733a1626b628a7684062da5bec86337),
+the force-pushed `DeepECG-Ancestry` branch head used for this integration.
+
+It is configured by `ancestry.config` in the same flat format as `heartwise.config`, and driven by
+`run_ancestry.bash` the way `run_pipeline.bash` drives `main.py`. Every step below is one command
+of the same shape:
+
+```bash
+bash run_ancestry.bash --mode <mode> [extra arguments ...]
+python -m ancestry <mode> --help          # the same thing without the wrapper, and its options
+```
+
+### The run, step by step
+
+Steps 1–4 are what every site does, in this order. Step 5 is whichever study the site signed up
+for; step 6 is the only thing that travels back.
+
+| # | step | command | what it gives you |
+|---|---|---|---|
+| 1 | **Build the image** (or `docker load` a shipped tarball) | `docker build -f dockerfile.ancestry -t deepecg-ancestry:1.0.0 .` | the build fails if the package does not import or a mode cannot parse its arguments, and both plink binaries are checked against `licenses/plink.SHA256SUMS.txt` |
+| 2 | **Account for the weights** | `bash run_ancestry.bash --mode weights` | prints where each artefact will come from — Hugging Face at a pinned revision, or a local path — and touches the network for nothing. `--download` fetches them, `--verify DIR` checks a copy you already have |
+| 3 | **Survey the data — read-only** | `bash run_ancestry.bash --mode survey` | opens a sample of every file you intend to pass and reports units, genome build, columns, people per ancestry stratum and whether there is ground truth. It writes nothing, and it is the cheapest place to find a format problem. **Send this output back before going further** |
+| 4 | **Selftest** | `bash run_ancestry.bash --mode selftest` | a whole synthetic cohort end to end, with the privacy assertions. Must print `ALL CHECKS PASSED` with **0 skipped** — a skip means the weights or the plink binaries are not where the image expects them |
+| 5a | **The genetics study** | `bash run_ancestry.bash --mode all` | `prepare → score → traits → geno → loci → pgs → fairness → figures → package`, in order. Add `--with-scan` for the genome-wide scan, `--ses FILE` for the deprivation arms |
+| 5b | **External validation** | `bash run_ancestry.bash --mode prepare`<br>`bash run_ancestry.bash --mode validate` | the eight pre-specified analyses from a single inference pass. `validate` is deliberately **not** inside `all`: it scores `all_genotyped/` itself, so chaining it would score every ECG twice. Both routes share the same `prepare` output |
+| 6 | **Send back exactly one file** | `bash run_ancestry.bash --mode package` | one privacy-audited zip of `results/`, re-audited file by file as it is written. Already included at the end of `all` |
+
+### Every stage, in one table
+
+[`docs/ANCESTRY.md`](docs/ANCESTRY.md) carries the canonical table: one row per mode with what it
+does, what it needs, what it writes, whether its output travels back, and how long it takes on a
+~25,000-ECG cohort. Every flag of every mode also carries its own `--help` text, which at an
+air-gapped site is the documentation; a test asserts there is no undocumented flag.
+
+Before handing the image to anyone, `python tests/release_audit.py <selftest-out-dir>` prints 67
+checks over a completed run: the command surface, the privacy properties of what comes back, that
+every promised analysis produced its file, the flags a site needs to fit this to their data, the
+documentation, and that the separate image remains aligned with the default DeepECG runtime
+without copying or changing the default pipeline.
+
+### Re-running a single stage
+
+Each stage of `all` is also its own mode, so a stage that fails can be re-run on its own without
+repeating the ones before it. `work/` holds everything a later stage needs.
+
+| mode | what it does |
+|---|---|
+| `convert` | VCF/BCF → plink2 pgen, once. Optional but strongly recommended for VCF sites: everything else reads a VCF directly, perhaps a hundred times over |
+| `prepare` | RFMix + the ECG inventory → the roster, the ancestry strata, model-ready arrays |
+| `score` | DeepECG-Pop and the 77-finding head over every ECG, once each |
+| `traits` | NeuroKit2 ECG measurements off the site's own waveforms. Run it **even if the site has a cart panel** — see below |
+| `geno` | one variant subset, within-stratum PCs, kinship, plink-format phenotype files |
+| `loci` | the discovery leads, per stratum. **The headline genetic result** |
+| `pgs` | the trait-PGS positive control, the decile curves, and the ancestry-score PGS |
+| `scan` | optional and expensive: the genome-wide scan and its Manhattan, per stratum |
+| `fairness` | the 77-finding audit, on genetic ancestry and on ancestry inferred from the ECG |
+| `ses` | optional: is the signal explained by area-level socioeconomic deprivation? |
+| `metrics`, `admixed`, `ensemble` | the stand-alone pieces `validate` already covers |
+| `figures` | every plate, drawn from the tables above, computing nothing |
+| `submit` | optional: write (and with `--go`, submit) the whole graph as Slurm job arrays. Slurm is never required — `all` does the same work on one machine |
+
+### ECG measurements: two rulers, and the one `pgs` believes
+
+The trait-PGS positive control (`pgs`) needs the site's own ECG measurements, and there are two
+ways to get them: the **cart's precomputed panel**, passed with `--measurements FILE`, and
+**NeuroKit2** run here on the same waveforms by mode `traits`. They are different instruments —
+they agree well on heart rate, QRS and QT and much less well on PR and on the wave amplitudes
+(the per-measurement agreement we observed ships as `ref/neurokit_vs_device.csv`) — so which
+one you use
+changes the control, and only one of the two disagreeing can be an instrument problem.
+
+**Run both on the first pass.** That is the default, and it is the only setting that can tell a
+broken score from a disagreeing ruler: a trait that clears t = 3 on one ruler and not the other is
+a measurement disagreement, while a trait that fails on *both* is a genotyping, liftover or
+allele-matching failure and invalidates that trait's downstream numbers.
+
+```bash
+# recommended first pass: both rulers, one control row each, printed side by side
+bash run_ancestry.bash --mode traits                                 # writes work/measurements.csv
+bash run_ancestry.bash --mode pgs --measurements /data/cart_panel.csv
+
+# then, if you want one ruler only
+... --mode pgs --measurements /data/cart_panel.csv --measurement-source device
+... --mode pgs --measurement-source neurokit
+```
+
+| flag | what it does |
+|---|---|
+| `--measurement-source both` | *(default)* one control row per ruler per trait, plus a side-by-side table of the two and a verdict on each disagreement |
+| `--measurement-source device` | the cart panel only. **A trait the panel does not carry is filled from NeuroKit**, with `source` reading `neurokit (fill)` and the reason in `note` — nothing is silently dropped |
+| `--measurement-source neurokit` | NeuroKit only, with the cart panel as the same per-trait fill |
+| `--measurement-map FILE.json` | for a panel that spells its columns differently, or to pin one trait to one instrument |
+
+The map applies to **your** panel only (the NeuroKit table always carries this image's own column
+names), and it refuses an unknown trait by name rather than ignoring it. The nine traits are `HR`,
+`PR`, `QRS`, `QT`, `JT`, `QRSamp`, `Tamp`, `QRSTangleF`, `QRSTangle`; the last has no local
+measurement anywhere and says so instead of being matched to the nearest thing.
+
+```json
+{ "HR":   "VENT_RATE",
+  "Tamp": { "column": "T_AMPLITUDE_V6", "source": "device" },
+  "QT":   { "source": "neurokit" } }
+```
+
+The flags that matter at scale, and the modes that take them: `--device` and `--batch-size` on
+the scoring modes (`score`, `validate`, `metrics`, `admixed`, `ensemble`); `--threads` on the
+genetic modes (`convert`, `geno`, `loci`, `pgs`, `scan`); `--shard` on `score` and `traits` and
+`--jobs` on `traits`, to split the work; `--reuse-prepared` on `prepare`, to point a run at
+arrays prepared earlier instead of rebuilding them; and `--from-mode`, `--skip` and
+`--keep-going` on `all`, to resume a long run rather than restart it.
+
+### Where the weights come from
+
+The fold weights live in the access-gated `heartwise/DeepECG-SSL_Ancestry` repository, fetched by
+pinned revision like every other model here. The frozen discovery tables travel in that same
+snapshot under `reference/` rather than in this repository, because they are aggregates of UK
+Biobank, MHI and CLSA participants and this repository is public; `ancestry/reference/README.md`
+says how to point a run at them. The shared SSL backbone needs no upload at all — it is
+`base_ssl.pt` in the already-pinned public `wcr_77_classes` snapshot, verified byte-identical to
+the backbone the folds were fine-tuned from. Set `weights_source` in `ancestry.config` to
+`huggingface`, `local` or `auto`, and `ancestry_model_repo` / `ancestry_model_revision` to point
+at a different snapshot.
+
+The ancestry model snapshot is named in `ancestry/model_manifest.json`, but the ancestry task is not
+registered in the regular `main.py` pipeline. This keeps the default image and its input/output
+contract unchanged; ancestry inference and validation run only through `dockerfile.ancestry` and
+the `ancestry` CLI.
+
+### Ancestry image regression on the approved NPY cohort
+
+Compare a candidate image with the deployed Ancestry image on the 25 approved anonymized NPYs
+stored on the NAS:
+
+```bash
+python scripts/test_ancestry_npy_reproducibility.py \
+  --baseline-image deepecg-ancestry:latest \
+  --candidate-image deepecg-ancestry:feat-ancestry-docker \
+  --work-dir /path/to/new/private/ancestry-comparison
+```
+
+The default inputs are `/mnt/data1/datasets/unit_tests/ECGs/npy`, and the default fold bundle is
+`/mnt/data1/anolin/ancestry_docker_models`. The source NPYs contain raw ADC counts, so this check
+applies the documented `0.00488` ADC-to-millivolt factor in memory and records it in both output
+files. The NAS inputs are mounted read-only and never modified. Both images run without network
+access; the report compares the five fold probabilities and their ensemble mean for every ECG.
+The default absolute tolerance is `1e-6`, which covers floating-point roundoff across the legacy
+PyTorch 2.4/CUDA 12.1 and current PyTorch 2.8/CUDA 12.8 runtimes; pass `--atol 0` when a bitwise
+comparison is required. The report always records the selected tolerance, maximum difference and
+number of values outside tolerance.
+The per-ECG artifacts remain in the private work directory and must not be committed. This is a
+software regression check, not a clinical or ancestry-performance analysis.
+
+**Start here: [`docs/ANCESTRY.md`](docs/ANCESTRY.md).** Then
+[`docs/ANCESTRY_USER_GUIDE.md`](docs/ANCESTRY_USER_GUIDE.md) for a site running it,
+[`docs/ANCESTRY_QUESTIONS.md`](docs/ANCESTRY_QUESTIONS.md) for what each output is for and what a
+single site cannot answer, [`inputs/README_ancestry_inputs.md`](inputs/README_ancestry_inputs.md)
+for the three input files, and [`docs/ANCESTRY_DEPLOY.md`](docs/ANCESTRY_DEPLOY.md) for shipping
+the image to a site that cannot build it.
 
 ## Testing
 

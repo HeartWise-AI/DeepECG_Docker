@@ -6,7 +6,7 @@ path that only existed on the training box). Loads the 5 fine-tuned `FT_ANCESTRY
 fold heads on top of the shared SSL backbone and averages their sigmoid outputs.
 
 Device: uses CUDA when available and not disabled, else CPU. The same image runs
-both -- torch is the cu121 wheel, which falls back to CPU transparently.
+both -- torch is the cu128 wheel, which falls back to CPU transparently.
 
 Output convention (matches 01_ancestry_genetic_perf.ipynb):
     logit -> sigmoid = P(non-European).  p(EUR) = 1 - P(non-EUR).

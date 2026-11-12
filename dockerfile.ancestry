@@ -79,6 +79,10 @@ ENV FAIRSEQ_ROOT=/app/fairseq-signals \
     MPLCONFIGDIR=/tmp/mpl \
     PYTHONUNBUFFERED=1
 
+# Imports performed by the build can create this cache as root. Keep the runtime cache writable
+# when the image is launched with the site's non-root UID.
+RUN mkdir -p /tmp/mpl && chmod 1777 /tmp/mpl
+
 # Fail the build if the package does not import or a mode does not parse its arguments: the
 # alternative is discovering it at a partner site, where the cost of a rebuild is a week.
 RUN python -c "import ancestry, ancestry.lib, ancestry.privacy; print('ancestry', ancestry.VERSION)" && \
