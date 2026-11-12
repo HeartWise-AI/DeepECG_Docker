@@ -434,11 +434,12 @@ stored on the NAS:
 python scripts/test_ancestry_npy_reproducibility.py \
   --baseline-image deepecg-ancestry:latest \
   --candidate-image deepecg-ancestry:feat-ancestry-docker \
+  --models-root /path/to/approved/ancestry-models \
   --work-dir /path/to/new/private/ancestry-comparison
 ```
 
-The default inputs are `/mnt/data1/datasets/unit_tests/ECGs/npy`, and the default fold bundle is
-`/mnt/data1/anolin/ancestry_docker_models`. The source NPYs contain raw ADC counts, so this check
+The default inputs are `/mnt/data1/datasets/unit_tests/ECGs/npy`; pass the approved local or NAS
+fold bundle with `--models-root`. The source NPYs contain raw ADC counts, so this check
 applies the documented `0.00488` ADC-to-millivolt factor in memory and records it in both output
 files. The NAS inputs are mounted read-only and never modified. Both images run without network
 access; the report compares the five fold probabilities and their ensemble mean for every ECG.

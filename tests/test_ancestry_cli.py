@@ -90,6 +90,13 @@ def test_submit_uses_shell_quoting_and_rejects_directive_injection(tmp_path):
     assert not list(tmp_path.rglob('*.sbatch'))
 
 
+def test_command_runner_refuses_shell_strings():
+    from ancestry import lib
+
+    with pytest.raises(TypeError, match='argument sequence'):
+        lib.sh('echo unsafe')
+
+
 def test_flags_are_read_from_each_mode_source():
     assert '--rfmix' in mode_flags('prepare')
     assert '--ses' in mode_flags('ses')

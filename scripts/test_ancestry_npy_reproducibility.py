@@ -107,8 +107,8 @@ def main() -> None:
     parser.add_argument('--candidate-image', required=True)
     parser.add_argument('--input-dir', type=Path,
                         default=Path('/mnt/data1/datasets/unit_tests/ECGs/npy'))
-    parser.add_argument('--models-root', type=Path,
-                        default=Path('/mnt/data1/anolin/ancestry_docker_models'))
+    parser.add_argument('--models-root', type=Path, required=True,
+                        help='approved local/NAS ancestry model bundle')
     parser.add_argument('--work-dir', type=Path, required=True)
     parser.add_argument('--count', type=int, default=25)
     parser.add_argument('--input-scale', type=float, default=0.00488,

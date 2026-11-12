@@ -480,9 +480,12 @@ def clump(W, D, pos, r2=0.1, win_kb=500):
 # --------------------------------------------------------------------------------- shell
 def sh(cmd, check=True, quiet=False, **kw):
     """Run a command, echoing it. Raises on failure unless check=False."""
+    if isinstance(cmd, (str, bytes)):
+        raise TypeError('sh() requires an argument sequence; shell command strings are refused')
     if not quiet:
-        print('    $ ' + (cmd if isinstance(cmd, str) else ' '.join(map(str, cmd))), flush=True)
-    r = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True, text=True, **kw)
+        print('    $ ' + ' '.join(map(str, cmd)), flush=True)
+    r = subprocess.run([str(value) for value in cmd], shell=False,
+                       capture_output=True, text=True, **kw)
     if r.returncode and check:
         sys.stderr.write(r.stdout[-4000:] + '\n' + r.stderr[-4000:] + '\n')
         raise SystemExit(f'command failed ({r.returncode})')
