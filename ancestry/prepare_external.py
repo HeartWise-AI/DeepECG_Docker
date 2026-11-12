@@ -664,6 +664,10 @@ def build_all_genotyped(persons_all, matched, out_dir, ancestries, eur_label, th
     os.makedirs(out_dir, exist_ok=True)
     ok = _save_ecgs(t["full_ecg_path"].to_numpy(), t["project_pseudo_id"].to_numpy(),
                     f"{out_dir}/X.npy")
+    # Preserve the exact rows that survived waveform loading.  Covariates are not a unique
+    # identity key (two people can share batch, round, age, sex and ancestry fractions), so the
+    # downstream roster must not try to infer identity from those values after a failed load.
+    np.save(f"{out_dir}/source_rows.npy", np.flatnonzero(ok).astype(np.int64))
     t = t[ok].reset_index(drop=True)
     in_m = set(matched["project_pseudo_id"]) if matched is not None else set()
     cov = t[list(ancestries)].astype(float).copy()

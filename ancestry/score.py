@@ -74,6 +74,54 @@ def shard_slice(n, spec):
     return int(edges[i - 1]), int(edges[i])
 
 
+def merge_finding_shards(work, score_files, participant_ids):
+    """Merge the finding-head shards that correspond to the score shards.
+
+    A canonical findings.parquet from another run must never be silently reused.  Standard
+    shards carry the same ``IofN`` suffix as their score CSV, which lets us prove completeness.
+    """
+    work = Path(work)
+    canonical = work / 'findings.parquet'
+    finding_files = sorted(work.glob('findings_*of*.parquet'))
+    if not finding_files:
+        if canonical.exists():
+            raise SystemExit(f'{canonical} already exists but this merge found no current '
+                             'finding shards; refusing to reuse possibly stale predictions')
+        return None
+
+    score_tags = {Path(f).stem.removeprefix('scores_') for f in score_files
+                  if Path(f).stem.startswith('scores_')}
+    finding_tags = {f.stem.removeprefix('findings_') for f in finding_files}
+    if score_tags and finding_tags != score_tags:
+        missing = sorted(score_tags - finding_tags)
+        extra = sorted(finding_tags - score_tags)
+        raise SystemExit('finding shards do not match score shards'
+                         + (f'; missing {missing}' if missing else '')
+                         + (f'; unexpected {extra}' if extra else ''))
+
+    F = pd.concat([pd.read_parquet(f) for f in finding_files], ignore_index=True)
+    if 'participant_id' not in F:
+        raise SystemExit('finding shards have no participant_id column')
+    F['participant_id'] = F['participant_id'].astype(str)
+    duplicated = F.participant_id.duplicated(keep=False)
+    if duplicated.any():
+        raise SystemExit(f'finding shards contain {int(duplicated.sum()):,} duplicate participant '
+                         'rows; refusing to guess which prediction is current')
+    expected = pd.Index(pd.Series(participant_ids, dtype=str), name='participant_id')
+    actual = pd.Index(F.participant_id)
+    missing = expected.difference(actual)
+    extra = actual.difference(expected)
+    if len(missing) or len(extra):
+        raise SystemExit(f'finding/score participant mismatch: {len(missing):,} missing and '
+                         f'{len(extra):,} unexpected finding rows')
+    F = F.set_index('participant_id').loc[expected].reset_index()
+    temporary = work / '.findings.merge.parquet'
+    F.to_parquet(temporary, index=False)
+    temporary.replace(canonical)
+    print(f'  merged {len(finding_files)} finding shards -> {canonical} ({len(F):,} people)')
+    return canonical
+
+
 # ------------------------------------------------------------------------------- the two heads
 def _embed_one(model, X_nct, device, batch_size):
     """The pooled representation one fold's model computes, per ECG.
@@ -347,8 +395,13 @@ def main():
         if not files:
             raise SystemExit(f'--merge matched nothing: {a.merge}')
         S = pd.concat([pd.read_csv(f, dtype={'participant_id': str}) for f in files],
-                      ignore_index=True).drop_duplicates('participant_id')
+                      ignore_index=True)
+        duplicate_scores = S.participant_id.duplicated(keep=False)
+        if duplicate_scores.any():
+            raise SystemExit(f'score shards contain {int(duplicate_scores.sum()):,} duplicate '
+                             'participant rows; refusing to discard predictions')
         print(f'  merged {len(files)} shards -> {len(S):,} people')
+        merge_finding_shards(work, files, S.participant_id)
         # if the shards saved embeddings, concatenate those in the same order
         eids = sorted(glob.glob(str(work / 'embeddings_*of*_ids.csv')))
         if eids:

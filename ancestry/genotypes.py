@@ -126,6 +126,15 @@ def wanted_variants(ref: Path, build: str, work=None):
     return agg
 
 
+def resolve_wanted_variants(ref: Path, work: Path, build: str, chain=None):
+    """Apply an explicitly requested panel liftover before discovering available references."""
+    if L.build_suffix(build) == 'grch37' and chain:
+        if lift_panel(ref, work, build, chain) is None:
+            raise SystemExit('the requested ancestry-panel liftover failed; no genotype subset '
+                             'was created')
+    return wanted_variants(ref, build, work=work)
+
+
 def main():
     ap = argparse.ArgumentParser(prog='python -m ancestry geno', description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -183,7 +192,7 @@ def main():
     L.banner(f'geno: {", ".join(strata)}  (build {a.build})')
 
     # ------------------------------------------------------------------ the shared subset
-    V = wanted_variants(ref, a.build)
+    V = resolve_wanted_variants(ref, work, a.build, a.chain)
     allkeep = G.keep_file(S.geno_id.unique(), gw / 'keep_all.txt', geno=a.geno)
     stem, bim = G.subset(a.geno, V, gw / 'panel', threads=a.threads, keep=allkeep)
 

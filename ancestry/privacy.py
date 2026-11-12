@@ -14,7 +14,8 @@ MIN_CELL = 10
 COUNT_KEYS = {"n", "n_pos", "n_neg", "n_excluded", "n_total", "admixed_n", "tp", "fp", "tn", "fn",
               "n_persons", "n_rows"}
 # dicts whose VALUES are all counts of people
-COUNT_DICTS = {"n_by_dominant_ancestry", "vote_count_dist", "ensemble_vote_count_dist", "confusion"}
+COUNT_DICTS = {"n_by_dominant_ancestry", "vote_count_dist", "ensemble_vote_count_dist", "confusion",
+               "strata"}
 # count grids written as nested lists (analysis 8): masked cell-by-cell where they are built
 COUNT_GRIDS = {"score_grid", "delta_histogram"}
 
@@ -74,7 +75,8 @@ def small_count_cells(obj, k=MIN_CELL):
 
 
 COUNT_TABLES = {"ancestry_counts.csv", "ecg_coverage.csv", "ancestry_ecg_overlap.csv",
-                "participant_flow.csv", "match_summary.csv", "repeat_coverage.csv"}
+                "participant_flow.csv", "match_summary.csv", "repeat_coverage.csv",
+                "strata_by_batch.csv"}
 MAX_CURVE_POINTS = 400        # our thinned curves are <= 200; anything longer looks per-person
 
 # Tables that are legitimately longer than MAX_CURVE_POINTS because a row is a VARIANT, not a
@@ -193,7 +195,8 @@ def check_columns(df, where=''):
     return df
 
 
-def write_table(df, path, where=None, max_rows=MAX_TABLE_ROWS, mask_counts=True, **kw):
+def write_table(df, path, where=None, max_rows=MAX_TABLE_ROWS, mask_counts=True, count_cols=None,
+                **kw):
     """The only way an aggregate table is written in this image.
 
     Checks the column names, bounds the row count, masks small counts, and writes. A table that
@@ -205,9 +208,11 @@ def write_table(df, path, where=None, max_rows=MAX_TABLE_ROWS, mask_counts=True,
     if len(df) > max_rows:
         raise ValueError(f'{where}: {len(df):,} rows exceeds the {max_rows:,} allowed for an '
                          f'aggregate table -- this looks per-person')
-    d = mask_frame(df, cols=[c for c in df.columns
-                             if str(c).lower() in COUNT_KEYS or str(c).lower().startswith('n_')
-                             or str(c).lower() == 'n']) if mask_counts else df
+    automatic = [c for c in df.columns
+                 if str(c).lower() in COUNT_KEYS or str(c).lower().startswith('n_')
+                 or str(c).lower() == 'n']
+    counts = list(dict.fromkeys(automatic + list(count_cols or [])))
+    d = mask_frame(df, cols=counts) if mask_counts else df
     d.to_csv(path, index=False, **kw)
     return path
 

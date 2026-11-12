@@ -13,12 +13,10 @@ WHAT THIS MODE DOES, in order:
      this and points at the October output instead, which is faster and removes even the
      possibility of a difference.
 
-  2. Rebuilds the linkage with the SAME arguments and recovers, by a two-pointer walk over
-     (batch, round, sex, age, every ancestry fraction), which persons survived the waveform load
-     and therefore which person each row of X.npy is.  The walk must consume every covariate row
-     in order; it never guesses and it never writes a half-aligned file.  (This is the Lifelines
-     package's recovery, which ran at a live site; the alternative -- editing prepare_inputs.py to
-     emit ids -- would make the prepared directory differ from the deployed one.)
+  2. Rebuilds the linkage with the SAME arguments and uses all_genotyped/source_rows.npy to recover
+     exactly which persons survived waveform loading.  A legacy prepared directory without this
+     identity-preserving index is accepted only when its covariate alignment is provably unique;
+     an ambiguous reuse stops instead of guessing.
 
   3. Assigns each person to an ancestry STRATUM at the 0.70 RFMix gate: EUR, AFR, EAS, SAS, or
      ADMIXED when no single ancestry reaches it.  EUR is the discovery setup.  AFR, EAS and SAS
@@ -40,6 +38,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -103,13 +102,11 @@ def run_deployed_prepare(a, extra):
 
 
 def recover_rows(a, prepared: Path):
-    """Which person is each row of X.npy?  Two-pointer alignment, or a hard stop.
+    """Which person is each row of X.npy?  Exact retained indices, or a hard stop.
 
-    all_genotyped/ holds the person table minus the rows whose waveform would not load, IN ORDER,
-    and covariates.csv is written from the same frame, so the kept rows are a subsequence and a
-    single forward walk recovers them exactly.  Anything that does not consume every covariate row
-    in order means the arguments here are not the ones `prepare` was run with, and that is a stop,
-    not a warning: a roster that is off by one person is worse than no roster.
+    Current preparations persist source_rows.npy alongside X.npy.  Older prepared directories can
+    be aligned by covariates only when that mapping is provably unique; duplicate covariate keys
+    with dropped rows are rejected and must be regenerated with the current image.
     """
     gdir = prepared / 'all_genotyped'
     C = pd.read_csv(gdir / 'covariates.csv')
@@ -143,6 +140,37 @@ def recover_rows(a, prepared: Path):
 
     pk = [key(r, 'gender', 'age') for _, r in P.iterrows()]
     ck = [key(r, 'sex', 'age') for _, r in C.iterrows()]
+    source_rows = gdir / 'source_rows.npy'
+    if source_rows.exists():
+        keep = np.load(source_rows, allow_pickle=False)
+        if keep.ndim != 1 or not np.issubdtype(keep.dtype, np.integer):
+            raise SystemExit(f'{source_rows}: expected a one-dimensional integer array')
+        keep = keep.astype(np.int64, copy=False)
+        if len(keep) != nX:
+            raise SystemExit(f'{source_rows}: has {len(keep):,} rows, expected {nX:,}')
+        if len(keep) and (keep[0] < 0 or keep[-1] >= len(P) or np.any(np.diff(keep) <= 0)):
+            raise SystemExit(f'{source_rows}: indices must be unique, increasing, and within the '
+                             f'{len(P):,}-row rebuilt linkage')
+        selected = [pk[int(i)] for i in keep]
+        if selected != ck:
+            bad = next(i for i, (left, right) in enumerate(zip(selected, ck)) if left != right)
+            raise SystemExit(f'{source_rows}: retained identity row {bad:,} does not match '
+                             'covariates.csv. Nothing was written.')
+        print(f'  recovered {len(keep):,}/{nX:,} rows from exact retained source indices '
+              f'({len(P) - len(keep):,} waveform loads failed)')
+        return P.iloc[keep].reset_index(drop=True), C, anc
+
+    # Compatibility with prepared directories created before source_rows.npy existed.  A key is
+    # ambiguous precisely when multiple linked people share it and only some of them survived.
+    pc, cc = Counter(pk), Counter(ck)
+    ambiguous = [k for k, n in pc.items() if n > 1 and 0 < cc[k] < n]
+    if ambiguous:
+        raise SystemExit(
+            f'{gdir}: this legacy prepared directory has no source_rows.npy and '
+            f'{len(ambiguous):,} duplicated covariate key(s) lost only some waveform rows, so '
+            'participant identity cannot be recovered safely. Re-run `prepare` with the current '
+            'image instead of using --reuse-prepared.')
+
     keep, j = [], 0
     for i, k in enumerate(ck):
         while j < len(pk) and pk[j] != k:
@@ -154,6 +182,18 @@ def recover_rows(a, prepared: Path):
     print(f'  aligned {len(keep):,}/{nX:,} rows '
           f'({len(P) - len(keep):,} persons dropped by prepare: waveform would not load)')
     return P.iloc[keep].reset_index(drop=True), C, anc
+
+
+def roster_ids(linked_rows, geno_id_col=None):
+    """Return participant ids and genotype ids without conflating their namespaces."""
+    if 'project_pseudo_id' not in linked_rows or 'Sample' not in linked_rows:
+        raise SystemExit('the rebuilt linkage must contain project_pseudo_id and Sample')
+    pid = linked_rows['project_pseudo_id'].astype(str).to_numpy()
+    gid_col = geno_id_col or 'Sample'
+    if gid_col not in linked_rows.columns:
+        raise SystemExit(f'--geno-id-col {gid_col!r} is not a column of the linked table '
+                         f'(have: {list(linked_rows.columns)})')
+    return pid, linked_rows[gid_col].astype(str).to_numpy()
 
 
 def main():
@@ -258,13 +298,9 @@ def main():
         if c not in props:
             props[c] = 0.0
     stratum = L.assign_stratum(props, ancestries=L.ANCESTRIES, gate=a.threshold)
-    pid = T[a.pseudo_col].astype(str).to_numpy()
-    gid = pid
-    if a.geno_id_col:
-        if a.geno_id_col not in T.columns:
-            raise SystemExit(f'--geno-id-col {a.geno_id_col!r} is not a column of the linked '
-                             f'table (have: {list(T.columns)})')
-        gid = T[a.geno_id_col].astype(str).to_numpy()
+    # PI.link preserves the RFMix genotype-side identifier under the canonical Sample column.
+    # Participant ids are a different namespace whenever a linkage table is used.
+    pid, gid = roster_ids(T, a.geno_id_col)
 
     roster = pd.DataFrame({
         'row': np.arange(len(C)),                # the row of X.npy, which is what score reads
@@ -305,7 +341,8 @@ def main():
 
     B = (roster.groupby(['batch', 'stratum']).size().unstack(fill_value=0)
          .reindex(columns=L.STRATA, fill_value=0).reset_index())
-    PV.write_table(B, res / 'cohort' / 'strata_by_batch.csv', where='strata_by_batch.csv')
+    PV.write_table(B, res / 'cohort' / 'strata_by_batch.csv', where='strata_by_batch.csv',
+                   count_cols=L.STRATA)
 
     prov = dict(version=L.VERSION, n_prepared=int(len(roster)), gate=a.threshold,
                 ancestries=list(a.ancestries), rfmix=[str(x) for x in a.rfmix],
@@ -313,7 +350,8 @@ def main():
                 prepared_dir=str(prepared.resolve()), reused=bool(a.reuse_prepared),
                 strata={k: int(v) for k, v in n.items()},
                 strata_analysable=[s for s, v in n.items() if v >= PV.MIN_STRATUM])
-    (res / 'cohort' / 'prepare_provenance.json').write_text(json.dumps(prov, indent=2))
+    (res / 'cohort' / 'prepare_provenance.json').write_text(
+        json.dumps(PV.mask(prov, k=a.min_cell), indent=2))
     print(f'\n  strata that clear the {PV.MIN_STRATUM}-person minimum: '
           f'{", ".join(prov["strata_analysable"]) or "none"}')
     print(f'  wrote {res / "cohort"}/  (counts only)')
