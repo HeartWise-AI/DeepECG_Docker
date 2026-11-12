@@ -128,6 +128,10 @@ def entry_for(manifest_key: str) -> dict:
         raise WeightsUnavailable(
             f'{manifest_path} has no {manifest_key!r} entry. Either add the pinned '
             'repository and revision, or set ANCESTRY_MODEL_REPO / ANCESTRY_MODEL_REVISION.')
+    if not SHA.fullmatch(found.get('revision', '')):
+        raise WeightsUnavailable(
+            f'{manifest_path} entry {manifest_key!r} must use an exact 40-character commit; '
+            f'found {found.get("revision")!r}.')
     return found
 
 
@@ -166,10 +170,9 @@ def resolve(artefact: str, explicit: str | Path | None = None,
     # A clone with network access: the same pinned artefact the image was built from.
     entry = entry_for(manifest_key)
     token = api_key or _token()
-    if os.environ.get('ANCESTRY_MODEL_REPO') and manifest_key in OVERRIDABLE:
-        # An overridden repository is not in the manifest, so HuggingFaceWrapper -- which looks
-        # the revision up there -- cannot fetch it. Pin it explicitly instead, same layout, so
-        # _cached() finds it next time and the run is still tied to one commit.
+    if manifest_key in OVERRIDABLE:
+        # The ancestry snapshot has its own manifest so the default image's preload contract is
+        # unchanged. Fetch it explicitly at that exact revision, using the same cache layout.
         from huggingface_hub import snapshot_download
         folder = _snapshot_dir(manifest_key, entry)
         folder.parent.mkdir(parents=True, exist_ok=True)
