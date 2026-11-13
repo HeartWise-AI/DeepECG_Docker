@@ -213,6 +213,17 @@ def write_extract(variants: pd.DataFrame, path):
     return str(path)
 
 
+def clear_bed_files(prefix):
+    """Remove a BED trio so a failed rerun cannot inherit successful-looking outputs."""
+    for ext in ('.bed', '.bim', '.fam'):
+        Path(f'{prefix}{ext}').unlink(missing_ok=True)
+
+
+def complete_bed_files(prefix, result):
+    return (getattr(result, 'returncode', 1) == 0
+            and all(Path(f'{prefix}{ext}').exists() for ext in ('.bed', '.bim', '.fam')))
+
+
 def subset(geno_pattern, variants, out_prefix, chroms=range(1, 23), threads=4, keep=None):
     """One bed/bim/fam holding just `variants`, merged over the chromosomes that have any."""
     out_prefix = Path(out_prefix)
@@ -228,14 +239,17 @@ def subset(geno_pattern, variants, out_prefix, chroms=range(1, 23), threads=4, k
             ['--make-bed', '--max-alleles', '2']
         if keep:
             args += ['--keep', keep]
+        clear_bed_files(p)
         r = _run(args, p, threads=threads, check=False)
-        if not Path(f'{p}.bed').exists() and _flip_extract_mode(r):
+        if not complete_bed_files(p, r) and _flip_extract_mode(r):
+            clear_bed_files(p)
             args = L.geno_args(geno_pattern, c) + extract_args(rng) + \
                 ['--make-bed', '--max-alleles', '2'] + (['--keep', keep] if keep else [])
             r = _run(args, p, threads=threads, check=False)
-        if Path(f'{p}.bed').exists():
+        if complete_bed_files(p, r):
             parts.append(p)
         else:
+            clear_bed_files(p)
             why = _plink_reason(r)
             reasons.append(f'chr{c}: {why}')
             print(f'    chr{c}: nothing extracted (plink2 rc {r.returncode}) -- {why}')
@@ -254,17 +268,22 @@ def subset(geno_pattern, variants, out_prefix, chroms=range(1, 23), threads=4, k
             + '\n  if the message above does not name the cause, check that --geno points at '
               'the right files\n  and that --build matches the release '
               '(--build grch37 / grch38).')
+    clear_bed_files(out_prefix)
     if len(parts) == 1:
         for e in ('bed', 'bim', 'fam'):
             shutil.copy(f'{parts[0]}.{e}', f'{out_prefix}.{e}')
     else:
         lst = out_prefix.parent / 'merge_list.txt'
         lst.write_text('\n'.join(parts[1:]) + '\n')
-        _run(['--bfile', parts[0], '--pmerge-list', str(lst), 'bfile', '--make-bed'],
-             out_prefix, threads=threads)
-        if not Path(f'{out_prefix}.bed').exists():      # older plink2: --merge-list
-            _run(['--bfile', parts[0], '--merge-list', str(lst), '--make-bed'],
-                 out_prefix, threads=threads)
+        r = _run(['--bfile', parts[0], '--pmerge-list', str(lst), 'bfile', '--make-bed'],
+                 out_prefix, threads=threads, check=False)
+        if not complete_bed_files(out_prefix, r):      # older plink2: --merge-list
+            clear_bed_files(out_prefix)
+            r = _run(['--bfile', parts[0], '--merge-list', str(lst), '--make-bed'],
+                     out_prefix, threads=threads, check=False)
+        if not complete_bed_files(out_prefix, r):
+            clear_bed_files(out_prefix)
+            raise SystemExit(f'failed to merge extracted chromosome panels: {_plink_reason(r)}')
     b = pd.read_csv(f'{out_prefix}.bim', sep=r'\s+', header=None,
                     names=['chrom', 'vid', 'cm', 'pos', 'a1', 'a2'], dtype={0: str})
     print(f'    subset: {len(b):,} of {len(variants):,} wanted variants present')

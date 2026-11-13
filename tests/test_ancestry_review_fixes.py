@@ -355,6 +355,24 @@ def test_cached_conversion_refuses_to_relabel_a_different_source(tmp_path, monke
     assert (outdir / 'chr1.pgen').exists()
 
 
+def test_failed_panel_extraction_cannot_reuse_a_stale_bed_trio(tmp_path, monkeypatch):
+    prefix = tmp_path / 'panel'
+    stale = tmp_path / 'panel_chr1'
+    for suffix in ('.bed', '.bim', '.fam'):
+        Path(f'{stale}{suffix}').write_text('stale')
+    failed = SimpleNamespace(returncode=1, stdout='', stderr='Error: extraction failed')
+    monkeypatch.setattr(GO.L, 'geno_args', lambda *args, **kwargs: ['--bfile', 'missing'])
+    monkeypatch.setattr(GO, '_run', lambda *args, **kwargs: failed)
+    monkeypatch.setattr(GO, '_flip_extract_mode', lambda result: False)
+    variants = pd.DataFrame({'CHR': ['1'], 'POS': [123]})
+
+    with pytest.raises(SystemExit, match='nothing extracted'):
+        GO.subset('missing', variants, prefix, chroms=['1'])
+
+    assert not any(Path(f'{stale}{suffix}').exists()
+                   for suffix in ('.bed', '.bim', '.fam'))
+
+
 @pytest.mark.parametrize('mode', ['traits', 'convert'])
 def test_shell_wrapper_routes_only_supported_common_paths(mode, tmp_path):
     stub = tmp_path / 'python'
