@@ -99,7 +99,7 @@ def _col(df, wanted, candidates, what, kind, flag):
 _SEPNAME = {'\t': 'tab', ',': 'comma', ';': 'semicolon', '|': 'pipe'}
 
 
-def _read_meta(path, cols):
+def _read_meta(path, cols, id_cols=()):
     """The ECG inventory, in whatever format the site exports it.
 
     Parquet is what the discovery cohorts used and what the documentation asks for, but an ECG
@@ -119,7 +119,20 @@ def _read_meta(path, cols):
         if is_parquet:
             m = pd.read_parquet(p, columns=cols).copy()
         else:
-            m = _read(p, what='--ecg-meta').copy()
+            header = _read(p, what='--ecg-meta', nrows=0)
+            lower = {str(c).strip().lower(): c for c in header.columns}
+            # Pandas otherwise turns numeric-looking identifiers such as 0007 into 7 before
+            # load_ecg_metadata has a chance to normalize them. Resolve the site's actual
+            # spelling first so case-insensitive column selection preserves the same identity.
+            id_dtypes = {}
+            for requested in id_cols:
+                if not requested:
+                    continue
+                actual = requested if requested in header.columns else \
+                    lower.get(str(requested).strip().lower())
+                if actual is not None:
+                    id_dtypes[actual] = str
+            m = _read(p, what='--ecg-meta', dtype=id_dtypes or None).copy()
             missing = [c for c in cols if c not in m.columns]
             if missing:
                 lower = {str(c).strip().lower(): c for c in m.columns}
@@ -204,7 +217,7 @@ def load_ecg_metadata(paths, round_ids, ecg_id_col, gender_col, age_col, path_co
         for extra in (patient_id_col, date_col):
             if extra and extra not in cols:
                 cols.append(extra)
-        m = _read_meta(p, cols)
+        m = _read_meta(p, cols, id_cols=(ecg_id_col, patient_id_col))
         m["ecg_uid"] = pd.Series(m[ecg_id_col], dtype="string").astype(str).str.strip()
         if patient_id_col:
             key = (pd.Series(m[patient_id_col], dtype="string")

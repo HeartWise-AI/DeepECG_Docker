@@ -94,6 +94,19 @@ def test_prepare_records_the_exact_waveform_rows_that_survived(tmp_path, monkeyp
     assert np.load(tmp_path / 'source_rows.npy').tolist() == [1]
 
 
+def test_text_ecg_metadata_preserves_case_insensitive_leading_zero_ids(tmp_path):
+    meta = tmp_path / 'ecgs.tsv'
+    pd.DataFrame({
+        'ECG_ID': ['0007'], 'PATIENT_ID': ['0012'], 'Gender': ['FEMALE'],
+        'Age': [51], 'Path': ['/site/ecg.npy'],
+    }).to_csv(meta, sep='\t', index=False)
+    got = PE.load_ecg_metadata(
+        [meta], [1], 'ecg_id', 'gender', 'age', 'path', '',
+        patient_id_col='patient_id')
+    assert got.ecg_uid.tolist() == ['0007']
+    assert got.project_pseudo_id.tolist() == ['0012']
+
+
 def test_default_genotype_ids_are_rfmix_samples_not_participant_ids():
     linked = pd.DataFrame({'project_pseudo_id': ['person-1'], 'Sample': ['genotype-9']})
     pid, gid = PR.roster_ids(linked)
