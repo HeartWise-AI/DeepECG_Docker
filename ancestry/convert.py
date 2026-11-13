@@ -53,6 +53,28 @@ VCF_SUFFIXES = ('.vcf', '.vcf.gz', '.bcf', '.bcf.gz')
 SET_IDS = ['--set-all-var-ids', '@:#:$r:$a', '--new-id-max-allele-len', '100', 'missing']
 
 
+def normalise_pattern(value):
+    """Canonicalise a possibly chromosome-templated path without resolving the placeholder."""
+    marker = '__ANCESTRY_CHROM__'
+    return str(Path(str(value).replace('@', marker)).expanduser().resolve()).replace(marker, '@')
+
+
+def conversion_signature(source, pattern, dosage, keep_multiallelic, extra):
+    """Options that determine whether an existing pgen cache is safe to reuse."""
+    return dict(source=normalise_pattern(source), pattern=normalise_pattern(pattern),
+                dosage=str(dosage), keep_multiallelic=bool(keep_multiallelic),
+                extra=list(extra))
+
+
+def recorded_signature(prov):
+    if 'cache_signature' in prov:
+        return prov['cache_signature']
+    return conversion_signature(prov.get('source', ''), prov.get('pattern', ''),
+                                prov.get('dosage', 'auto'),
+                                prov.get('keep_multiallelic', False),
+                                prov.get('extra', []))
+
+
 def looks_like_vcf(pattern):
     p = str(pattern or '').replace('@', '1')
     return p.endswith(VCF_SUFFIXES)
@@ -132,11 +154,33 @@ def main():
     outdir = Path(a.out) if a.out else work / 'geno' / 'pgen'
     outdir.mkdir(parents=True, exist_ok=True)
     one_file = '@' not in a.vcf
+    pattern = str(outdir / 'chr@')
+    prov_path = work / 'geno' / 'converted.json'
+    requested_signature = conversion_signature(
+        a.vcf, pattern, a.dosage, a.keep_multiallelic, extra)
 
     L.banner(f'convert: {"one whole-genome file" if one_file else "one file per chromosome"} '
              f'-> plink2 pgen')
     print(f'  source : {a.vcf}')
     print(f'  output : {outdir}/chr<N>.pgen')
+
+    cached = list(outdir.glob('chr*.pgen'))
+    if cached:
+        try:
+            previous = json.loads(prov_path.read_text())
+            same_cache = recorded_signature(previous) == requested_signature
+        except (OSError, ValueError, TypeError):
+            same_cache = False
+        if not same_cache and not a.force:
+            raise SystemExit('existing converted genotypes were produced from a different source '
+                             'or with different conversion options; refusing to relabel them. '
+                             'Re-run with --force to replace that cache.')
+        if not same_cache:
+            print('  --force: conversion provenance changed; removing the old chromosome cache')
+            for suffix in ('.pgen', '.pvar', '.psam'):
+                for old in outdir.glob(f'chr*{suffix}'):
+                    old.unlink()
+            prov_path.unlink(missing_ok=True)
 
     rows, done, failed = [], [], []
     for c in a.chroms:
@@ -167,20 +211,20 @@ def main():
                          'image uses bare numbers (1, 2, ... 22), so a release named chr1.vcf.gz '
                          "needs --vcf '/path/chr@.vcf.gz'.")
 
-    pattern = str(outdir / 'chr@')
     prov = dict(version=L.VERSION, source=a.vcf, pattern=pattern, chroms=done,
                 failed=failed, dosage=a.dosage, keep_multiallelic=bool(a.keep_multiallelic),
+                extra=list(extra), cache_signature=requested_signature,
                 per_chromosome=rows,
                 note='`geno` and `scan` use this automatically when --geno points at the VCFs')
     (work / 'geno').mkdir(parents=True, exist_ok=True)
-    (work / 'geno' / 'converted.json').write_text(json.dumps(prov, indent=2))
+    prov_path.write_text(json.dumps(prov, indent=2))
 
     total = sum(r.get('variants', 0) for r in rows)
     print(f'\n  {len(done)} chromosome(s), {total:,} variants in all')
     if failed:
         print(f'  !! {len(failed)} failed: {", ".join(failed)} -- the run can continue without '
               'them, but the scan will have holes and `loci` will report those leads absent')
-    print(f'  wrote {work / "geno" / "converted.json"}')
+    print(f'  wrote {prov_path}')
     print(f'\n  from here on, pass the ORIGINAL --geno path: `geno` and `scan` read this file '
           'and use the pgen.')
 

@@ -331,6 +331,30 @@ def test_failed_forced_conversion_cannot_reuse_stale_outputs(tmp_path, monkeypat
                    for suffix in ('.pgen', '.pvar', '.psam'))
 
 
+def test_cached_conversion_refuses_to_relabel_a_different_source(tmp_path, monkeypatch):
+    old = tmp_path / 'old_chr1.vcf.gz'
+    new = tmp_path / 'new_chr1.vcf.gz'
+    old.touch()
+    new.touch()
+    outdir = tmp_path / 'work' / 'geno' / 'pgen'
+    outdir.mkdir(parents=True)
+    for suffix in ('.pgen', '.pvar', '.psam'):
+        (outdir / f'chr1{suffix}').write_text('cached')
+    provenance = tmp_path / 'work' / 'geno' / 'converted.json'
+    provenance.write_text(__import__('json').dumps({
+        'source': str(old), 'pattern': str(outdir / 'chr@'), 'dosage': 'auto',
+        'keep_multiallelic': False, 'chroms': ['1']}))
+    monkeypatch.setattr(sys, 'argv', [
+        'ancestry.convert', '--work', str(tmp_path / 'work'), '--vcf', str(new),
+        '--chroms', '1'])
+
+    with pytest.raises(SystemExit, match='different source'):
+        CV.main()
+
+    assert __import__('json').loads(provenance.read_text())['source'] == str(old)
+    assert (outdir / 'chr1.pgen').exists()
+
+
 @pytest.mark.parametrize('mode', ['traits', 'convert'])
 def test_shell_wrapper_routes_only_supported_common_paths(mode, tmp_path):
     stub = tmp_path / 'python'
