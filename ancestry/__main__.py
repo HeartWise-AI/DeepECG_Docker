@@ -215,6 +215,22 @@ def mode_flags(mode):
     return set(re.findall(r"add_argument\(\s*'(--[a-z0-9][a-z0-9-]*)'", src))
 
 
+def common_args(mode, work, results):
+    """Only the shared paths a mode actually declares.
+
+    In particular, convert and traits take --work but not --results, while figures takes
+    --results but not --work.  Passing the union to every stage leaks unknown flags through
+    traits into its strict vendored worker.
+    """
+    flags = mode_flags(mode)
+    out = []
+    if '--work' in flags:
+        out += ['--work', work]
+    if '--results' in flags:
+        out += ['--results', results]
+    return out
+
+
 def route_extras(extra, modes):
     """Split `extra` into {mode: [args]}. Raises on a flag no mode declares."""
     known = {m: mode_flags(m) for m in modes}
@@ -357,7 +373,6 @@ def main():
                          'default is to stop, because every stage feeds the next)')
     a, extra = ap.parse_known_args(rest)
 
-    base = ['--work', a.work, '--results', a.results]
     per = {
         'convert': ['--vcf', a.geno],
         'prepare': ['--rfmix', *a.rfmix, '--ecg-meta', *a.ecg_meta]
@@ -443,7 +458,7 @@ def main():
         if args is None:
             print(f'\n==> {m}: skipped (nothing to run it on -- see --help)')
             continue
-        argv = (base if m != 'figures' else []) + args + routed.get(m, [])
+        argv = common_args(m, a.work, a.results) + args + routed.get(m, [])
         print(f'\n{"#" * 92}\n#  {m}\n{"#" * 92}', flush=True)
         try:
             run(m, argv)

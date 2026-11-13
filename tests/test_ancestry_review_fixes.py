@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT))
 from ancestry import genotypes as GE  # noqa: E402
 from ancestry import geno_ops as GO  # noqa: E402
 from ancestry import fairness as FA  # noqa: E402
+from ancestry import __main__ as AM  # noqa: E402
 from ancestry import loci as LO  # noqa: E402
 from ancestry import lib as L  # noqa: E402
 from ancestry import metrics as ME  # noqa: E402
@@ -405,6 +406,30 @@ def test_scan_failure_removes_stale_output_and_propagates(tmp_path, monkeypatch)
         SN.scan_one('EUR', '1', tmp_path, '/geno/chr@', 1, .01, 20, .1)
     assert not stale.exists()
     assert SN.chromosome_outputs(out, '1') == []
+
+
+def test_chain_common_arguments_match_each_mode_parser():
+    assert AM.common_args('traits', '/work', '/results') == ['--work', '/work']
+    assert AM.common_args('convert', '/work', '/results') == ['--work', '/work']
+    assert AM.common_args('score', '/work', '/results') == [
+        '--work', '/work', '--results', '/results']
+    assert AM.common_args('figures', '/work', '/results') == ['--results', '/results']
+
+
+def test_zero_tost_p_is_bounded_and_zero_estimate_keeps_its_bound():
+    strong = SES.row('B', 'equivalence', .001, se=.001, margin=.02)
+    assert strong['tost_p'] == 0.0
+    assert strong['bounded_below_margin'] is True
+    exact_zero = SES.row('B', 'equivalence', 0.0, se=.001, margin=.02)
+    assert exact_zero['achieved_bound'] == pytest.approx(.0016)
+
+
+def test_measurement_identifier_alias_is_renamed_and_keeps_leading_zeros(tmp_path):
+    panel = tmp_path / 'measurements.csv'
+    panel.write_text('Participant_ID,HR\n0007,62\n')
+    got = PG.read_measurement_table(panel, 'device')
+    assert got.participant_id.tolist() == ['0007']
+    assert 'Participant_ID' not in got
 
 
 def test_negative_strand_liftover_reverse_complements_panel_alleles(tmp_path, monkeypatch):

@@ -319,13 +319,15 @@ def row(arm, what, est, lo=np.nan, hi=np.nan, se=np.nan, n=None, margin=None, no
     if margin is not None:
         r['tost_margin'] = margin
         r['tost_p'] = _r(tost(est, se, margin), 4)
-        r['bounded_below_margin'] = bool(np.isfinite(r['tost_p'] or np.nan)
-                                         and (r['tost_p'] or 1) < 0.05)
+        p = r['tost_p']
+        r['bounded_below_margin'] = bool(p is not None and np.isfinite(float(p)) and p < 0.05)
         # The smallest margin this arm COULD have cleared at this n. Reporting it stops a
         # failure to clear 0.02 from being read as an effect: most of the time it means the
         # stratum was small, not that deprivation did something.
+        finite_est = est is not None and np.isfinite(float(est))
+        finite_se = se is not None and np.isfinite(float(se))
         r['achieved_bound'] = _r(abs(est) + 1.645 * se, 4) \
-            if np.isfinite(est or np.nan) and np.isfinite(se or np.nan) else None
+            if finite_est and finite_se else None
     r['note'] = note
     return r
 

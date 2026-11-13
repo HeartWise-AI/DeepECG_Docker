@@ -169,6 +169,18 @@ def mediation_effects(y, x, covariates, measurement):
     return base, adjusted, attenuation
 
 
+def read_measurement_table(path, source):
+    """Read a site measurement panel with one canonical, string-valued participant id."""
+    t = L.read_table(path, what=f'--measurements ({source})', dtype=str)
+    id_col = L.pick_column(t, 'participant_id',
+                           ('participant_id', 'id', 'subject_id', 'empi'),
+                           what=f'--measurements ({source})', kind='participant_id column',
+                           flag='(rename the column to participant_id)')
+    if id_col != 'participant_id':
+        t = t.rename(columns={id_col: 'participant_id'})
+    return t
+
+
 # ------------------------------------------------------------------------------ the arms
 def trait_arm(st, d, V, ref, work, keep, meas, rows, dec_rows, threads, build='grch38',
               sources=(), want='both', tmaps=None, pinned=None):
@@ -503,10 +515,7 @@ def main():
     for src, q in srcs:
         _m = TMAPS[src]
         n_measurable = sum(v is not None for v in _m.values())
-        t = L.read_table(q, what=f'--measurements ({src})', dtype={'participant_id': str})
-        L.pick_column(t, 'participant_id', ('participant_id', 'id', 'subject_id', 'empi'),
-                      what=f'--measurements ({src})', kind='participant_id column',
-                      flag='(rename the column to participant_id)')
+        t = read_measurement_table(q, src)
         have = [c for c in _m.values() if c and c in t.columns]
         MEAS.append((src, t))
         print(f'  measurements [{src}]: {len(t):,} recordings, {len(have)} of the '
