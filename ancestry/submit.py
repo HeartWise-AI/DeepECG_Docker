@@ -390,7 +390,8 @@ def build_plan(a, strata, chroms, site):
     if a.with_scan:
         tasks = [f'--strata {s} --chroms {c}' for s in strata for c in chroms]
         P.append(Stage('scan', 'scan',
-                       base + ['--geno', a.geno, '--threads', str(a.scan_threads)],
+                       base + ['--geno', a.geno, '--threads', str(a.scan_threads),
+                               '--scan-only'],
                        after=['geno'], array=tasks, cpus=a.scan_threads, mem='48G',
                        time='12:00:00'))
         P.append(Stage('scan_aggregate', 'scan', base + ['--aggregate-only'],

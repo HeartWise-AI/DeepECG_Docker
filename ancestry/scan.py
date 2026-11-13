@@ -50,6 +50,13 @@ from ancestry import lib as L                                            # noqa:
 from ancestry import geno_ops as G                                       # noqa: E402
 
 
+def chromosome_outputs(folder, chrom):
+    """Fresh PLINK linear results for exactly one chromosome prefix."""
+    folder = Path(folder)
+    return sorted(set(folder.glob(f'chr{chrom}.glm.linear*')) |
+                  set(folder.glob(f'chr{chrom}.*.glm.linear*')))
+
+
 def scan_one(st, chrom, work, geno, threads, maf, mac, geno_miss):
     d = Path(work) / 'geno' / st
     out = Path(work) / 'scan' / st
@@ -63,9 +70,16 @@ def scan_one(st, chrom, work, geno, threads, maf, mac, geno_miss):
              '--glm', 'hide-covar', 'cols=+a1freq,+machr2,+nobs',
              '--maf', str(maf), '--mac', str(mac), '--geno', str(geno_miss),
              '--out', str(out / f'chr{chrom}'), '--threads', str(threads)])
-    L.sh([L.plink2()] + [str(x) for x in args], check=False)
-    hits = sorted(out.glob(f'chr{chrom}*.glm.linear'))
-    return hits[0] if hits else None
+    # Never let a failed rerun reuse an old chromosome result.  PLINK writes the requested
+    # phenotype name into the suffix on some versions, hence the two exact-prefix patterns.
+    for stale in chromosome_outputs(out, chrom):
+        stale.unlink()
+    L.sh([L.plink2()] + [str(x) for x in args])
+    hits = chromosome_outputs(out, chrom)
+    if not hits:
+        raise SystemExit(f'scan {st} chr{chrom}: PLINK exited successfully but wrote no fresh '
+                         '.glm.linear output')
+    return hits[0]
 
 
 def main():
@@ -101,6 +115,9 @@ def main():
                     help='imputation-quality floor, where the genotypes carry an INFO/R2 field')
     ap.add_argument('--aggregate-only', action='store_true',
                     help='the per-chromosome scans already ran; just reduce them')
+    ap.add_argument('--scan-only', action='store_true',
+                    help='run the requested chromosome scans without aggregation; used by the '
+                         'Slurm array before its single dependent aggregate job')
     a = ap.parse_args()
 
     work = Path(a.work); res = Path(a.results) / 'scan'; res.mkdir(parents=True, exist_ok=True)
@@ -124,18 +141,22 @@ def main():
         if not a.aggregate_only:
             for c in a.chroms:
                 f = scan_one(st, c, work, geno, a.threads, a.maf, a.mac, a.geno_missing)
-                print(f'    chr{c}: {"ok" if f else "NOTHING WRITTEN (see the .log)"}')
+                print(f'    chr{c}: ok ({f.name})')
+        missing = [c for c in a.chroms
+                   if not chromosome_outputs(Path(work) / 'scan' / st, c)]
+        if missing:
+            raise SystemExit(f'{st}: scan is incomplete; missing fresh PLINK output for '
+                             f'chromosome(s) {", ".join(missing)}')
+        if a.scan_only:
+            continue
         od = res / st; od.mkdir(parents=True, exist_ok=True)
         sys.argv = ['gwas_aggregate.py', '--glm', str(Path(work) / 'scan' / st / 'chr'),
                     '--out', str(od), '--ref', str(a.ref), '--build', build,
                     '--chroms', ' '.join(a.chroms), '--maf', str(a.maf),
                     '--info-min', str(a.info_min)]
-        try:
-            runpy.run_path(str(HERE / 'vendor' / 'gwas_aggregate.py'), run_name='__main__')
-        except SystemExit as e:
-            if e.code:
-                print(f'    aggregation stopped: {e}')
-                continue
+        # Aggregation failures are stage failures.  Swallowing SystemExit lets Slurm release
+        # packaging even though gwas_aggregate deliberately refused an incomplete input.
+        runpy.run_path(str(HERE / 'vendor' / 'gwas_aggregate.py'), run_name='__main__')
         # the vendored script names its outputs ll_*; rename so the package reads as one thing
         for p in list(od.glob('ll_*')):
             p.rename(od / p.name.replace('ll_', 'scan_', 1))
@@ -158,6 +179,9 @@ def main():
                 M.to_csv(man, sep='\t', index=False)
                 print(f'    thinned further to {len(M):,} points for export')
 
+    if a.scan_only:
+        print(f'\n  scan-only complete; chromosome statistics stay in {work / "scan"}')
+        return
     if summary:
         T = pd.DataFrame([{k: v for k, v in s.items()
                            if not isinstance(v, (dict, list))} for s in summary])

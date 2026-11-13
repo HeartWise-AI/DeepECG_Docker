@@ -27,6 +27,7 @@ Writes participant_id + 60 columns. THIS FILE CARRIES IDS and stays on the analy
 from __future__ import annotations
 
 import argparse
+import glob
 import sys
 import time
 import warnings
@@ -291,6 +292,23 @@ def _chunk(args):
     return i0, [measure_one(X[i], fs) for i in range(len(X))]
 
 
+def participant_ids(path):
+    """Read the row-aligned identifier column without dropping leading zeros."""
+    return pd.read_csv(path, dtype=str).iloc[:, 0].astype(str).values
+
+
+def merge_inputs(patterns):
+    """Expand quoted scheduler globs and refuse a merge with a missing shard pattern."""
+    files = []
+    for pattern in patterns:
+        matches = sorted(glob.glob(pattern))
+        if not matches:
+            sys.exit(f'--merge pattern matched no files: {pattern}')
+        files.extend(matches)
+    # A file named explicitly and through a glob must not be counted twice.
+    return list(dict.fromkeys(files))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--input', required=True, help='the prepared directory holding X.npy')
@@ -313,8 +331,9 @@ def main():
 
     if a.merge:
         parts = []
-        for f in a.merge:
-            d = pd.read_csv(f)
+        files = merge_inputs(a.merge)
+        for f in files:
+            d = pd.read_csv(f, dtype={'participant_id': str})
             parts.append(d)
             print(f'  {Path(f).name}: {len(d):,} ECGs')
         M = pd.concat(parts, ignore_index=True)
@@ -330,7 +349,7 @@ def main():
         M = M.groupby('participant_id', as_index=False).median(numeric_only=True)
         Path(a.output).parent.mkdir(parents=True, exist_ok=True)
         M.to_csv(a.output, index=False)
-        print(f'merged {len(a.merge)} shards -> {len(M):,} participants; wrote {a.output}')
+        print(f'merged {len(files)} shards -> {len(M):,} participants; wrote {a.output}')
         return
 
     try:
@@ -341,7 +360,7 @@ def main():
     X = np.load(Path(a.input) / 'X.npy', mmap_mode='r')
     if X.shape[1] == 12 and X.shape[2] != 12:
         X = np.asarray(X).transpose(0, 2, 1)
-    ids = pd.read_csv(a.ids).iloc[:, 0].astype(str).values
+    ids = participant_ids(a.ids)
     if len(ids) != len(X):
         sys.exit(f'--ids has {len(ids)} rows but X.npy has {len(X)}; they must be row-aligned')
     if a.limit:

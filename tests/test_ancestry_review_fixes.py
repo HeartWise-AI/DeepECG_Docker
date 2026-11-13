@@ -22,10 +22,12 @@ from ancestry import prepare as PR  # noqa: E402
 from ancestry import prepare_external as PE  # noqa: E402
 from ancestry import privacy as PV  # noqa: E402
 from ancestry import score as SC  # noqa: E402
+from ancestry import scan as SN  # noqa: E402
 from ancestry import ses as SES  # noqa: E402
 from ancestry import submit as SU  # noqa: E402
 from ancestry.vendor import gwas_aggregate as GA  # noqa: E402
 from ancestry.vendor import liftover_min as LM  # noqa: E402
+from ancestry.vendor import measure_neurokit as MN  # noqa: E402
 
 
 def _alignment_fixture(tmp_path, monkeypatch, source_rows=True):
@@ -227,6 +229,11 @@ def test_slurm_geno_stage_builds_shared_panel_once_and_keeps_all_strata():
     geno = next(stage for stage in plan if stage.name == 'geno')
     assert geno.array is None
     assert geno.args[-3:] == ['--strata', 'EUR', 'AFR']
+    args.with_scan = True
+    scan_plan = SU.build_plan(args, ['EUR', 'AFR'], ['1'], {'gpu': False})
+    scan = next(stage for stage in scan_plan if stage.name == 'scan')
+    assert '--scan-only' in scan.args
+    assert next(stage for stage in scan_plan if stage.name == 'scan_aggregate').after == ['scan']
 
 
 def test_scan_aggregate_reads_the_pheno_suffix_written_by_plink(tmp_path):
@@ -361,6 +368,43 @@ def test_package_summary_uses_fixed_panel_as_the_pgs_headline(tmp_path):
     sensitivity = summary.split('### 3c. Site-clumped sensitivity analysis', 1)[1]
     assert '0.123' in headline and '9.999' not in headline
     assert '9.999' in sensitivity
+
+
+def test_trait_merge_expands_scheduler_globs_and_preserves_leading_zero_ids(
+        tmp_path, monkeypatch):
+    for shard, row, participant in ((1, 0, '0007'), (2, 1, '0012')):
+        pd.DataFrame([{'row': row, 'participant_id': participant, 'HR': 60 + row,
+                       'n_rpeaks': 10}]).to_csv(
+                           tmp_path / f'traits_{shard}of2.csv', index=False)
+    output = tmp_path / 'measurements.csv'
+    monkeypatch.setattr(sys, 'argv', [
+        'measure_neurokit.py', '--input', str(tmp_path), '--ids', str(tmp_path / 'ids.csv'),
+        '--output', str(output), '--merge', str(tmp_path / 'traits_*.csv')])
+    MN.main()
+    got = pd.read_csv(output, dtype={'participant_id': str})
+    assert got.participant_id.tolist() == ['0007', '0012']
+    ids = tmp_path / 'ids.csv'
+    ids.write_text('participant_id\n0007\n')
+    assert MN.participant_ids(ids).tolist() == ['0007']
+
+
+def test_scan_failure_removes_stale_output_and_propagates(tmp_path, monkeypatch):
+    d = tmp_path / 'geno' / 'EUR'
+    d.mkdir(parents=True)
+    for name in ('keep.txt', 'pheno.tsv', 'covar.tsv'):
+        (d / name).write_text('fixture\n')
+    out = tmp_path / 'scan' / 'EUR'
+    out.mkdir(parents=True)
+    stale = out / 'chr1.pheno.glm.linear'
+    stale.write_text('old result\n')
+    # chr1 lookup must not accidentally accept a successful chr10 file.
+    (out / 'chr10.pheno.glm.linear').write_text('other chromosome\n')
+    monkeypatch.setattr(L, 'geno_args', lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(L, 'plink2', lambda: '/bin/false')
+    with pytest.raises(SystemExit, match='command failed'):
+        SN.scan_one('EUR', '1', tmp_path, '/geno/chr@', 1, .01, 20, .1)
+    assert not stale.exists()
+    assert SN.chromosome_outputs(out, '1') == []
 
 
 def test_negative_strand_liftover_reverse_complements_panel_alleles(tmp_path, monkeypatch):
