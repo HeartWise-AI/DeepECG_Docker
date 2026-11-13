@@ -464,6 +464,33 @@ def test_measurement_identifier_alias_is_renamed_and_keeps_leading_zeros(tmp_pat
     assert 'Participant_ID' not in got
 
 
+def test_fairness_label_alias_keeps_leading_zero_identifiers(tmp_path):
+    labels = tmp_path / 'labels.csv'
+    labels.write_text('Participant_ID,Finding A\n0007,1\n')
+    got, _description = FA.labels_from_table(labels, ['Finding A'])
+    assert got.participant_id.tolist() == ['0007']
+    assert got['Finding A'].tolist() == [1.0]
+
+
+def test_overall_model_check_suppresses_a_class_below_the_privacy_floor(tmp_path):
+    ref, results = tmp_path / 'ref', tmp_path / 'results'
+    ref.mkdir()
+    (results / 'score').mkdir(parents=True)
+    (ref / 'discovery_reference.json').write_text(__import__('json').dumps({
+        'external_prior': {'site': {'auroc': .8, 'ece': .1}},
+        'subpopulation_auroc_discovery': {'all non-EUR': {'auroc': .8}},
+    }))
+    cohort = pd.DataFrame({
+        'stratum': ['EUR'] * (PV.MIN_PER_CLASS + 5) + ['AFR'],
+        'p_nonEUR': np.linspace(.1, .9, PV.MIN_PER_CLASS + 6),
+    })
+    table, _verdict = SC.model_check(cohort, results, ref)
+    overall = table[table.comparison == 'everyone (admixed counted non-European)'].iloc[0]
+    assert overall.n_pos == 1
+    assert pd.isna(overall.auroc)
+    assert overall.note == PV.SUPPRESSED
+
+
 def test_negative_strand_liftover_reverse_complements_panel_alleles(tmp_path, monkeypatch):
     chain = tmp_path / 'negative.chain'
     chain.write_text('chain 100 chr1 1000 + 100 110 chr1 1000 - 200 210 1\n10\n')

@@ -65,7 +65,10 @@ SPEC_Q = 0.90
 
 # --------------------------------------------------------------------------------- labels
 def labels_from_table(path, findings):
-    D = L.read_table(path, what='--labels', dtype={'participant_id': str})
+    # Read the complete table as text so every accepted identifier alias keeps its exact
+    # spelling (notably leading zeroes) before we know which column is the identifier.
+    # Finding values are converted explicitly by to_binary below.
+    D = L.read_table(path, what='--labels', dtype=str)
     idc = L.pick_column(D, 'participant_id',
                         ('participant_id', 'subject_id', 'empi', 'patient_id', 'mrn', 'id'),
                         what=f'--labels {path}', kind='participant_id column',

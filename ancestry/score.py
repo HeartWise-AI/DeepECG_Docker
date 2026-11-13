@@ -265,13 +265,19 @@ def model_check(D, res, ref):
     # genotyped person with an ECG
     allp = D[D.stratum.isin(L.STRATA)]
     y = (allp.stratum != 'EUR').to_numpy().astype(float)
-    if len(np.unique(y)) == 2:
+    n_pos = int(y.sum())
+    n_neg = int(len(y) - n_pos)
+    if min(n_pos, n_neg) < PV.MIN_PER_CLASS:
+        rows.append(dict(comparison='everyone (admixed counted non-European)', n=len(allp),
+                         n_pos=n_pos, auroc=np.nan, lo=np.nan, hi=np.nan,
+                         reference=prior.get('auroc'), note=PV.SUPPRESSED))
+    else:
         pr = allp.p_nonEUR.to_numpy(float)
         a = L.auroc(y, pr)
         lo, hi = L.boot_ci(lambda i: L.auroc(y[i], pr[i]), len(allp), 1000, 2000)
         ece = L.ece(y, pr)
         rows.append(dict(comparison='everyone (admixed counted non-European)', n=len(allp),
-                         n_pos=int(y.sum()), auroc=round(a, 4), lo=round(lo, 4), hi=round(hi, 4),
+                         n_pos=n_pos, auroc=round(a, 4), lo=round(lo, 4), hi=round(hi, 4),
                          reference=prior.get('auroc'),
                          note=f'this site, earlier run (ECE then {prior.get("ece")}; '
                               f'now {ece:.4f})'))
