@@ -209,6 +209,13 @@ def read_measurement_table(path, source):
     return t
 
 
+def clear_ancestry_outputs(results_dir):
+    """Invalidate ancestry-arm tables before producing the current run."""
+    results_dir = Path(results_dir)
+    for stale in ('ancestry_pgs.csv', 'ancestry_pgs_deciles.csv'):
+        (results_dir / stale).unlink(missing_ok=True)
+
+
 # ------------------------------------------------------------------------------ the arms
 def trait_arm(st, d, V, ref, work, keep, meas, rows, dec_rows, threads, covar_cols,
               build='grch38',
@@ -573,6 +580,11 @@ def main():
     else:
         print(f'  no measurements at {nk}: the positive control is SKIPPED and every '
               'trait-PGS result below is unvalidated. Run `traits` first.')
+
+    # These files describe only the current run. Clear them before entering the ancestry arm so
+    # --skip-ancestry-pgs, an empty stratum, or an arm with no usable variants cannot leave a
+    # previous run's results available to figures/package merely because the old files exist.
+    clear_ancestry_outputs(res)
 
     L.banner(f'pgs: {", ".join(strata)}')
     rows, dec_rows, anc_rows, anc_dec, heads = [], [], [], [], {}

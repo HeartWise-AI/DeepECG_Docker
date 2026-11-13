@@ -602,6 +602,16 @@ def test_package_summary_uses_fixed_panel_as_the_pgs_headline(tmp_path):
     assert '9.999' in sensitivity
 
 
+def test_new_pgs_run_invalidates_previous_ancestry_arm_tables(tmp_path):
+    for name in ('ancestry_pgs.csv', 'ancestry_pgs_deciles.csv'):
+        (tmp_path / name).write_text('stale result\n')
+    (tmp_path / 'trait_pgs.csv').write_text('current trait result\n')
+    PG.clear_ancestry_outputs(tmp_path)
+    assert not (tmp_path / 'ancestry_pgs.csv').exists()
+    assert not (tmp_path / 'ancestry_pgs_deciles.csv').exists()
+    assert (tmp_path / 'trait_pgs.csv').exists()
+
+
 def test_trait_merge_expands_scheduler_globs_and_preserves_leading_zero_ids(
         tmp_path, monkeypatch):
     for shard, row, participant in ((1, 0, '0007'), (2, 1, '0012')):
