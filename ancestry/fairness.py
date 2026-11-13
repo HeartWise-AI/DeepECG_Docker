@@ -63,6 +63,12 @@ SHARED_THR = 0.5
 SPEC_Q = 0.90
 
 
+def reportable_label_classes(y, minimum=PV.MIN_PER_CLASS):
+    """Whether both pooled finding classes are large enough to report a metric."""
+    y = np.asarray(y, float)
+    return min(int((y == 0).sum()), int((y == 1).sum())) >= minimum
+
+
 # --------------------------------------------------------------------------------- labels
 def labels_from_table(path, findings):
     # Read the complete table as text so every accepted identifier alias keeps its exact
@@ -329,24 +335,31 @@ def main():
             fin = f.finding
             if fin not in d.columns:
                 continue
-            col = f.output
-            if a.remap or not isinstance(col, str) or col not in outcols:
-                y_all = d[fin].to_numpy(float)
-                ok = np.isfinite(y_all)
-                if ok.sum() < 50 or len(np.unique(y_all[ok])) < 2:
-                    continue
-                aur = {c: _auroc(y_all[ok], d[c].to_numpy()[ok]) for c in outcols}
-                col = max(aur, key=lambda k: (aur[k] if aur[k] == aur[k] else -1))
             sub = d[np.isfinite(d[fin].to_numpy(float))]
             y = sub[fin].to_numpy(float)
             g = sub.group_genetic.to_numpy()
             npos = [int(((y == 1) & (g == k)).sum()) for k in (0, 1)]
+            col = f.output
+            # An AUROC discloses how a finding behaves even when its count is masked. Apply the
+            # same pooled class floor as every other reported metric before remapping outputs or
+            # computing a site AUROC, and keep the suppressed row only for coverage accounting.
+            if not reportable_label_classes(y):
+                gate.append(dict(arm=arm, finding=fin,
+                                 output=col if isinstance(col, str) and col in outcols else None,
+                                 kind=f.kind, plate_eligible=int(f.plate_eligible), n=len(sub),
+                                 n_pos_eur=npos[0], n_pos_non=npos[1], auroc_site=np.nan,
+                                 auroc_discovery=f.discovery_auroc, evaluable=0,
+                                 note=PV.SUPPRESSED))
+                continue
+            if a.remap or not isinstance(col, str) or col not in outcols:
+                aur = {c: _auroc(y, sub[c].to_numpy()) for c in outcols}
+                col = max(aur, key=lambda k: (aur[k] if aur[k] == aur[k] else -1))
             auroc = _auroc(y, sub[col].to_numpy(float))
             gate.append(dict(arm=arm, finding=fin, output=col, kind=f.kind,
                              plate_eligible=int(f.plate_eligible), n=len(sub),
                              n_pos_eur=npos[0], n_pos_non=npos[1], auroc_site=auroc,
                              auroc_discovery=f.discovery_auroc,
-                             evaluable=int(min(npos) >= a.min_pos)))
+                             evaluable=int(min(npos) >= a.min_pos), note=''))
             if min(npos) < a.min_pos:
                 continue
             thr90[fin] = float(np.quantile(sub.loc[y == 0, col], SPEC_Q)) if (y == 0).any() else np.nan

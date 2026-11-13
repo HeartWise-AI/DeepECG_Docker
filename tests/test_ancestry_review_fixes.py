@@ -491,6 +491,27 @@ def test_overall_model_check_suppresses_a_class_below_the_privacy_floor(tmp_path
     assert overall.note == PV.SUPPRESSED
 
 
+def test_pgs_reuses_genotype_covariates_with_rfmix_adjustment(tmp_path):
+    covar = tmp_path / 'geno' / 'AFR'
+    covar.mkdir(parents=True)
+    (covar / 'covar.tsv').write_text(
+        '#FID\tIID\tage\tsex\tPC1\trf_AFR\trf_EUR\n'
+        'f2\t0008\t60\t0\t.2\t.75\t.25\n'
+        'f1\t0007\t50\t1\t.1\t.80\t.20\n')
+    analysis = pd.DataFrame({'geno_id': ['0007', '0008'], 'pheno_rint': [.1, .2]})
+    got, names = PG.attach_configured_covariates(tmp_path, 'AFR', analysis)
+    assert len(names) == 5
+    assert got[names].iloc[0].tolist() == pytest.approx([50, 1, .1, .8, .2])
+    assert got[names].iloc[1].tolist() == pytest.approx([60, 0, .2, .75, .25])
+
+
+def test_finding_auroc_requires_both_label_classes_to_clear_privacy_floor():
+    too_few_positive = np.array([0] * (PV.MIN_PER_CLASS + 10) + [1])
+    assert FA.reportable_label_classes(too_few_positive) is False
+    enough = np.array([0] * PV.MIN_PER_CLASS + [1] * PV.MIN_PER_CLASS)
+    assert FA.reportable_label_classes(enough) is True
+
+
 def test_negative_strand_liftover_reverse_complements_panel_alleles(tmp_path, monkeypatch):
     chain = tmp_path / 'negative.chain'
     chain.write_text('chain 100 chr1 1000 + 100 110 chr1 1000 - 200 210 1\n10\n')

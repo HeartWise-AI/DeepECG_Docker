@@ -151,6 +151,34 @@ def restrict_to_keep(d, keep):
     return out
 
 
+def attach_configured_covariates(work, stratum, d):
+    """Attach the exact covariate design selected by `geno`, aligned by genotype IID."""
+    path = Path(work) / 'geno' / stratum / 'covar.tsv'
+    C = pd.read_csv(path, sep=r'\s+', dtype=str)
+    cols = {str(c).lstrip('#').upper(): c for c in C.columns}
+    if 'IID' not in cols:
+        raise SystemExit(f'{path}: no IID column in configured genotype covariates')
+    iid = cols['IID']
+    if C[iid].astype(str).duplicated().any():
+        raise SystemExit(f'{path}: duplicate IID in configured genotype covariates')
+    source = [c for c in C.columns if str(c).lstrip('#').upper() not in ('FID', 'IID')]
+    if not source:
+        raise SystemExit(f'{path}: no configured covariate columns')
+    lookup = C.assign(**{iid: C[iid].astype(str)}).set_index(iid)
+    ids = d.geno_id.astype(str)
+    missing = ids[~ids.isin(lookup.index)]
+    if len(missing):
+        raise SystemExit(f'{path}: missing configured covariates for {len(missing)} retained '
+                         'genotype sample(s)')
+    out = d.copy()
+    names = []
+    for i, col in enumerate(source):
+        name = f'__geno_covar_{i}'
+        out[name] = pd.to_numeric(lookup[col].reindex(ids.to_numpy()).to_numpy(), errors='coerce')
+        names.append(name)
+    return out, names
+
+
 def mediation_effects(y, x, covariates, measurement):
     """Unadjusted/adjusted PGS effects on identical rows and one predictor scale."""
     y = np.asarray(y, float)
@@ -182,7 +210,8 @@ def read_measurement_table(path, source):
 
 
 # ------------------------------------------------------------------------------ the arms
-def trait_arm(st, d, V, ref, work, keep, meas, rows, dec_rows, threads, build='grch38',
+def trait_arm(st, d, V, ref, work, keep, meas, rows, dec_rows, threads, covar_cols,
+              build='grch38',
               sources=(), want='both', tmaps=None, pinned=None):
     # build-specific: the weights are keyed on POSITION, and a GRCh38 position looked up in a
     # GRCh37 variant map matches a scatter of unrelated variants rather than failing cleanly
@@ -210,8 +239,7 @@ def trait_arm(st, d, V, ref, work, keep, meas, rows, dec_rows, threads, build='g
     D = d.copy()
     for tr, S in scores.items():
         D = D.merge(S.rename(columns={'IID': 'geno_id'}), on='geno_id', how='inner')
-    pcs = [c for c in D.columns if c.startswith('PC')]
-    C = D[['age', 'sex_num'] + pcs].to_numpy(float)
+    C = D[covar_cols].to_numpy(float)
 
     for tr in scores:
         x = zs(D[f'PGS_{tr}'].to_numpy())
@@ -310,7 +338,8 @@ def trait_arm(st, d, V, ref, work, keep, meas, rows, dec_rows, threads, build='g
     return D
 
 
-def ancestry_arm(st, d, V, ref, work, keep, threads, clump_r2, clump_kb, build='grch38'):
+def ancestry_arm(st, d, V, ref, work, keep, threads, clump_r2, clump_kb, covar_cols,
+                 build='grch38'):
     """The ancestry-score PGS: our meta weights, clumped in their LD, at a ladder of p-thresholds.
 
     The weight file is build-specific and the panel ships in GRCh38 only, so it is resolved
@@ -331,7 +360,6 @@ def ancestry_arm(st, d, V, ref, work, keep, threads, clump_r2, clump_kb, build='
     if len(M) < 100:
         return [], [], dict(note=f'only {len(M)} ancestry-PGS variants usable here')
 
-    pcs = [c for c in d.columns if c.startswith('PC')]
     rows, dec_rows = [], []
 
     def score_set(S, label, tag, how_note, p_threshold=None):
@@ -347,7 +375,7 @@ def ancestry_arm(st, d, V, ref, work, keep, threads, clump_r2, clump_kb, build='
         col = 'SCORE1_AVG' if 'SCORE1_AVG' in SC.columns else SC.columns[-1]
         D = d.merge(SC[['IID', col]].rename(columns={'IID': 'geno_id', col: 'APGS'}),
                     on='geno_id', how='inner')
-        covariates = D[['age', 'sex_num'] + pcs].to_numpy(float)
+        covariates = D[covar_cols].to_numpy(float)
         r = L.partial(D.pheno_rint.to_numpy(float), zs(D.APGS.to_numpy()), covariates)
         rows.append(dict(stratum=st, arm=label, p_threshold=p_threshold, n_variants=len(S),
                          clumping=how_note,
@@ -565,14 +593,15 @@ def main():
         keep = str(keep) if keep.exists() else str(Path(work) / 'geno' / st / 'keep.txt')
         before = len(D)
         D = restrict_to_keep(D, keep)
+        D, covar_cols = attach_configured_covariates(work, st, D)
         print(f'\n  --- {st}: {len(D):,} retained people'
               + (f' ({before - len(D):,} related/excluded)' if before != len(D) else ''))
         trait_arm(st, D, V, ref, work, keep, meas, rows, dec_rows, a.threads,
-                  build=build, sources=[s for s, _ in MEAS],
+                  covar_cols, build=build, sources=[s for s, _ in MEAS],
                   want=a.measurement_source, tmaps=TMAPS, pinned=pinned)
         if not a.skip_ancestry_pgs:
             r, dr, h = ancestry_arm(st, D, V, ref, work, keep, a.threads, a.clump_r2,
-                                    a.clump_kb, build=build)
+                                    a.clump_kb, covar_cols, build=build)
             anc_rows += r; anc_dec += dr; heads[st] = h
 
     R = pd.DataFrame(rows)
