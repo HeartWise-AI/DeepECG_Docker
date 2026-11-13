@@ -19,6 +19,8 @@ from ancestry import prepare as PR  # noqa: E402
 from ancestry import prepare_external as PE  # noqa: E402
 from ancestry import privacy as PV  # noqa: E402
 from ancestry import score as SC  # noqa: E402
+from ancestry import submit as SU  # noqa: E402
+from ancestry.vendor import gwas_aggregate as GA  # noqa: E402
 
 
 def _alignment_fixture(tmp_path, monkeypatch, source_rows=True):
@@ -205,3 +207,39 @@ def test_admixed_exclusion_counts_are_masked_and_audited(tmp_path):
     path.write_text(__import__('json').dumps(raw))
     problems = PV.audit_files([path])
     assert len(problems) == 2
+
+
+def test_slurm_geno_stage_builds_shared_panel_once_and_keeps_all_strata():
+    args = SimpleNamespace(
+        work='/work', results='/results', geno='/data/chr@', no_convert=True,
+        rfmix=['/data/rfmix.tsv'], ecg_meta=['/data/meta.csv'], reuse_prepared=None,
+        score_shards=2, save_embeddings=False, device='auto', batch_size=32,
+        measurements='/data/measurements.csv', trait_shards=2, jobs=2,
+        build='grch38', chain=None, threads=4, with_scan=False, scan_threads=2,
+        labels=None, statements=None, ses=None, ses_col=None, ses_name=None,
+        ses_geography=None, run_name='TEST')
+    plan = SU.build_plan(args, ['EUR', 'AFR'], ['1'], {'gpu': False})
+    geno = next(stage for stage in plan if stage.name == 'geno')
+    assert geno.array is None
+    assert geno.args[-3:] == ['--strata', 'EUR', 'AFR']
+
+
+def test_scan_aggregate_reads_the_pheno_suffix_written_by_plink(tmp_path):
+    path = tmp_path / 'chr1.pheno.glm.linear'
+    pd.DataFrame({'#CHROM': ['1'], 'POS': [123], 'ID': ['v1'], 'A1': ['A'],
+                  'TEST': ['ADD'], 'BETA': [.2], 'SE': [.1], 'P': [.04]}).to_csv(
+                      path, sep='\t', index=False)
+    got = GA.read_glm(str(tmp_path / 'chr'), ['1'])
+    assert got[['CHROM', 'POS', 'ID']].to_dict('records') == [
+        {'CHROM': 1, 'POS': 123, 'ID': 'v1'}]
+
+
+def test_permuted_pheno_preserves_leading_zero_sample_ids(tmp_path):
+    source = tmp_path / 'pheno.tsv'
+    destination = tmp_path / 'pheno_permuted.tsv'
+    source.write_text('#FID\tIID\tpheno\n0001\t0007\t0.1\n0002\t0008\t0.2\n')
+    LO.write_permuted_pheno(source, destination)
+    got = pd.read_csv(destination, sep='\t', dtype=str)
+    assert got['#FID'].tolist() == ['0001', '0002']
+    assert got.IID.tolist() == ['0007', '0008']
+    assert set(got.pheno) == {'0.1', '0.2'}

@@ -26,7 +26,7 @@ THE DEPENDENCY GRAPH, which is the part worth reading
     prepare
       |-- score      (array over shards, GPU)  --> score_merge
       |-- traits     (array over shards, CPU)  --> traits_merge      [skipped with --measurements]
-      '-> geno       (array over strata, CPU, the heavy one: PCA + kinship per stratum)
+      '-> geno       (one job, CPU: shared panel once, then PCA + kinship per stratum)
             |-- loci
             |-- pgs
             '-- scan (array over stratum x chromosome) --> scan_aggregate
@@ -366,15 +366,16 @@ def build_plan(a, strata, chroms, site):
                        base[:2] + ['--merge', str(Path(a.work) / 'traits_*.csv')],
                        after=['traits'], cpus=2, mem='16G', time='01:00:00'))
 
-    # ---- geno: one task per stratum.  The heaviest CPU stage: pruning, PCA and KING over the
-    #      whole genome, per stratum, and the European stratum is twenty thousand people.
+    # ---- geno: one job builds the shared position-matched panel once, then processes each
+    #      stratum in isolated work/geno/<stratum>/ directories and writes one combined
+    #      provenance file.  Making this an array races on work/geno/panel and lets the last
+    #      task overwrite provenance for every other stratum.
     P.append(Stage('geno', 'geno',
                    base + ['--geno', a.geno, '--build', a.build]
                    + (['--chain', a.chain] if a.chain else []) + [
-                           '--threads', str(a.threads)],
+                           '--threads', str(a.threads), '--strata', *strata],
                    after=['score_merge'] + (['convert'] if any(x.name == 'convert' for x in P)
                                             else []),
-                   array=[f'--strata {s}' for s in strata],
                    cpus=a.threads, mem='96G', time='24:00:00'))
 
     P.append(Stage('loci', 'loci', base + ['--threads', str(a.threads)],

@@ -60,6 +60,27 @@ def lead_table(ref: Path, build: str):
     return D
 
 
+def write_permuted_pheno(source, destination, seed=2000):
+    """Shuffle phenotype values without allowing pandas to reinterpret sample identifiers."""
+    P = pd.read_csv(source, sep='\t',
+                    dtype={'#FID': str, 'FID': str, '#IID': str, 'IID': str})
+    # the ids keep their order and the phenotype values move, so every join downstream is
+    # unchanged and only the pairing of person to phenotype is destroyed.
+    # Addressed BY NAME, never by position: the file carries #FID and IID before the
+    # phenotype, and `columns[1]` would permute the sample ids themselves -- which breaks
+    # the FID/IID pairing and reads downstream as "no entries correspond to loaded sample
+    # IDs" rather than as a shuffled phenotype.
+    idc = [c for c in P.columns if c.lstrip('#').upper() in ('FID', 'IID')]
+    val = [c for c in P.columns if c not in idc]
+    if not val:
+        raise SystemExit(f'{source}: no phenotype column beside {idc}')
+    rng = np.random.default_rng(seed)
+    for c in val:
+        P[c] = rng.permutation(P[c].to_numpy())
+    P.to_csv(destination, sep='\t', index=False)
+    return Path(destination)
+
+
 def run_stratum(st, work, ref, leads, build, threads, unrelated_only=True, permute=False):
     """The discovery leads in one stratum.  With `permute`, the SAME genotypes and covariates against a
     shuffled phenotype -- the negative control that makes the real number readable.
@@ -82,21 +103,7 @@ def run_stratum(st, work, ref, leads, build, threads, unrelated_only=True, permu
     use_unrel = unrelated_only and keep.exists()
     pheno = d / 'pheno.tsv'
     if permute:
-        P = pd.read_csv(pheno, sep='\t')
-        # the ids keep their order and the phenotype values move, so every join downstream is
-        # unchanged and only the pairing of person to phenotype is destroyed.
-        # Addressed BY NAME, never by position: the file carries #FID and IID before the
-        # phenotype, and `columns[1]` would permute the sample ids themselves -- which breaks
-        # the FID/IID pairing and reads downstream as "no entries correspond to loaded sample
-        # IDs" rather than as a shuffled phenotype.
-        idc = [c for c in P.columns if c.lstrip('#').upper() in ('FID', 'IID')]
-        val = [c for c in P.columns if c not in idc]
-        if not val:
-            raise SystemExit(f'{pheno}: no phenotype column beside {idc}')
-        for c in val:
-            P[c] = np.random.default_rng(2000).permutation(P[c].to_numpy())
-        pheno = d / 'pheno_permuted.tsv'
-        P.to_csv(pheno, sep='\t', index=False)
+        pheno = write_permuted_pheno(pheno, d / 'pheno_permuted.tsv')
     A = G.glm(Path(work) / 'geno' / 'panel', pheno, d / 'covar.tsv',
               d / ('leads_perm' if permute else
                    'leads_unrel' if use_unrel else 'leads_all'),

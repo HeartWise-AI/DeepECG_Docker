@@ -50,8 +50,10 @@ def read_glm(pattern, chroms):
     # plink2 names the file after --out plus the phenotype column, and a few builds and
     # modifiers change that (no phenotype name, PHENO1, a .zst or .gz when output is
     # compressed).  All of them are accepted rather than making the caller care which.
-    sfx = ('.Y.glm.linear', '.glm.linear', '.PHENO1.glm.linear',
-           '.Y.glm.linear.zst', '.Y.glm.linear.gz', '.Y.glm.logistic')
+    sfx = ('.pheno.glm.linear', '.Y.glm.linear', '.glm.linear', '.PHENO1.glm.linear',
+           '.pheno.glm.linear.zst', '.pheno.glm.linear.gz',
+           '.Y.glm.linear.zst', '.Y.glm.linear.gz',
+           '.pheno.glm.logistic', '.Y.glm.logistic')
     for c in chroms:
         hits = [q for q in (Path(f'{pattern}{c}{s}') for s in sfx) if q.exists()]
         if not hits:
