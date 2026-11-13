@@ -86,14 +86,24 @@ def convert_one(src, chrom, outdir, threads, dosage, keep_multiallelic, extra):
     args += ['--chr', str(chrom)]
     args += ['--rm-dup', 'exclude-all', '--make-pgen', '--out', str(out),
              '--threads', str(threads)]
+    # A forced retry must never be allowed to inherit a successful-looking fileset from the
+    # previous source.  Remove the old trio (and any partial retry) before PLINK starts, then
+    # require both a zero exit and a complete freshly written trio below.
+    outputs = [out.with_suffix(s) for s in ('.pgen', '.pvar', '.psam')]
+    for old in outputs:
+        old.unlink(missing_ok=True)
     r = L.sh([L.plink2()] + args + list(extra), check=False)
-    ok = (out.with_suffix('.pgen')).exists()
+    ok = getattr(r, 'returncode', 1) == 0 and all(p.exists() for p in outputs)
     n_var = n_sam = 0
     if ok:
         pv = out.with_suffix('.pvar')
         n_var = sum(1 for ln in open(pv) if not ln.startswith('#'))
         ps = out.with_suffix('.psam')
         n_sam = sum(1 for ln in open(ps) if not ln.startswith('#')) if ps.exists() else 0
+    else:
+        # Do not leave a partial fileset that a later non-forced run could mistake for a cache.
+        for partial in outputs:
+            partial.unlink(missing_ok=True)
     return ok, n_var, n_sam, (r.stderr or '')[-400:] if hasattr(r, 'stderr') else ''
 
 

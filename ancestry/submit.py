@@ -405,11 +405,16 @@ def build_plan(a, strata, chroms, site):
                        after=['score_merge'], cpus=4, mem='48G', time='06:00:00'))
 
     if a.ses:
+        ses_after = ['score_merge']
+        if not a.save_embeddings and not a.measurements:
+            # Without saved embeddings arm A falls back to the measured trait panel. When no
+            # site panel was supplied, that panel is produced asynchronously by traits_merge.
+            ses_after.append('traits_merge')
         P.append(Stage('ses', 'ses', base + ['--ses', a.ses]
                        + (['--ses-col', a.ses_col] if a.ses_col else [])
                        + (['--ses-name', a.ses_name] if a.ses_name else [])
                        + (['--ses-geography', a.ses_geography] if a.ses_geography else []),
-                       after=['score_merge'], cpus=8, mem='32G', time='04:00:00'))
+                       after=ses_after, cpus=8, mem='32G', time='04:00:00'))
 
     last = [s.name for s in P if s.name in ('loci', 'pgs', 'scan_aggregate', 'fairness', 'ses')]
     P.append(Stage('figures', 'figures', ['--results', a.results],

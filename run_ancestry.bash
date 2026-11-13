@@ -84,7 +84,13 @@ case $mode in
         ;;
 esac
 
-args=(--work "$work_folder" --results "$results_folder")
+# Pass only path flags the selected mode declares. In particular, `convert` and `traits` take
+# --work but not --results, while `figures` takes --results but not --work.
+case $mode in
+    convert|traits) args=(--work "$work_folder") ;;
+    figures)        args=(--results "$results_folder") ;;
+    *)              args=(--work "$work_folder" --results "$results_folder") ;;
+esac
 case $mode in
     all)      args+=(--run-name "$run_name" --device "$device" --batch-size "$batch_size"
                      --threads "$threads" --jobs "$jobs" --build "$build"
@@ -107,7 +113,7 @@ case $mode in
               [[ -n $statements ]] && args+=(--statements "$statements") ;;
     ses)      args+=(--ses "$ses") ;;
     package)  args+=(--run-name "$run_name") ;;
-    figures)  args=(--results "$results_folder") ;;
+    figures)  : ;;
     convert)  args+=(--vcf "$geno") ;;
     submit|validate|metrics|admixed|ensemble) : ;;
     *) echo "Invalid mode: $mode"; usage; exit 1 ;;

@@ -1,6 +1,8 @@
 """Regressions for identity, privacy, shard merge, and liftover review findings."""
 from pathlib import Path
 from types import SimpleNamespace
+import os
+import subprocess
 import sys
 
 import numpy as np
@@ -12,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 from ancestry import genotypes as GE  # noqa: E402
 from ancestry import geno_ops as GO  # noqa: E402
+from ancestry import convert as CV  # noqa: E402
 from ancestry import fairness as FA  # noqa: E402
 from ancestry import __main__ as AM  # noqa: E402
 from ancestry import loci as LO  # noqa: E402
@@ -237,6 +240,49 @@ def test_slurm_geno_stage_builds_shared_panel_once_and_keeps_all_strata():
     aggregate = next(stage for stage in scan_plan if stage.name == 'scan_aggregate')
     assert aggregate.after == ['scan']
     assert aggregate.args[-3:] == ['--chroms', '1', '2']
+
+
+def test_ses_waits_for_trait_fallback_when_embeddings_and_measurements_are_absent():
+    args = SimpleNamespace(
+        work='/work', results='/results', geno='/data/chr@', no_convert=True,
+        rfmix=['/data/rfmix.tsv'], ecg_meta=['/data/meta.csv'], reuse_prepared=None,
+        score_shards=2, save_embeddings=False, device='auto', batch_size=32,
+        measurements=None, trait_shards=2, jobs=2, build='grch38', chain=None,
+        threads=4, with_scan=False, scan_threads=2, labels=None, statements=None,
+        ses='/data/ses.csv', ses_col=None, ses_name=None, ses_geography=None,
+        run_name='TEST')
+    plan = SU.build_plan(args, ['EUR', 'AFR'], ['1'], {'gpu': False})
+    assert next(stage for stage in plan if stage.name == 'ses').after == [
+        'score_merge', 'traits_merge']
+
+
+def test_failed_forced_conversion_cannot_reuse_stale_outputs(tmp_path, monkeypatch):
+    out = tmp_path / 'pgen'
+    out.mkdir()
+    for suffix in ('.pgen', '.pvar', '.psam'):
+        (out / f'chr1{suffix}').write_text('stale\n')
+    monkeypatch.setattr(L, 'plink2', lambda: '/bin/false')
+    ok, _variants, _samples, _error = CV.convert_one(
+        tmp_path / 'source.vcf', '1', out, 1, False, False, [])
+    assert ok is False
+    assert not any((out / f'chr1{suffix}').exists()
+                   for suffix in ('.pgen', '.pvar', '.psam'))
+
+
+@pytest.mark.parametrize('mode', ['traits', 'convert'])
+def test_shell_wrapper_routes_only_supported_common_paths(mode, tmp_path):
+    stub = tmp_path / 'python'
+    stub.write_text('#!/bin/bash\nprintf "%s\\n" "$@"\n')
+    stub.chmod(0o755)
+    env = os.environ.copy()
+    env['PATH'] = f'{tmp_path}:{env.get("PATH", "/usr/bin:/bin")}'
+    result = subprocess.run(
+        ['bash', str(ROOT / 'run_ancestry.bash'), '--mode', mode], cwd=ROOT,
+        env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    forwarded = result.stdout.splitlines()
+    assert '--work' in forwarded
+    assert '--results' not in forwarded
 
 
 def test_matching_ignores_controls_with_missing_age():
