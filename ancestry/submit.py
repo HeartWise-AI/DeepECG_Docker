@@ -267,16 +267,18 @@ def resolve_site(a, d):
 
     # ---- the inputs the stages themselves require.  argparse inside the job would catch these,
     # but twelve hours later and after `afterok` has cancelled everything downstream.
-    if not a.reuse_prepared:
-        if not a.rfmix:
-            ask.append(_bullet('the RFMix ancestry file', '--rfmix <file> [file ...]',
-                               '`prepare` requires it; without it every one of the jobs below '
-                               'fails at argparse and afterok cancels the rest',
-                               'the per-patient RFMix Q/global-ancestry table'))
-        if not a.ecg_meta:
-            ask.append(_bullet('the ECG inventory', '--ecg-meta <file> [file ...]',
-                               '`prepare` requires it',
-                               'the parquet or CSV listing one row per ECG recording'))
+    # Reused arrays contain no participant identifiers. `prepare` must still rebuild the roster
+    # and genotype linkage from these two site tables, so --reuse-prepared does not replace them.
+    if not a.rfmix:
+        ask.append(_bullet('the RFMix ancestry file', '--rfmix <file> [file ...]',
+                           '`prepare` requires it; without it every one of the jobs below '
+                           'fails at argparse and afterok cancels the rest',
+                           'the per-patient RFMix Q/global-ancestry table'))
+    if not a.ecg_meta:
+        ask.append(_bullet('the ECG inventory', '--ecg-meta <file> [file ...]',
+                           '`prepare` requires it, including with --reuse-prepared because the '
+                           'reused arrays deliberately contain no participant identifiers',
+                           'the parquet or CSV listing one row per ECG recording'))
     if not a.geno:
         ask.append(_bullet('the genotypes', '--geno \'/data/chr@\'',
                            '`geno`, `loci`, `pgs` and `scan` all need them; @ stands for the '

@@ -75,6 +75,15 @@ def test_submit_refuses_to_guess_the_site_settings(tmp_path):
     assert not list(tmp_path.rglob('*.sbatch'))
 
 
+def test_submit_reuse_still_requires_roster_metadata(tmp_path):
+    out = run('submit', '--work', tmp_path / 'w', '--results', tmp_path / 'r',
+              '--reuse-prepared', tmp_path / 'prepared', '--geno', '/data/chr@',
+              '--launcher', 'none', '--no-account', '--no-partition', '--no-gpu', expect=1)
+    assert 'RFMix ancestry file' in out
+    assert 'ECG inventory' in out
+    assert not list(tmp_path.rglob('*.sbatch'))
+
+
 def test_submit_uses_shell_quoting_and_rejects_directive_injection(tmp_path):
     from ancestry import submit
 

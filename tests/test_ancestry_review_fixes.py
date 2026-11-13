@@ -239,6 +239,14 @@ def test_lowercase_rfmix_headers_become_canonical_roster_proportions():
     assert got.loc[0, 'AFR'] == pytest.approx(.8)
 
 
+def test_rfmix_reader_preserves_leading_zero_sample_ids(tmp_path):
+    path = tmp_path / 'rfmix.tsv'
+    path.write_text('Sample\tAFR\tEAS\tSAS\tEUR\n0007\t0.1\t0.0\t0.0\t0.9\n')
+    got = PE.build_rfmix_table([path], [1], 'Sample',
+                               ['AFR', 'EAS', 'SAS', 'EUR'], .7, 'auto')
+    assert got.loc[0, 'Sample'] == '0007'
+
+
 def test_admixed_exclusion_counts_are_masked_and_audited(tmp_path):
     raw = {'n_admixed_excluded': 3,
            'coverage': {'n_admixed_excluded_from_genetic_split': 3}}

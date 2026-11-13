@@ -168,7 +168,7 @@ def build_rfmix_table(paths, batch_ids, sample_col, ancestries, threshold, sep):
     parts = []
     for p, bid in zip(paths, batch_ids):
         use = _sniff(p) if sep in (None, 'auto') else sep
-        d = pd.read_csv(p, sep=use)
+        d = pd.read_csv(p, sep=use, dtype={sample_col: str})
         missing = [c for c in [sample_col, *ancestries] if c not in d.columns]
         if missing:
             raise ValueError(f"{p}: missing columns {missing} (have {list(d.columns)[:8]}...)")
