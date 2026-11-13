@@ -95,7 +95,7 @@ def lift_panel(ref, work, build, chain):
     argv = sys.argv
     try:
         sys.argv = ['liftover_min.py', str(chain), str(src), str(out),
-                    '--chr-col', 'CHR', '--pos-col', 'POS']
+                    '--chr-col', 'CHR', '--pos-col', 'POS', '--allele-cols', 'A1', 'A0']
         runpy.run_path(str(HERE / 'vendor' / 'liftover_min.py'), run_name='__main__')
     except SystemExit as e:
         if e.code:
@@ -221,7 +221,7 @@ def main():
     # which of ours the site actually has, and in which orientation
     bim['CHR'] = bim.chrom.astype(str).str.replace('chr', '', regex=False)
     M = V.merge(bim.rename(columns={'pos': 'POS'}), on=['CHR', 'POS'], how='left')
-    M['sign'] = L.allele_sign(M.a1.str.upper(), M.a2.str.upper(), M.OUR_A1.str.upper())
+    M['sign'] = L.allele_sign(M.a1, M.a2, M.OUR_A1, M.OUR_A0)
     cov = pd.DataFrame([
         dict(set=s,
              wanted=int((V.SET.str.contains(s)).sum()),

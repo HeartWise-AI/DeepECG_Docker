@@ -118,7 +118,7 @@ def run_stratum(st, work, ref, leads, build, threads, unrelated_only=True, permu
                        'N_SITE']].rename(columns={'A1': 'SITE_A1'}),
                     on=['CHR', 'POS'], how='left', suffixes=('', '_site'))
     other = np.where(M.SITE_A1 == M.ALT, M.REF, M.ALT)
-    M['sign'] = L.allele_sign(M.SITE_A1, other, M.A1)
+    M['sign'] = L.allele_sign(M.SITE_A1, other, M.A1, M.A0)
     M['site_beta'] = M.BETA * M.sign
     M['site_freq'] = np.where(M.sign > 0, M.FREQ_SITE, 1 - M.FREQ_SITE)
     M['status'] = np.where(M.BETA.isna(), 'absent',

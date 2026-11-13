@@ -52,7 +52,7 @@ def load_chains(path, chroms=None):
 
 
 def lift(chains, chrom, pos):
-    """(qChrom, qPos1, n_alternatives) or (None, None, 0).  pos is 1-based."""
+    """(qChrom, qPos1, n_alternatives, qStrand); pos is 1-based."""
     p0 = pos - 1
     hits = []
     for score, t_start, t_end, q_name, q_size, q_strand, q_start, blocks in chains.get(chrom, []):
@@ -64,15 +64,24 @@ def lift(chains, chrom, pos):
                 r = q + (p0 - t)
                 if q_strand == '-':
                     r = q_size - 1 - r
-                hits.append((score, q_name[3:] if q_name.startswith('chr') else q_name, r + 1))
+                hits.append((score, q_name[3:] if q_name.startswith('chr') else q_name,
+                             r + 1, q_strand))
                 break
             t += size + dt
             q += size + dq
     if not hits:
-        return None, None, 0
+        return None, None, 0, None
     hits.sort(key=lambda h: -h[0])
-    distinct = {(h[1], h[2]) for h in hits}
-    return hits[0][1], hits[0][2], len(distinct) - 1
+    distinct = {(h[1], h[2], h[3]) for h in hits}
+    return hits[0][1], hits[0][2], len(distinct) - 1, hits[0][3]
+
+
+def reverse_complement(allele):
+    """Reverse-complement a DNA allele; refuse symbolic alleles that cannot be oriented."""
+    allele = str(allele).upper()
+    if not allele or set(allele) - set('ACGTN'):
+        raise SystemExit(f'cannot reverse-complement non-DNA allele {allele!r}')
+    return allele.translate(str.maketrans('ACGTN', 'TGCAN'))[::-1]
 
 
 def main():
@@ -82,12 +91,18 @@ def main():
     ap.add_argument('outfile')
     ap.add_argument('--chr-col', default='CHR')
     ap.add_argument('--pos-col', default='POS')
+    ap.add_argument('--allele-cols', nargs='*', default=[],
+                    help='allele columns to reverse-complement on negative-strand mappings')
     ap.add_argument('--sep', default='\t')
     a = ap.parse_args()
 
     rows = Path(a.infile).read_text().rstrip('\n').split('\n')
     head = rows[0].split(a.sep)
     ci, pi = head.index(a.chr_col), head.index(a.pos_col)
+    try:
+        allele_indices = [head.index(column) for column in a.allele_cols]
+    except ValueError as e:
+        raise SystemExit(f'allele column not found: {e}') from e
     want = {r.split(a.sep)[ci].lower().replace('chr', '') for r in rows[1:]}
     chains = load_chains(a.chain, want)
     print(f'chains loaded for {len(chains)} chromosomes')
@@ -97,13 +112,16 @@ def main():
     for r in rows[1:]:
         f = r.split(a.sep)
         c = f[ci].lower().replace('chr', '')
-        qc, qp, alt = lift(chains, c, int(f[pi]))
+        qc, qp, alt, strand = lift(chains, c, int(f[pi]))
         if qc is None:
             out.append(a.sep.join(f + ['NA', 'NA']))
             continue
         n_ok += 1
         n_amb += alt > 0
         n_cross += qc != c
+        if strand == '-':
+            for i in allele_indices:
+                f[i] = reverse_complement(f[i])
         out.append(a.sep.join(f + [qc, str(qp)]))
     Path(a.outfile).write_text('\n'.join(out) + '\n')
     n = len(rows) - 1

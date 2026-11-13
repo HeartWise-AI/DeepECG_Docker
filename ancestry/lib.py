@@ -134,11 +134,13 @@ def partial(y, x, C, add_const=True):
         return dict(n=int(n), beta_sd=np.nan, se=np.nan, p=np.nan, partial_r=np.nan,
                     delta_r2=np.nan, r2_base=np.nan)
     D = np.column_stack([np.ones(n), C]) if add_const else C
-    Q, _ = np.linalg.qr(D)
-    ry = y - Q @ (Q.T @ y)
-    rx = x - Q @ (Q.T @ x)
-    k = D.shape[1]
-    df = n - k - 1
+    # SVD-backed least squares projects onto the actual column space.  An unpivoted QR returns
+    # one Q column per input column even when sex is constant or two PCs/covariates are redundant,
+    # which removes arbitrary directions that are not in the covariate space.
+    coef, _, rank, _ = np.linalg.lstsq(D, np.column_stack([y, x]), rcond=None)
+    adjusted = np.column_stack([y, x]) - D @ coef
+    ry, rx = adjusted[:, 0], adjusted[:, 1]
+    df = n - int(rank) - 1
     sx = np.std(rx)
     if sx == 0 or df <= 0:
         return dict(n=int(n), beta_sd=np.nan, se=np.nan, p=np.nan, partial_r=np.nan,
@@ -425,16 +427,20 @@ def boot_ci(stat_fn, n, n_boot=1000, seed=2000, clusters=None):
 
 
 # --------------------------------------------------------------------------------- alleles
-def allele_sign(site_a1, site_a2, want_a1):
-    """+1 if the site counts our effect allele, -1 if it counts the other, NaN if neither.
+def allele_sign(site_a1, site_a2, want_a1, want_a2):
+    """+1 for the expected allele pair, -1 for its reverse, NaN for a different variant.
 
     NaN rather than a guess. A site whose alleles match ours as a pair in neither orientation is a
     strand ambiguity or a multi-allelic collapse, and there is no safe inference from a position
     and two letters; such a variant is dropped and counted in the report.
     """
-    a1 = np.asarray(site_a1, dtype=object); a2 = np.asarray(site_a2, dtype=object)
-    w = np.asarray(want_a1, dtype=object)
-    return np.where(a1 == w, 1.0, np.where(a2 == w, -1.0, np.nan))
+    a1 = np.char.upper(np.asarray(site_a1, dtype=str))
+    a2 = np.char.upper(np.asarray(site_a2, dtype=str))
+    w1 = np.char.upper(np.asarray(want_a1, dtype=str))
+    w2 = np.char.upper(np.asarray(want_a2, dtype=str))
+    same = (a1 == w1) & (a2 == w2)
+    flipped = (a1 == w2) & (a2 == w1)
+    return np.where(same, 1.0, np.where(flipped, -1.0, np.nan))
 
 
 def key_sorted(chrom, pos, a1, a2):

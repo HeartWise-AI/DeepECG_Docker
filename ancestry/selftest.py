@@ -364,9 +364,11 @@ def t2_arithmetic(R, rng):
     R.add('T2b RINT is normal and rank-preserving',
           abs(np.mean(z)) < 0.1 and abs(np.std(z) - 1) < 0.1,
           f'mean {np.mean(z):.3f}, sd {np.std(z):.3f}')
-    s = L.allele_sign(['A', 'T', 'G'], ['G', 'A', 'C'], ['A', 'A', 'A'])
-    R.add('T2c allele harmonisation', list(s[:2]) == [1.0, -1.0] and not np.isfinite(s[2]),
-          'same=+1, flipped=-1, unresolvable=NaN (dropped, never guessed)')
+    s = L.allele_sign(['A', 'T', 'G', 'A'], ['G', 'A', 'C', 'G'],
+                      ['A', 'A', 'A', 'A'], ['G', 'T', 'T', 'C'])
+    R.add('T2c allele harmonisation', list(s[:2]) == [1.0, -1.0]
+          and not np.isfinite(s[2:]).any(),
+          'same=+1, flipped=-1, wrong pair/unresolvable=NaN (dropped, never guessed)')
     # clumping: two variants in perfect LD plus one independent
     g = rng.binomial(2, 0.3, 500).astype(float)
     D = np.vstack([g, g, rng.binomial(2, 0.3, 500).astype(float)])

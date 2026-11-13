@@ -82,19 +82,24 @@ NDEC = 10
 
 
 # ------------------------------------------------------------------------------ weight files
-def site_weights(V, chrom, pos, allele, beta, name, out):
+def site_weights(V, chrom, pos, allele, other_allele, beta, name, out):
     """A plink2 --score weight file keyed on the SITE's own variant ids.
 
     Our tables are keyed on position; the site's bim is keyed on whatever its imputation server
     wrote. `variant_map.csv` holds the join, so the weight file is built against ids that exist in
     the bim rather than against ids we hope exist.
     """
-    W = pd.DataFrame({'CHR': pd.Series(chrom).astype(str).str.replace('chr', '', regex=False),
-                      'POS': pd.to_numeric(pos, errors='coerce').astype('Int64'),
-                      'A1': pd.Series(allele).astype(str).str.upper(),
-                      'BETA': pd.to_numeric(beta, errors='coerce')})
+    # Convert every grouped Series to a positional array first.  Group indices are inherited
+    # from the full weight table and are non-contiguous; mixing those indices with a freshly
+    # derived NumPy `other_allele` array makes pandas align unrelated rows and inject NaNs.
+    W = pd.DataFrame({
+        'CHR': pd.Series(np.asarray(chrom)).astype(str).str.replace('chr', '', regex=False),
+        'POS': pd.to_numeric(pd.Series(np.asarray(pos)), errors='coerce').astype('Int64'),
+        'A1': pd.Series(np.asarray(allele)).astype(str).str.upper(),
+        'A0': pd.Series(np.asarray(other_allele)).astype(str).str.upper(),
+        'BETA': pd.to_numeric(pd.Series(np.asarray(beta)), errors='coerce')})
     M = W.merge(V[['CHR', 'POS', 'vid', 'a1', 'a2']], on=['CHR', 'POS'], how='inner')
-    ok = L.allele_sign(M.a1.str.upper(), M.a2.str.upper(), M.A1)
+    ok = L.allele_sign(M.a1, M.a2, M.A1, M.A0)
     M = M[np.isfinite(ok)]
     M[['vid', 'A1', 'BETA']].rename(columns={'vid': 'ID'}).to_csv(out, sep='\t', index=False)
     return len(M), len(W)
@@ -157,7 +162,10 @@ def trait_arm(st, d, V, ref, work, keep, meas, rows, dec_rows, threads, build='g
     scores = {}
     for tr, g in PW.groupby('trait'):
         f = wdir / f'w_{tr}.tsv'
-        n_ok, n_all = site_weights(V, g.CHR, g.POS, g.RISK_ALLELE, g.BETA, tr, f)
+        other = np.where(g.PANEL_A1.str.upper() == g.RISK_ALLELE.str.upper(),
+                         g.PANEL_A2, g.PANEL_A1)
+        n_ok, n_all = site_weights(V, g.CHR, g.POS, g.RISK_ALLELE, other,
+                                   g.BETA, tr, f)
         if n_ok < 5:
             rows.append(dict(stratum=st, trait=tr, arm='scored', n_variants=n_ok,
                              n_variants_published=n_all, note='too few variants present'))
@@ -288,7 +296,7 @@ def ancestry_arm(st, d, V, ref, work, keep, threads, clump_r2, clump_kb, build='
     AW = pd.read_csv(f, sep='\t', dtype={'CHR': str})
     wdir = Path(work) / 'geno' / st / 'pgs'; wdir.mkdir(exist_ok=True, parents=True)
     M = AW.merge(V[['CHR', 'POS', 'vid', 'a1', 'a2']], on=['CHR', 'POS'], how='inner')
-    sgn = L.allele_sign(M.a1.str.upper(), M.a2.str.upper(), M.A1.str.upper())
+    sgn = L.allele_sign(M.a1, M.a2, M.A1, M.A0)
     M = M[np.isfinite(sgn)].copy()
     if len(M) < 100:
         return [], [], dict(note=f'only {len(M)} ancestry-PGS variants usable here')

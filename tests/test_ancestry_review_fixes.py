@@ -14,6 +14,7 @@ from ancestry import genotypes as GE  # noqa: E402
 from ancestry import geno_ops as GO  # noqa: E402
 from ancestry import fairness as FA  # noqa: E402
 from ancestry import loci as LO  # noqa: E402
+from ancestry import lib as L  # noqa: E402
 from ancestry import pgs as PG  # noqa: E402
 from ancestry import prepare as PR  # noqa: E402
 from ancestry import prepare_external as PE  # noqa: E402
@@ -21,6 +22,7 @@ from ancestry import privacy as PV  # noqa: E402
 from ancestry import score as SC  # noqa: E402
 from ancestry import submit as SU  # noqa: E402
 from ancestry.vendor import gwas_aggregate as GA  # noqa: E402
+from ancestry.vendor import liftover_min as LM  # noqa: E402
 
 
 def _alignment_fixture(tmp_path, monkeypatch, source_rows=True):
@@ -243,3 +245,51 @@ def test_permuted_pheno_preserves_leading_zero_sample_ids(tmp_path):
     assert got['#FID'].tolist() == ['0001', '0002']
     assert got.IID.tolist() == ['0007', '0008']
     assert set(got.pheno) == {'0.1', '0.2'}
+
+
+def test_allele_matching_requires_the_complete_reference_pair():
+    got = L.allele_sign(['A', 'A', 'C'], ['C', 'G', 'A'],
+                        ['A', 'A', 'A'], ['C', 'C', 'C'])
+    assert got[0] == 1
+    assert np.isnan(got[1])
+    assert got[2] == -1
+
+
+def test_partial_regression_ignores_redundant_covariate_columns():
+    rng = np.random.default_rng(42)
+    covariate = rng.normal(size=200)
+    x = rng.normal(size=200)
+    y = .4 * x + .8 * covariate + rng.normal(size=200)
+    base = L.partial(y, x, covariate)
+    redundant = L.partial(y, x, np.column_stack([
+        covariate, covariate, np.ones(len(covariate))]))
+    for key in ('beta_sd', 'se', 'p', 'partial_r', 'delta_r2', 'r2_base'):
+        assert redundant[key] == pytest.approx(base[key])
+
+
+def test_negative_strand_liftover_reverse_complements_panel_alleles(tmp_path, monkeypatch):
+    chain = tmp_path / 'negative.chain'
+    chain.write_text('chain 100 chr1 1000 + 100 110 chr1 1000 - 200 210 1\n10\n')
+    source = tmp_path / 'panel.tsv'
+    source.write_text('CHR\tPOS\tA1\tA0\n1\t101\tA\tC\n')
+    output = tmp_path / 'lifted.tsv'
+    monkeypatch.setattr(sys, 'argv', [
+        'liftover_min.py', str(chain), str(source), str(output),
+        '--allele-cols', 'A1', 'A0'])
+    LM.main()
+    got = pd.read_csv(output, sep='\t', dtype=str)
+    assert got[['CHR37', 'POS37', 'A1', 'A0']].iloc[0].to_dict() == {
+        'CHR37': '1', 'POS37': '800', 'A1': 'T', 'A0': 'G'}
+
+
+def test_trait_weight_builder_uses_position_not_grouped_series_index(tmp_path):
+    idx = [4, 8]
+    variants = pd.DataFrame({'CHR': ['1', '1'], 'POS': [100, 200],
+                             'vid': ['v1', 'v2'], 'a1': ['A', 'G'], 'a2': ['C', 'T']})
+    output = tmp_path / 'weights.tsv'
+    kept, published = PG.site_weights(
+        variants, pd.Series(['1', '1'], index=idx), pd.Series([100, 200], index=idx),
+        pd.Series(['A', 'G'], index=idx), np.array(['C', 'T']),
+        pd.Series([.1, .2], index=idx), 'trait', output)
+    assert (kept, published) == (2, 2)
+    assert pd.read_csv(output, sep='\t').ID.tolist() == ['v1', 'v2']
