@@ -15,6 +15,8 @@ from ancestry import geno_ops as GO  # noqa: E402
 from ancestry import fairness as FA  # noqa: E402
 from ancestry import loci as LO  # noqa: E402
 from ancestry import lib as L  # noqa: E402
+from ancestry import metrics as ME  # noqa: E402
+from ancestry import package as PA  # noqa: E402
 from ancestry import pgs as PG  # noqa: E402
 from ancestry import prepare as PR  # noqa: E402
 from ancestry import prepare_external as PE  # noqa: E402
@@ -307,6 +309,58 @@ def test_mediation_uses_complete_cases_and_a_common_predictor_scale():
     assert base['n'] == adjusted['n'] == n - 1
     assert base['beta_sd'] == pytest.approx(raw_base * x_scale)
     assert adjusted['beta_sd'] == pytest.approx(raw_adjusted * x_scale)
+
+
+def test_ses_probe_predictions_remain_aligned_when_a_measurement_is_missing():
+    rng = np.random.default_rng(8)
+    y = np.array([0] * 25 + [1] * 25)
+    features = np.column_stack([y + rng.normal(size=50), rng.normal(size=50)])
+    features[7, 0] = np.nan
+    _auroc, predictions, n = SES.cv_probe(features, y)
+    assert n == 49
+    assert len(predictions) == len(y)
+    assert np.isnan(predictions[7])
+    assert np.isfinite(np.delete(predictions, 7)).all()
+
+
+def test_per_cohort_calibration_enforces_the_privacy_bin_floor(tmp_path, monkeypatch):
+    y = np.tile(np.array([0] * 20 + [1] * 20), 2)
+    scores = np.linspace(.01, .99, len(y))
+    cohort = np.array(['A'] * 40 + ['B'] * 40)
+    seen = []
+    original = ME._calibration_bins
+
+    def recording_bins(labels, predictions, n_bins=10, min_bin=0):
+        seen.append(min_bin)
+        return original(labels, predictions, n_bins=n_bins, min_bin=min_bin)
+
+    monkeypatch.setattr(ME, '_calibration_bins', recording_bins)
+    output = tmp_path / 'per_cohort.png'
+    assert ME.per_cohort_figure(y, scores, cohort, {'curves': {}}, output,
+                                min_bin=1) == output
+    assert seen == [PV.MIN_PER_CLASS, PV.MIN_PER_CLASS]
+
+
+def test_package_summary_uses_fixed_panel_as_the_pgs_headline(tmp_path):
+    res, ref = tmp_path / 'results', tmp_path / 'reference'
+    (res / 'pgs').mkdir(parents=True)
+    ref.mkdir()
+    (ref / 'discovery_reference.json').write_text(__import__('json').dumps({
+        'external_prior': {},
+        'ancestry_pgs': {'loo_beta_per_sd': .1, 'loo_delta_r2_pct': {}}}))
+    pd.DataFrame([{'arm': 'scored'}]).to_csv(res / 'pgs' / 'trait_pgs.csv', index=False)
+    pd.DataFrame([
+        {'arm': 'fixed_panel', 'stratum': 'EUR', 'n': 100, 'n_variants': 8,
+         'beta_sd': .123, 'se': .01, 'p': .001, 'delta_r2': .02},
+        {'arm': 'clumped', 'stratum': 'EUR', 'p_threshold': 1.0, 'n': 100,
+         'n_variants': 7, 'beta_sd': 9.999, 'se': .02, 'p': .002, 'delta_r2': .03},
+    ]).to_csv(res / 'pgs' / 'ancestry_pgs.csv', index=False)
+    summary = PA.summary_md(res, ref, 'TEST')
+    headline = summary.split('### 3b. The ancestry-score PGS', 1)[1].split(
+        '### 3c. Site-clumped sensitivity analysis', 1)[0]
+    sensitivity = summary.split('### 3c. Site-clumped sensitivity analysis', 1)[1]
+    assert '0.123' in headline and '9.999' not in headline
+    assert '9.999' in sensitivity
 
 
 def test_negative_strand_liftover_reverse_complements_panel_alleles(tmp_path, monkeypatch):

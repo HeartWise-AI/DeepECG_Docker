@@ -29,7 +29,6 @@ from sklearn.metrics import (
     accuracy_score, average_precision_score, roc_auc_score,
     precision_recall_curve, roc_curve, brier_score_loss,
 )
-from sklearn.calibration import calibration_curve
 
 from ancestry import infer as infer_lib
 from ancestry import lib as L
@@ -181,7 +180,8 @@ _COHORT_COL = {"UKB": "#0072B2", "MHI": "#E69F00", "CLSA": "#009E73"}
 _FALLBACK = ["#CC79A7", "#56B4E9", "#D55E00", "#000000", "#882255"]
 
 
-def per_cohort_figure(y, s, cohort, ref, out_png, run_name="This run"):
+def per_cohort_figure(y, s, cohort, ref, out_png, run_name="This run",
+                      min_bin=PV.MIN_PER_CLASS):
     """1x3 (PR | ROC | Calibration) with one line per cohort. Solid = this run,
     dotted = our baked-in reference for that cohort (if present). Aggregate-only."""
     groups = [g for g in sorted(set(cohort))
@@ -198,7 +198,11 @@ def per_cohort_figure(y, s, cohort, ref, out_png, run_name="This run"):
         col = _COHORT_COL.get(g, _FALLBACK[i % len(_FALLBACK)])
         prec, rec, _ = precision_recall_curve(yg, sg)
         fpr, tpr, _ = roc_curve(yg, sg)
-        fpos, mpred = calibration_curve(yg, sg, n_bins=10, strategy="uniform")
+        # A reliability point exposes the mean prediction and binary-label fraction of its bin.
+        # Apply the same disclosure floor as the overall calibration plot; cohort-level class
+        # size alone does not stop a tail bin from containing a single participant.
+        fpos, mpred = _calibration_bins(yg, sg, n_bins=10,
+                                        min_bin=max(min_bin, PV.MIN_PER_CLASS))
         axes[0].step(rec, prec, where="post", color=col, lw=1.8,
                      label=f"{g} (AUPRC={average_precision_score(yg, sg):.3f})")
         axes[1].plot(fpr, tpr, color=col, lw=1.8,
@@ -218,7 +222,8 @@ def per_cohort_figure(y, s, cohort, ref, out_png, run_name="This run"):
     axes[1].legend(fontsize=8, loc="lower right")
     axes[2].plot([0, 1], [0, 1], color="gray", ls=":")
     axes[2].set(xlabel="Mean predicted P(non-EUR)", ylabel="Observed fraction non-EUR",
-                title="Calibration (per cohort)", xlim=(0, 1), ylim=(0, 1))
+                title=f"Calibration (per cohort; bins n >= {max(min_bin, PV.MIN_PER_CLASS)})",
+                xlim=(0, 1), ylim=(0, 1))
     axes[2].legend(fontsize=8, loc="upper left")
     fig.suptitle(f"{run_name}: per-cohort curves (solid = this run, dotted = reference)",
                  y=1.02, fontweight="bold")
@@ -347,7 +352,7 @@ def main():
     figs.append("score_distribution.png/.pdf")
     if cohort is not None and per_cohort_figure(
             y, p_ens, cohort, ref, str(out / "per_cohort_curves.png"),
-            run_name=args.run_name):
+            run_name=args.run_name, min_bin=max(args.min_n, PV.MIN_PER_CLASS)):
         figs.append("per_cohort_curves.png/.pdf (>=2 evaluable cohorts)")
 
     o = result["overall"]

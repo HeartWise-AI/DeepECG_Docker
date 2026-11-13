@@ -363,17 +363,22 @@ def cv_probe(X, y, groups=None, n_fold=NFOLD, seed=SEED):
     from sklearn.model_selection import StratifiedKFold
     X = np.asarray(X, float); y = np.asarray(y, int)
     ok = np.isfinite(X).all(axis=1) & np.isfinite(y)
-    X, y = X[ok], y[ok]
-    if min(int((y == 1).sum()), int((y == 0).sum())) < max(PV.MIN_PER_CLASS, n_fold):
-        return np.nan, None, int(len(y))
-    oof = np.full(len(y), np.nan)
-    for tr, te in StratifiedKFold(n_fold, shuffle=True, random_state=seed).split(X, y):
-        mu, sd = X[tr].mean(0), X[tr].std(0)
+    Xc, yc = X[ok], y[ok]
+    if min(int((yc == 1).sum()), int((yc == 0).sum())) < max(PV.MIN_PER_CLASS, n_fold):
+        return np.nan, None, int(len(yc))
+    complete = np.full(len(yc), np.nan)
+    for tr, te in StratifiedKFold(n_fold, shuffle=True, random_state=seed).split(Xc, yc):
+        mu, sd = Xc[tr].mean(0), Xc[tr].std(0)
         sd[sd == 0] = 1.0
         m = LogisticRegression(max_iter=2000, C=1.0)
-        m.fit((X[tr] - mu) / sd, y[tr])
-        oof[te] = m.predict_proba((X[te] - mu) / sd)[:, 1]
-    return L.auroc(y, oof), oof, int(len(y))
+        m.fit((Xc[tr] - mu) / sd, yc[tr])
+        complete[te] = m.predict_proba((Xc[te] - mu) / sd)[:, 1]
+    # Preserve the caller's row space.  arm_a combines fold predictions and applies the same
+    # finite mask to its labels; returning only complete cases makes that mask shorter than the
+    # original label vector whenever a measured ECG trait is missing.
+    oof = np.full(len(y), np.nan)
+    oof[ok] = complete
+    return L.auroc(yc, complete), oof, int(len(yc))
 
 
 # ----------------------------------------------------------------------------- matching

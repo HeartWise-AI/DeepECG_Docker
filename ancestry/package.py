@@ -204,11 +204,28 @@ def summary_md(res, ref, run_name):
                            'should be read as such.\n')
         A = tbl('pgs/ancestry_pgs.csv')
         if A is not None and 'beta_sd' in A.columns:
-            B = A[A.p_threshold == 1.0] if 'p_threshold' in A.columns else A
+            if 'arm' in A.columns:
+                B = A[A.arm == 'fixed_panel']
+            else:
+                # Compatibility with results made before the fixed-panel arm was named.
+                B = A[A.p_threshold == 1.0] if 'p_threshold' in A.columns else A
             out.append('### 3b. The ancestry-score PGS\n')
             out.append(B[[c for c in ['stratum', 'n', 'n_variants', 'beta_sd', 'se', 'p',
                                       'delta_r2'] if c in B.columns]].to_markdown(index=False)
                        + '\n')
+            if 'arm' in A.columns and (A.arm == 'clumped').any():
+                sensitivity = A[A.arm == 'clumped']
+                if 'p_threshold' in sensitivity.columns:
+                    broad = sensitivity.p_threshold == 1.0
+                    sensitivity = sensitivity[broad] if broad.any() else sensitivity
+                out.append('### 3c. Site-clumped sensitivity analysis\n')
+                out.append('The fixed panel above is the primary cross-site result. These rows '
+                           'use variants selected in this site and are sensitivity analyses, not '
+                           'the headline instrument.\n')
+                out.append(sensitivity[[c for c in ['stratum', 'p_threshold', 'n',
+                                                     'n_variants', 'beta_sd', 'se', 'p',
+                                                     'delta_r2'] if c in sensitivity.columns]
+                           ].to_markdown(index=False) + '\n')
             lo = R['ancestry_pgs'].get('loo_delta_r2_pct') or {}
             out.append(f'Discovery, leave-one-cohort-out: beta '
                        f'{R["ancestry_pgs"].get("loo_beta_per_sd")}, incremental R^2 '
