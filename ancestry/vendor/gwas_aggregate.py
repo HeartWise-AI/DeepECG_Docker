@@ -131,6 +131,18 @@ def md5(p, chunk=1 << 20):
     return h.hexdigest()
 
 
+def matching_allele_rows(rows, a1, a0):
+    """Return only variants whose complete REF/ALT pair matches the discovery pair."""
+    if isinstance(rows, pd.Series):
+        rows = rows.to_frame().T
+    if not {'REF', 'ALT'} <= set(rows.columns):
+        return rows.iloc[0:0]
+    expected = {str(a1).upper(), str(a0).upper()}
+    ref = rows.REF.astype(str).str.upper()
+    alt = rows.ALT.astype(str).str.upper()
+    return rows[(ref.isin(expected)) & (alt.isin(expected)) & (ref != alt)]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--glm', required=True,
@@ -150,7 +162,7 @@ def main():
 
     # Kept whole, so a lead can be told apart from a lead that failed QC: "absent from the
     # release" and "imputed badly here" are different facts and the figure reports them apart.
-    d_all = d[['CHROM', 'POS']].copy()
+    d_all = d[[c for c in ('CHROM', 'POS', 'REF', 'ALT') if c in d.columns]].copy()
 
     qc = {}
     if 'A1_FREQ' in d.columns and a.maf > 0:
@@ -219,20 +231,28 @@ def main():
     # shown beside the lead scatter until it is understood.
     L = pd.read_csv(Path(a.ref) / f'leads_{a.build}.tsv', sep='\t')
     key = d.set_index(['CHROM', 'POS'])
-    in_rel = set(zip(d_all.CHROM.astype(int), d_all.POS.astype(int)))
+    release_key = d_all.set_index(['CHROM', 'POS'])
     rows = []
     for r in L.itertuples():
         cp = (int(r.CHR), int(r.POS))
         try:
+            in_release = len(matching_allele_rows(release_key.loc[cp], r.A1, r.A0)) > 0
+        except KeyError:
+            in_release = False
+        try:
             hit = key.loc[cp]
         except KeyError:
             rows.append({'KEY': r.KEY, 'CHR': r.CHR, 'POS': r.POS, 'found': False,
-                         'in_release': cp in in_rel, 'nearest_gene': r.NEAREST_GENE})
+                         'in_release': in_release, 'nearest_gene': r.NEAREST_GENE})
             continue
-        if isinstance(hit, pd.DataFrame):      # several alleles at one position
-            hit = hit.iloc[hit.P.values.argmin()]
+        hit = matching_allele_rows(hit, r.A1, r.A0)
+        if not len(hit):
+            rows.append({'KEY': r.KEY, 'CHR': r.CHR, 'POS': r.POS, 'found': False,
+                         'in_release': in_release, 'nearest_gene': r.NEAREST_GENE})
+            continue
+        hit = hit.iloc[hit.P.astype(float).values.argmin()]
         rows.append({'KEY': r.KEY, 'CHR': r.CHR, 'POS': r.POS, 'found': True,
-                     'in_release': True,
+                     'in_release': in_release,
                      'A1': hit.get('A1'), 'discovery_A1': r.A1, 'discovery_beta': r.BETA,
                      'beta': hit.BETA, 'se': hit.SE, 'p': hit.P,
                      'a1_freq': hit.get('A1_FREQ'), 'nearest_gene': r.NEAREST_GENE})

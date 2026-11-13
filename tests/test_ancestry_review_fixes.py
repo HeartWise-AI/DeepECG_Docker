@@ -373,6 +373,34 @@ def test_failed_panel_extraction_cannot_reuse_a_stale_bed_trio(tmp_path, monkeyp
                    for suffix in ('.bed', '.bim', '.fam'))
 
 
+def test_scan_lead_lookup_requires_the_complete_discovery_allele_pair():
+    hits = pd.DataFrame({
+        'REF': ['A', 'A'], 'ALT': ['C', 'G'], 'A1': ['C', 'G'],
+        'P': [0.2, 1e-12], 'BETA': [0.1, 9.9]})
+    got = GA.matching_allele_rows(hits, 'C', 'A')
+    assert len(got) == 1
+    assert got.iloc[0].ALT == 'C'
+    assert got.iloc[0].BETA == pytest.approx(0.1)
+
+
+def test_failed_clump_cannot_reuse_a_stale_result(tmp_path, monkeypatch):
+    assoc = tmp_path / 'assoc.tsv'
+    pd.DataFrame({'CHR': [1], 'POS': [123], 'SNP': ['current'], 'P': [0.01]}).to_csv(
+        assoc, sep='\t', index=False)
+    prefix = tmp_path / 'anc_clump'
+    stale = Path(f'{prefix}.clumps')
+    stale.write_text('ID\nold\n')
+    failed = SimpleNamespace(returncode=1, stdout='', stderr='failed')
+    monkeypatch.setattr(GO.L, 'sh', lambda *args, **kwargs: failed)
+    monkeypatch.setattr(GO, 'plink1', lambda: None)
+
+    kept, method = GO.clump('geno', assoc, prefix)
+
+    assert kept == ['current']
+    assert method.startswith('distance only')
+    assert not stale.exists()
+
+
 @pytest.mark.parametrize('mode', ['traits', 'convert'])
 def test_shell_wrapper_routes_only_supported_common_paths(mode, tmp_path):
     stub = tmp_path / 'python'

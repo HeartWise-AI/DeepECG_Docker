@@ -426,26 +426,30 @@ def clump(bfile, assoc_file, out_prefix, p1=1.0, r2=0.1, kb=500, threads=4):
     """
     args = ['--bfile', str(bfile), '--clump', str(assoc_file),
             '--clump-p1', str(p1), '--clump-r2', str(r2), '--clump-kb', str(kb)]
+    f = Path(f'{out_prefix}.clumps')
+    f.unlink(missing_ok=True)
     try:
         cmd = [L.plink2(), *args, '--clump-field', 'P', '--clump-id-field', 'SNP',
                '--out', str(out_prefix), '--threads', str(threads)]
         r = L.sh(cmd, check=False)
-        f = Path(f'{out_prefix}.clumps')
-        if f.exists():
+        if getattr(r, 'returncode', 1) == 0 and f.exists():
             d = pd.read_csv(f, sep=r'\s+')
             return d['ID'].astype(str).tolist(), 'plink2 --clump'
     except SystemExit:
         pass
+    f.unlink(missing_ok=True)
     p1bin = plink1()
     if p1bin:
+        f = Path(f'{out_prefix}.clumped')
+        f.unlink(missing_ok=True)
         cmd = [p1bin, '--bfile', str(bfile), '--clump', str(assoc_file), '--clump-p1', str(p1),
                '--clump-r2', str(r2), '--clump-kb', str(kb), '--clump-field', 'P',
                '--clump-snp-field', 'SNP', '--out', str(out_prefix), '--threads', str(threads)]
         r = L.sh(cmd, check=False)
-        f = Path(f'{out_prefix}.clumped')
-        if f.exists():
+        if getattr(r, 'returncode', 1) == 0 and f.exists():
             d = pd.read_csv(f, sep=r'\s+')
             return d['SNP'].astype(str).tolist(), 'plink1.9 --clump'
+        f.unlink(missing_ok=True)
     # distance only: keep the most significant variant per `kb` window, no LD at all
     A = pd.read_csv(assoc_file, sep=r'\s+')
     A = A.sort_values('P')
