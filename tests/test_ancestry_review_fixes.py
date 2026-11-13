@@ -256,6 +256,37 @@ def test_ses_waits_for_trait_fallback_when_embeddings_and_measurements_are_absen
         'score_merge', 'traits_merge']
 
 
+def test_ses_receives_a_supplied_measurement_panel_without_waiting_for_traits():
+    args = SimpleNamespace(
+        work='/work', results='/results', geno='/data/chr@', no_convert=True,
+        rfmix=['/data/rfmix.tsv'], ecg_meta=['/data/meta.csv'], reuse_prepared=None,
+        score_shards=2, save_embeddings=False, device='auto', batch_size=32,
+        measurements='/data/device.csv', trait_shards=2, jobs=2, build='grch38', chain=None,
+        threads=4, with_scan=False, scan_threads=2, labels=None, statements=None,
+        ses='/data/ses.csv', ses_col=None, ses_name=None, ses_geography=None,
+        run_name='TEST')
+    plan = SU.build_plan(args, ['EUR'], ['1'], {'gpu': False})
+    stage = next(stage for stage in plan if stage.name == 'ses')
+    assert stage.after == ['score_merge']
+    assert stage.args[-2:] == ['--measurements', '/data/device.csv']
+
+
+def test_ses_supplied_measurements_align_alias_ids_and_keep_leading_zeros(tmp_path):
+    panel = tmp_path / 'device.csv'
+    panel.write_text('Participant_ID,HR_bpm\n0008,70\n0007,60\n')
+    roster = pd.DataFrame({'participant_id': ['0007', '0008']})
+    features, names = SES.measurement_features(roster, panel)
+    assert names == ['HR_bpm']
+    assert features[:, 0].tolist() == [60.0, 70.0]
+
+
+def test_single_machine_ses_receives_the_supplied_measurement_panel():
+    args = SimpleNamespace(
+        ses='/data/ses.csv', ses_col=None, ses_name=None, ses_geography=None,
+        measurements='/data/device.csv')
+    assert AM.ses_mode_args(args)[-2:] == ['--measurements', '/data/device.csv']
+
+
 def test_failed_forced_conversion_cannot_reuse_stale_outputs(tmp_path, monkeypatch):
     out = tmp_path / 'pgen'
     out.mkdir()

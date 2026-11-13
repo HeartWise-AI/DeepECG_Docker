@@ -449,7 +449,29 @@ def arm_coupling(D, cut, res, rng):
     return C, link
 
 
-def arm_a(D, cut, work, use_emb, E, rng, margin):
+def measurement_features(D, path):
+    """Align a supplied/generated measurement panel to the SES analysis roster."""
+    T = L.read_table(path, what='--measurements', dtype=str)
+    idc = L.pick_column(T, 'participant_id',
+                        ('participant_id', 'id', 'subject_id', 'empi'),
+                        what=f'--measurements {path}', kind='participant_id column',
+                        flag='(rename the column to participant_id)')
+    if idc != 'participant_id':
+        T = T.rename(columns={idc: 'participant_id'})
+    T['participant_id'] = T.participant_id.astype(str)
+    if T.participant_id.duplicated().any():
+        raise SystemExit(f'--measurements {path}: participant_id must be unique')
+    have = [c for c in TRAIT_COLS if c in T.columns]
+    if not have:
+        return None, []
+    for col in have:
+        T[col] = pd.to_numeric(T[col], errors='coerce')
+    aligned = D[['participant_id']].merge(
+        T[['participant_id'] + have], on='participant_id', how='left', validate='many_to_one')
+    return aligned[have].to_numpy(float), have
+
+
+def arm_a(D, cut, work, use_emb, E, rng, margin, measurements=None):
     """A: can anything in the ECG see deprivation? Pooled, and inside Europeans only."""
     rows = []
     y = (D.sdi.to_numpy(float) >= cut).astype(int)
@@ -457,14 +479,11 @@ def arm_a(D, cut, work, use_emb, E, rng, margin):
     if use_emb and E is not None:
         feats, what = E, 'SSL embedding (768-d, mean over folds)'
     else:
-        M = work / 'measurements.csv'
+        M = Path(measurements) if measurements else work / 'measurements.csv'
         if M.exists():
-            T = pd.read_csv(M, dtype={'participant_id': str})
-            T = D[['participant_id']].merge(T, on='participant_id', how='left')
-            have = [c for c in TRAIT_COLS if c in T.columns]
+            feats, have = measurement_features(D, M)
             if have:
-                feats, what = T[have].to_numpy(float), \
-                    f'{len(have)} measured ECG traits ({", ".join(have)}) -- the weaker probe; ' \
+                what = f'{len(have)} measured ECG traits ({", ".join(have)}) -- the weaker probe; ' \
                     'run `score --save-embeddings` for the embedding version'
     if feats is None:
         rows.append(row('A_visibility', 'AUROC for deprived', np.nan,
@@ -853,11 +872,17 @@ def main():
                          'against (default 200)')
     ap.add_argument('--embeddings', default=None,
                     help='default work/embeddings.npy from `score --save-embeddings`')
+    ap.add_argument('--measurements', default=None,
+                    help='precomputed ECG measurement panel for the arm-A fallback; default '
+                         'work/measurements.csv from `traits`')
     ap.add_argument('--no-embeddings', action='store_true',
                     help='ignore the embeddings even if present (fast arms B and C only)')
     ap.add_argument('--seed', type=int, default=SEED,
                     help='random seed for the shams and the bootstrap')
     a = ap.parse_args()
+
+    if a.measurements and not Path(a.measurements).exists():
+        raise SystemExit(f'--measurements {a.measurements} does not exist')
 
     work = Path(a.work); res = Path(a.results) / 'ses'
     L.require('ses', [(work / 'scores.csv', 'the ancestry scores and the ancestry strata',
@@ -930,7 +955,7 @@ def main():
           f"{link['auroc_sdi_for_ancestry']}, SMD {link['smd_eur_vs_non']}")
 
     rows = []
-    ra, what = arm_a(D, cut, work, E is not None, E, rng, a.margin)
+    ra, what = arm_a(D, cut, work, E is not None, E, rng, a.margin, a.measurements)
     rows += ra
     rb, M = arm_b(D, a.n_sham, rng, a.margin)
     rows += rb

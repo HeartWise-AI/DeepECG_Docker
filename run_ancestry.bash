@@ -111,7 +111,8 @@ case $mode in
     traits)   args+=(--jobs "$jobs") ;;
     fairness) [[ -n $labels ]] && args+=(--labels "$labels")
               [[ -n $statements ]] && args+=(--statements "$statements") ;;
-    ses)      args+=(--ses "$ses") ;;
+    ses)      args+=(--ses "$ses")
+              [[ -n $measurements ]] && args+=(--measurements "$measurements") ;;
     package)  args+=(--run-name "$run_name") ;;
     figures)  : ;;
     convert)  args+=(--vcf "$geno") ;;

@@ -413,7 +413,8 @@ def build_plan(a, strata, chroms, site):
         P.append(Stage('ses', 'ses', base + ['--ses', a.ses]
                        + (['--ses-col', a.ses_col] if a.ses_col else [])
                        + (['--ses-name', a.ses_name] if a.ses_name else [])
-                       + (['--ses-geography', a.ses_geography] if a.ses_geography else []),
+                       + (['--ses-geography', a.ses_geography] if a.ses_geography else [])
+                       + (['--measurements', a.measurements] if a.measurements else []),
                        after=ses_after, cpus=8, mem='32G', time='04:00:00'))
 
     last = [s.name for s in P if s.name in ('loci', 'pgs', 'scan_aggregate', 'fairness', 'ses')]

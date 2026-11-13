@@ -231,6 +231,15 @@ def common_args(mode, work, results):
     return out
 
 
+def ses_mode_args(a):
+    """Arguments shared by the single-machine SES stage and its standalone parser."""
+    return (['--ses', a.ses]
+            + (['--ses-col', a.ses_col] if a.ses_col else [])
+            + (['--ses-name', a.ses_name] if a.ses_name else [])
+            + (['--ses-geography', a.ses_geography] if a.ses_geography else [])
+            + (['--measurements', a.measurements] if a.measurements else []))
+
+
 def route_extras(extra, modes):
     """Split `extra` into {mode: [args]}. Raises on a flag no mode declares."""
     known = {m: mode_flags(m) for m in modes}
@@ -388,11 +397,7 @@ def main():
         'scan': ['--geno', a.geno, '--threads', str(a.threads)],
         'fairness': (['--labels', a.labels] if a.labels else
                      ['--statements', a.statements] if a.statements else None),
-        'ses': (['--ses', a.ses]
-                + (['--ses-col', a.ses_col] if a.ses_col else [])
-                + (['--ses-name', a.ses_name] if a.ses_name else [])
-                + (['--ses-geography', a.ses_geography] if a.ses_geography else [])
-                ) if a.ses else None,
+        'ses': ses_mode_args(a) if a.ses else None,
         # --run-name reaches `figures` as well as `package`: the plates carry the site's name
         # on their axes, and a package labelled one way with figures labelled another is
         # worse than either.
