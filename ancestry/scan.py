@@ -124,7 +124,9 @@ def main():
     L.require('scan', [(Path(a.results) / 'geno' / 'geno_provenance.json',
                         'the per-stratum phenotype, covariates and unrelated keep-set', 'geno')])
     gp = json.loads((Path(a.results) / 'geno' / 'geno_provenance.json').read_text())
-    build = a.build or gp.get('build', 'grch38')
+    # Provenance preserves the site's spelling (for example hg19 or b37), while the frozen
+    # aggregation worker accepts only the canonical grch37/grch38 names.
+    build = L.build_suffix(a.build or gp.get('build', 'grch38'))
     geno = L.resolve_geno(a.work, a.geno or gp.get('geno'))
     strata = a.strata or gp.get('strata', [])
     L.banner(f'scan: genome-wide, {", ".join(strata)}  ({len(a.chroms)} chromosomes)')

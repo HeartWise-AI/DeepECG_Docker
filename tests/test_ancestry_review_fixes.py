@@ -231,10 +231,42 @@ def test_slurm_geno_stage_builds_shared_panel_once_and_keeps_all_strata():
     assert geno.array is None
     assert geno.args[-3:] == ['--strata', 'EUR', 'AFR']
     args.with_scan = True
-    scan_plan = SU.build_plan(args, ['EUR', 'AFR'], ['1'], {'gpu': False})
+    scan_plan = SU.build_plan(args, ['EUR', 'AFR'], ['1', '2'], {'gpu': False})
     scan = next(stage for stage in scan_plan if stage.name == 'scan')
     assert '--scan-only' in scan.args
-    assert next(stage for stage in scan_plan if stage.name == 'scan_aggregate').after == ['scan']
+    aggregate = next(stage for stage in scan_plan if stage.name == 'scan_aggregate')
+    assert aggregate.after == ['scan']
+    assert aggregate.args[-3:] == ['--chroms', '1', '2']
+
+
+def test_matching_ignores_controls_with_missing_age():
+    roster = pd.DataFrame({
+        'sex_num': [0, 0, 0],
+        'group_genetic': [1, 0, 0],
+        'age': [50.0, np.nan, 51.0],
+    }, index=['case', 'missing-control', 'valid-control'])
+    matched = FA.match_pairs(roster, caliper=2.0)
+    assert matched is not None
+    assert matched.index.tolist() == ['case', 'valid-control']
+
+
+def test_scan_normalizes_provenance_build_alias_for_aggregation(tmp_path, monkeypatch):
+    work, results = tmp_path / 'work', tmp_path / 'results'
+    (results / 'geno').mkdir(parents=True)
+    (results / 'geno' / 'geno_provenance.json').write_text(__import__('json').dumps({
+        'build': 'hg19', 'strata': ['EUR'], 'geno': None}))
+    (work / 'geno' / 'EUR').mkdir(parents=True)
+    (work / 'geno' / 'EUR' / 'pheno.tsv').write_text('#FID\tIID\tpheno\n1\t1\t0.1\n')
+    (work / 'scan' / 'EUR').mkdir(parents=True)
+    (work / 'scan' / 'EUR' / 'chr1.pheno.glm.linear').write_text('fixture\n')
+    seen = {}
+    monkeypatch.setattr(__import__('runpy'), 'run_path',
+                        lambda *_args, **_kwargs: seen.update(argv=list(sys.argv)))
+    monkeypatch.setattr(sys, 'argv', [
+        'scan', '--work', str(work), '--results', str(results),
+        '--aggregate-only', '--chroms', '1'])
+    SN.main()
+    assert seen['argv'][seen['argv'].index('--build') + 1] == 'grch37'
 
 
 def test_scan_aggregate_reads_the_pheno_suffix_written_by_plink(tmp_path):

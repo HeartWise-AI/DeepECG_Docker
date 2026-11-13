@@ -394,7 +394,8 @@ def build_plan(a, strata, chroms, site):
                                '--scan-only'],
                        after=['geno'], array=tasks, cpus=a.scan_threads, mem='48G',
                        time='12:00:00'))
-        P.append(Stage('scan_aggregate', 'scan', base + ['--aggregate-only'],
+        P.append(Stage('scan_aggregate', 'scan',
+                       base + ['--aggregate-only', '--chroms', *map(str, chroms)],
                        after=['scan'], cpus=4, mem='64G', time='04:00:00'))
 
     fair = (['--labels', a.labels] if a.labels else

@@ -139,6 +139,11 @@ def match_pairs(D, caliper=2.0, seed=2000):
     rng = np.random.default_rng(seed)
     pairs = []
     for sx, g in D.groupby('sex_num'):
+        # Missing age is retained upstream for coverage accounting, but it cannot participate in
+        # age matching.  Leaving it in the control pool makes its NaN distance win np.argmin and
+        # can prevent every otherwise-matchable case in the stratum from finding a control.
+        age = pd.to_numeric(g.age, errors='coerce')
+        g = g.loc[np.isfinite(age)].copy()
         a = g[g.group_genetic == 1].sample(frac=1, random_state=seed)
         b = g[g.group_genetic == 0].copy()
         if a.empty or b.empty:
