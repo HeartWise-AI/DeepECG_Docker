@@ -114,14 +114,15 @@ def logit(p, eps=1e-6):
     return np.log(p / (1 - p))
 
 
-def partial(y, x, C, add_const=True):
+def partial(y, x, C, add_const=True, x_scale=None):
     """Frisch-Waugh-Lovell: the effect of x on y adjusted for C, by residualising both.
 
-    Returns beta (per SD of x, because x is standardised after residualising), its SE, the
-    two-sided P, the partial correlation, the incremental R^2 over C alone, and n. Doing it this
-    way rather than by reading one coefficient out of a 25-column design is not a shortcut: it
-    makes the incremental R^2 fall out of the same arithmetic as the beta, so the two cannot
-    disagree.
+    Returns beta (per residual SD of x by default), its SE, the two-sided P, the partial
+    correlation, the incremental R^2 over C alone, and n. ``x_scale`` fixes that unit when two
+    nested models must be compared on the same predictor scale (for example a mediation arm).
+    Doing it this way rather than by reading one coefficient out of a 25-column design is not a
+    shortcut: it makes the incremental R^2 fall out of the same arithmetic as the beta, so the
+    two cannot disagree.
     """
     y = np.asarray(y, dtype=float); x = np.asarray(x, dtype=float)
     C = np.asarray(C, dtype=float)
@@ -132,7 +133,7 @@ def partial(y, x, C, add_const=True):
     n = len(y)
     if n < 20 or np.std(x) == 0:
         return dict(n=int(n), beta_sd=np.nan, se=np.nan, p=np.nan, partial_r=np.nan,
-                    delta_r2=np.nan, r2_base=np.nan)
+                    delta_r2=np.nan, r2_base=np.nan, x_resid_sd=np.nan)
     D = np.column_stack([np.ones(n), C]) if add_const else C
     # SVD-backed least squares projects onto the actual column space.  An unpivoted QR returns
     # one Q column per input column even when sex is constant or two PCs/covariates are redundant,
@@ -142,10 +143,11 @@ def partial(y, x, C, add_const=True):
     ry, rx = adjusted[:, 0], adjusted[:, 1]
     df = n - int(rank) - 1
     sx = np.std(rx)
-    if sx == 0 or df <= 0:
+    scale = sx if x_scale is None else float(x_scale)
+    if sx == 0 or not np.isfinite(scale) or scale <= 0 or df <= 0:
         return dict(n=int(n), beta_sd=np.nan, se=np.nan, p=np.nan, partial_r=np.nan,
-                    delta_r2=np.nan, r2_base=np.nan)
-    rxs = rx / sx
+                    delta_r2=np.nan, r2_base=np.nan, x_resid_sd=float(sx))
+    rxs = rx / scale
     b = float(rxs @ ry / (rxs @ rxs))
     resid = ry - b * rxs
     se = float(np.sqrt((resid @ resid) / df / (rxs @ rxs)))
@@ -153,7 +155,8 @@ def partial(y, x, C, add_const=True):
     r = float(np.corrcoef(rx, ry)[0, 1])
     r2_base = 1 - np.var(ry) / np.var(y) if np.var(y) > 0 else np.nan
     return dict(n=int(n), beta_sd=b, se=se, p=float(2 * stats.t.sf(abs(t), df)),
-                partial_r=r, delta_r2=float(r * r * (1 - r2_base)), r2_base=float(r2_base))
+                partial_r=r, delta_r2=float(r * r * (1 - r2_base)), r2_base=float(r2_base),
+                x_resid_sd=float(sx))
 
 
 # --------------------------------------------------------------------------------- tables
@@ -521,6 +524,11 @@ def resolve_geno(work, pattern, quiet=False):
     try:
         prov = json.loads(f.read_text())
     except (OSError, ValueError):
+        return pattern
+    # A work directory can hold one conversion while a caller deliberately selects a different
+    # dataset (most importantly --pca-geno).  The conversion is a cache of its recorded source,
+    # not a blanket replacement for every genotype argument used with that work directory.
+    if pattern != prov.get('source'):
         return pattern
     new = prov.get('pattern')
     if not new or new == pattern:

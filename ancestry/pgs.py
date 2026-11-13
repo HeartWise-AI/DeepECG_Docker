@@ -151,6 +151,24 @@ def restrict_to_keep(d, keep):
     return out
 
 
+def mediation_effects(y, x, covariates, measurement):
+    """Unadjusted/adjusted PGS effects on identical rows and one predictor scale."""
+    y = np.asarray(y, float)
+    x = np.asarray(x, float)
+    C = np.asarray(covariates, float)
+    if C.ndim == 1:
+        C = C[:, None]
+    m = np.asarray(measurement, float)
+    ok = np.isfinite(y) & np.isfinite(x) & np.isfinite(m) & np.isfinite(C).all(axis=1)
+    base = L.partial(y[ok], x[ok], C[ok])
+    adjusted = L.partial(y[ok], x[ok], np.column_stack([C[ok], m[ok]]),
+                         x_scale=base['x_resid_sd'])
+    b0, b1 = base['beta_sd'], adjusted['beta_sd']
+    attenuation = (100 * (1 - b1 / b0)
+                   if np.isfinite(b0) and np.isfinite(b1) and b0 != 0 else np.nan)
+    return base, adjusted, attenuation
+
+
 # ------------------------------------------------------------------------------ the arms
 def trait_arm(st, d, V, ref, work, keep, meas, rows, dec_rows, threads, build='grch38',
               sources=(), want='both', tmaps=None, pinned=None):
@@ -249,20 +267,20 @@ def trait_arm(st, d, V, ref, work, keep, meas, rows, dec_rows, threads, build='g
         # of the measurement, so two rulers can disagree about it and the reader should see both.
         for src, col, mc, fill in use:
             m = D[col].to_numpy(float)
-            ok = np.isfinite(m)
-            if ok.sum() >= PV.MIN_PER_CLASS:
-                Cm = np.column_stack([C[ok], m[ok]])
-                r3 = L.partial(D.score_logit.to_numpy(float)[ok], x[ok], Cm)
-                drop = (100 * (1 - r3['beta_sd'] / r2['beta_sd'])
-                        if r2['beta_sd'] else np.nan)
+            r_base, r3, drop = mediation_effects(D.score_logit.to_numpy(float), x, C, m)
+            if r_base['n'] >= PV.MIN_PER_CLASS:
                 rows.append(dict(stratum=st, trait=tr, arm='ancestry_score_adj_measured_trait',
                                  source=f'{src} (fill)' if fill else src, measure=mc,
                                  **{k: r3[k] for k in ('n', 'beta_sd', 'se', 'p', 'partial_r',
                                                        'delta_r2')},
+                                 n_unadjusted_same_rows=r_base['n'],
+                                 beta_sd_unadjusted_same_rows=r_base['beta_sd'],
+                                 se_unadjusted_same_rows=r_base['se'],
                                  pct_attenuation=round(float(drop), 1),
-                                 note='same regression with the measured trait as a covariate; '
-                                      'pct_attenuation is how much of the unadjusted effect the '
-                                      'measurement accounts for'))
+                                 note='nested regressions on the same complete-case rows and '
+                                      'the unadjusted residual PGS-SD scale; pct_attenuation is '
+                                      'how much of that unadjusted effect the measurement '
+                                      'accounts for'))
         dec_rows += decile_table(D.assign(**{f'_{tr}': D[f'PGS_{tr}']}), f'_{tr}',
                                  'trait_pgs', st, trait=tr, weight=float(CW.get(tr, 1.0)))
 

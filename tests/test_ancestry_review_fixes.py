@@ -20,6 +20,7 @@ from ancestry import prepare as PR  # noqa: E402
 from ancestry import prepare_external as PE  # noqa: E402
 from ancestry import privacy as PV  # noqa: E402
 from ancestry import score as SC  # noqa: E402
+from ancestry import ses as SES  # noqa: E402
 from ancestry import submit as SU  # noqa: E402
 from ancestry.vendor import gwas_aggregate as GA  # noqa: E402
 from ancestry.vendor import liftover_min as LM  # noqa: E402
@@ -265,6 +266,47 @@ def test_partial_regression_ignores_redundant_covariate_columns():
         covariate, covariate, np.ones(len(covariate))]))
     for key in ('beta_sd', 'se', 'p', 'partial_r', 'delta_r2', 'r2_base'):
         assert redundant[key] == pytest.approx(base[key])
+
+
+def test_converted_genotypes_replace_only_the_recorded_source(tmp_path):
+    converted = tmp_path / 'geno' / 'pgen' / 'chr@'
+    (tmp_path / 'geno').mkdir()
+    (tmp_path / 'geno' / 'converted.json').write_text(__import__('json').dumps({
+        'source': '/imputed/chr@.vcf.gz', 'pattern': str(converted), 'chroms': [1]}))
+    assert L.resolve_geno(tmp_path, '/imputed/chr@.vcf.gz', quiet=True) == str(converted)
+    assert L.resolve_geno(tmp_path, '/array/chr@', quiet=True) == '/array/chr@'
+
+
+def test_ses_matching_verdict_requires_a_two_sided_equivalence_bound():
+    # This is the review counterexample: the upper 95% endpoint is inside +0.02, while the
+    # lower endpoint admits a much larger loss.  The achieved TOST bound therefore exceeds the
+    # margin and must not support a BOUNDED verdict.
+    estimate, se, margin = -.015, .015, .02
+    achieved_bound = abs(estimate) + 1.645 * se
+    assert achieved_bound > margin
+    assert SES.matching_verdict(estimate, achieved_bound, margin).startswith(
+        'SMALL BUT NOT PROVABLY BOUNDED')
+    assert SES.matching_verdict(.002, .01, margin).startswith('BOUNDED')
+
+
+def test_mediation_uses_complete_cases_and_a_common_predictor_scale():
+    rng = np.random.default_rng(7)
+    n = 300
+    c = rng.normal(size=n)
+    x = rng.normal(size=n)
+    measurement = .9 * x + rng.normal(scale=.2, size=n)
+    y = .4 * x + .3 * c + rng.normal(size=n)
+    measurement[5] = np.nan
+    base, adjusted, _drop = PG.mediation_effects(y, x, c, measurement)
+    ok = np.isfinite(measurement)
+    design = np.column_stack([np.ones(ok.sum()), c[ok]])
+    x_scale = np.std(x[ok] - design @ np.linalg.lstsq(design, x[ok], rcond=None)[0])
+    raw_base = np.linalg.lstsq(np.column_stack([design, x[ok]]), y[ok], rcond=None)[0][-1]
+    raw_adjusted = np.linalg.lstsq(
+        np.column_stack([design, measurement[ok], x[ok]]), y[ok], rcond=None)[0][-1]
+    assert base['n'] == adjusted['n'] == n - 1
+    assert base['beta_sd'] == pytest.approx(raw_base * x_scale)
+    assert adjusted['beta_sd'] == pytest.approx(raw_adjusted * x_scale)
 
 
 def test_negative_strand_liftover_reverse_complements_panel_alleles(tmp_path, monkeypatch):

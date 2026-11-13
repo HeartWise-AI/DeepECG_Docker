@@ -337,6 +337,25 @@ def _r(x, k=5):
         return None
 
 
+def matching_verdict(cost, achieved_bound, margin):
+    """Human-readable arm-B conclusion using the two-sided TOST bound."""
+    if cost is None:
+        return 'INCONCLUSIVE -- arm B did not run'
+    if achieved_bound is not None and achieved_bound <= margin:
+        return (f'BOUNDED: balancing the ancestry groups on deprivation moves the signal by '
+                f'{cost:+.4f} AUROC, bounded below {margin}. Deprivation does not '
+                f'explain the ECG ancestry signal here.')
+    if abs(cost) < margin:
+        bound_text = 'not estimable' if achieved_bound is None else f'{achieved_bound:.4f}'
+        return (f'SMALL BUT NOT PROVABLY BOUNDED at {margin}: the estimate is '
+                f'{cost:+.4f} AUROC -- well inside the margin -- but this sample can only '
+                f'bound the effect at {bound_text}. That is a POWER limit, not an effect. '
+                f'Report the estimate and the bound together; do not report a null.')
+    return (f'NOT BOUNDED: balancing on deprivation moves the signal by {cost:+.4f} '
+            f'AUROC. This is NOT a null -- report the estimate, and read arm B\'s sham '
+            f'rows before attributing it to socioeconomics.')
+
+
 # ----------------------------------------------------------------------------- probe
 def cv_probe(X, y, groups=None, n_fold=NFOLD, seed=SEED):
     """Out-of-fold AUROC of a standardised logistic probe. Returns (auroc, oof_scores)."""
@@ -949,22 +968,11 @@ def main():
     pot_b, _x3, _y3 = get('D_potency', 'deprivation AUROC before')
     pot_a, _x4, _y4 = get('D_potency', 'deprivation AUROC after')
 
-    head = 'INCONCLUSIVE -- arm B did not run'
     ab = bound_of('B_matched', 'cost of matching')
-    if bcost is not None:
-        if abs(bcost) < a.margin and bhi is not None and abs(bhi) < a.margin:
-            head = (f'BOUNDED: balancing the ancestry groups on deprivation moves the signal by '
-                    f'{bcost:+.4f} AUROC, bounded below {a.margin}. Deprivation does not '
-                    f'explain the ECG ancestry signal here.')
-        elif abs(bcost) < a.margin:
-            head = (f'SMALL BUT NOT PROVABLY BOUNDED at {a.margin}: the estimate is '
-                    f'{bcost:+.4f} AUROC -- well inside the margin -- but this sample can only '
-                    f'bound the effect at {ab:.4f}. That is a POWER limit, not an effect. '
-                    f'Report the estimate and the bound together; do not report a null.')
-        else:
-            head = (f'NOT BOUNDED: balancing on deprivation moves the signal by {bcost:+.4f} '
-                    f'AUROC. This is NOT a null -- report the estimate, and read arm B\'s sham '
-                    f'rows before attributing it to socioeconomics.')
+    # Equivalence is two-sided.  Looking only at ci_hi wrongly calls a small negative estimate
+    # bounded while ci_lo still admits a material loss.  achieved_bound is the symmetric 90%
+    # TOST bound (|estimate| + 1.645 SE), so clearing the margin means both sides clear it.
+    head = matching_verdict(bcost, ab, a.margin)
     lines = [f'{a.ses_name} ({a.ses_geography}) vs the ECG ancestry signal at this site', '',
              head, '']
     tight = coup >= 0.70
