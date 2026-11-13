@@ -122,6 +122,70 @@ def merge_finding_shards(work, score_files, participant_ids):
     return canonical
 
 
+def merge_embedding_shards(work, score_files, participant_ids):
+    """Merge only embedding shards paired with the selected score shards."""
+    work = Path(work)
+    canonical = work / 'embeddings.npy'
+    canonical_ids = work / 'embeddings_ids.csv'
+    score_tags = [Path(f).stem.removeprefix('scores_') for f in score_files
+                  if Path(f).stem.startswith('scores_')]
+    pairs = [(work / f'embeddings_{tag}.npy', work / f'embeddings_{tag}_ids.csv')
+             for tag in score_tags]
+    selected_exists = [npy.exists() or ids.exists() for npy, ids in pairs]
+
+    if not any(selected_exists):
+        if canonical.exists() or canonical_ids.exists():
+            raise SystemExit('canonical embeddings already exist but this merge found no matching '
+                             'embedding shards; refusing to reuse possibly stale representations')
+        return None
+    incomplete = [tag for tag, (npy, ids) in zip(score_tags, pairs)
+                  if not npy.exists() or not ids.exists()]
+    if incomplete:
+        raise SystemExit(f'embedding shards do not match score shards; incomplete {incomplete}')
+
+    arrays, id_frames = [], []
+    for tag, (npy, ids) in zip(score_tags, pairs):
+        E = np.load(npy)
+        I = pd.read_csv(ids, dtype={'participant_id': str})
+        if 'participant_id' not in I:
+            raise SystemExit(f'{ids} has no participant_id column')
+        if len(E) != len(I):
+            raise SystemExit(f'embedding shard {tag} has {len(E):,} arrays but '
+                             f'{len(I):,} participant IDs')
+        arrays.append(E)
+        id_frames.append(I[['participant_id']])
+
+    try:
+        E = np.concatenate(arrays, axis=0)
+    except ValueError as exc:
+        raise SystemExit(f'embedding shards have incompatible array shapes: {exc}') from exc
+    I = pd.concat(id_frames, ignore_index=True)
+    I['participant_id'] = I.participant_id.astype(str)
+    duplicated = I.participant_id.duplicated(keep=False)
+    if duplicated.any():
+        raise SystemExit(f'embedding shards contain {int(duplicated.sum()):,} duplicate '
+                         'participant rows; refusing to guess which representation is current')
+    expected = pd.Index(pd.Series(participant_ids, dtype=str), name='participant_id')
+    actual = pd.Index(I.participant_id)
+    missing = expected.difference(actual)
+    extra = actual.difference(expected)
+    if len(missing) or len(extra):
+        raise SystemExit(f'embedding/score participant mismatch: {len(missing):,} missing and '
+                         f'{len(extra):,} unexpected embedding rows')
+    order = pd.Series(np.arange(len(I)), index=I.participant_id).loc[expected].to_numpy()
+    E = E[order]
+    I = pd.DataFrame({'participant_id': expected.to_numpy()})
+
+    temporary = work / '.embeddings.merge.npy'
+    temporary_ids = work / '.embeddings_ids.merge.csv'
+    np.save(temporary, E)
+    I.to_csv(temporary_ids, index=False)
+    temporary.replace(canonical)
+    temporary_ids.replace(canonical_ids)
+    print(f'  merged {len(arrays)} embedding shards -> {len(E):,} people')
+    return canonical
+
+
 # ------------------------------------------------------------------------------- the two heads
 def _embed_one(model, X_nct, device, batch_size):
     """The pooled representation one fold's model computes, per ECG.
@@ -408,20 +472,7 @@ def main():
                              'participant rows; refusing to discard predictions')
         print(f'  merged {len(files)} shards -> {len(S):,} people')
         merge_finding_shards(work, files, S.participant_id)
-        # if the shards saved embeddings, concatenate those in the same order
-        eids = sorted(glob.glob(str(work / 'embeddings_*of*_ids.csv')))
-        if eids:
-            Es, Is = [], []
-            for f in eids:
-                npy = Path(f.replace('_ids.csv', '.npy'))
-                if npy.exists():
-                    Es.append(np.load(npy))
-                    Is.append(pd.read_csv(f, dtype={'participant_id': str}))
-            if Es:
-                np.save(work / 'embeddings.npy', np.concatenate(Es, axis=0))
-                pd.concat(Is, ignore_index=True).to_csv(work / 'embeddings_ids.csv', index=False)
-                print(f'  merged {len(Es)} embedding shards -> '
-                      f'{sum(len(e) for e in Es):,} people')
+        merge_embedding_shards(work, files, S.participant_id)
     else:
         pdir = prepared_dir(work, a.prepared) / 'all_genotyped'
         X = np.load(pdir / 'X.npy', mmap_mode='r')

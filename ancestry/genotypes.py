@@ -157,6 +157,19 @@ def resolve_wanted_variants(ref: Path, work: Path, build: str, chain=None):
     return wanted_variants(ref, build, work=work)
 
 
+def refresh_unrelated_keep(pruned, path, skip, threads, geno):
+    """Replace the unrelated-sample filter with one from this genotype run only."""
+    path = Path(path)
+    path.unlink(missing_ok=True)
+    if skip:
+        return None
+    unrel = G.unrelated(pruned, path.parent / 'king', threads=threads)
+    if unrel is None:
+        return None
+    G.keep_file(unrel, path, geno=geno)
+    return unrel
+
+
 def main():
     ap = argparse.ArgumentParser(prog='python -m ancestry geno', description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -249,9 +262,8 @@ def main():
         pca_src = a.pca_geno or a.geno
         P, pruned = G.pcs(pca_src, keep, d / 'pca', npc=a.npc, threads=a.threads,
                           single=bool(a.pca_geno and a.pca_single))
-        unrel = None if a.skip_kinship else G.unrelated(pruned, d / 'king', threads=a.threads)
-        if unrel is not None:
-            G.keep_file(unrel, d / 'keep_unrelated.txt', geno=a.geno)
+        unrel = refresh_unrelated_keep(pruned, d / 'keep_unrelated.txt', a.skip_kinship,
+                                       a.threads, a.geno)
 
         D = g.merge(P.rename(columns={'IID': 'geno_id'}), on='geno_id', how='inner')
         if len(D) < 0.5 * len(g):

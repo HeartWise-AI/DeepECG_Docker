@@ -132,6 +132,37 @@ def test_finding_shards_merge_in_score_order(tmp_path):
     assert got.out0.tolist() == [.1, .2]
 
 
+def test_embedding_merge_uses_only_selected_shards_and_score_order(tmp_path):
+    score_files = [tmp_path / 'scores_1of2.csv', tmp_path / 'scores_2of2.csv']
+    for path in score_files:
+        path.touch()
+    np.save(tmp_path / 'embeddings_1of2.npy', np.array([[[2.0]]]))
+    pd.DataFrame({'participant_id': ['p2']}).to_csv(
+        tmp_path / 'embeddings_1of2_ids.csv', index=False)
+    np.save(tmp_path / 'embeddings_2of2.npy', np.array([[[1.0]]]))
+    pd.DataFrame({'participant_id': ['p1']}).to_csv(
+        tmp_path / 'embeddings_2of2_ids.csv', index=False)
+    # A complete but unrelated older run must not be included.
+    np.save(tmp_path / 'embeddings_1of3.npy', np.array([[[99.0]]]))
+    pd.DataFrame({'participant_id': ['old']}).to_csv(
+        tmp_path / 'embeddings_1of3_ids.csv', index=False)
+
+    SC.merge_embedding_shards(tmp_path, score_files, ['p1', 'p2'])
+
+    assert np.load(tmp_path / 'embeddings.npy')[:, 0, 0].tolist() == [1.0, 2.0]
+    got = pd.read_csv(tmp_path / 'embeddings_ids.csv', dtype=str)
+    assert got.participant_id.tolist() == ['p1', 'p2']
+
+
+def test_skip_kinship_removes_a_stale_unrelated_filter(tmp_path, monkeypatch):
+    keep = tmp_path / 'keep_unrelated.txt'
+    keep.write_text('old filter')
+    monkeypatch.setattr(GE.G, 'unrelated',
+                        lambda *args, **kwargs: pytest.fail('kinship must be skipped'))
+    assert GE.refresh_unrelated_keep('pruned', keep, True, 2, 'geno') is None
+    assert not keep.exists()
+
+
 def test_requested_grch37_liftover_happens_before_panel_discovery(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(GE, 'lift_panel',
