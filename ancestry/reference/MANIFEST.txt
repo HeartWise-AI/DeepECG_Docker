@@ -1,0 +1,22 @@
+# ref/ -- frozen at build time; the site runs nothing that reaches back to us
+#
+# The tables themselves are NOT in this repository (it is public, and they are cohort
+# aggregates). They ship under reference/ in the pinned ancestry model snapshot;
+# see README.md beside this file. This list is the integrity contract for whichever copy
+# a run is given, and every run checks it.
+
+ba6837f8e5763688eaa80225b0e56d7d     1,713,781  ancestry_pgs_weights_grch38.tsv
+44d35c878d553178571e9312f7058c77           153  composite_weights.tsv
+6d4ad426f55c9cfd38dd632f0e074dbc           586  discovery_composite_deciles.tsv
+09299bf9ef1a68851920abad62468b4b        14,320  discovery_fairness_fpr.tsv
+305373299f5541971c23e570490ca011         4,858  discovery_pgs_deciles.tsv
+37a22128029b749df8505be61bb4424e         2,886  discovery_reference.json
+baa3deb7c97e50e3936e15545c90c0e1         6,563  findings77.tsv
+b5e926391f27feb9bbbd73a5aced8003         5,986  leads_grch37.tsv
+262eaa46de47077d383c3b612b2edd5d         5,396  leads_grch38.tsv
+26c3f5e0d01ffb42c824d788bb054346        11,660  locus_annotation.tsv
+08b20b9a24f93c2244622794bbe4aa3b           957  neurokit_vs_device.csv
+67cfd244d026f9b14b89f07f7e63b841        25,694  pgs_weights_grch37.tsv
+7d136d2eae2bb0dc14b540e598f54f57        19,999  pgs_weights_grch38.tsv
+d70d86382d87f4760029d261e99b647c       118,238  reference_roc_pr.json
+a98d5c39d200499efec00d1f4cbf38d7         4,151  reference_admixed.json

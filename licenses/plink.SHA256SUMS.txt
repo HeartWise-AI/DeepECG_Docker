@@ -1,0 +1,13 @@
+# The two plink binaries the ancestry pipeline runs, pinned by content rather than by URL.
+# Verified 2026-11-10: both downloads below produce exactly these binaries.
+#
+# plink 1.9 is pinned by DATED url, which serves this exact build:
+#   https://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20260927.zip
+# plink 2 is pinned by CHECKSUM against the generic `latest` url:
+#   https://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_latest.zip
+# because the dated paths under plink2-assets/alphaN/ are different ISA builds -- alpha5 and
+# alpha7 of the same date are neither this binary nor each other (60ecef80.. and b3f1ba08..).
+# So a plink2 rebuild AFTER upstream moves `latest` will fail this check, which is the point:
+# refresh these sums deliberately and re-run the selftest, never silently.
+93ab85dde8743b76e815a84a13bc6e62650148cb6abf785e1909c8d08c589dcc  plink2
+47ce3069a1349128bdc5193aa8af33ec20dc99ece920843c80453c34eea1a062  plink
