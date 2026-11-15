@@ -352,7 +352,8 @@ python scripts/test_png_reproducibility.py \
 The test performs a clean source-only Docker build, verifies the pinned BERT,
 base encoder, and five classifier snapshots and their file hashes, then disables
 networking for inference. It passes no PNG mode or image-model flag: the normal
-`.png` extension routing and `heartwise.config` select SigLIP2. It requires all
+extension routing (`.png`, `.jpg`, `.jpeg` and `.pdf` rows go to the image models) and
+`heartwise.config` select SigLIP2. It requires all
 five prediction files, checks every probability is finite and in `[0, 1]`, and
 fails if a PNG was missing, unreadable, or sent through signal preprocessing.
 The default tolerance is zero. The checked-in reference contains file hashes,

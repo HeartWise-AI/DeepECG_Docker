@@ -733,6 +733,25 @@ def test_rotation_must_be_a_multiple_of_90(tmp_path, good_pdf):
         read_ecg_pdf(str(tmp_path / "rot.pdf"))
 
 
+@pytest.mark.parametrize("unit", [2, 0.5])
+def test_a_non_default_user_unit_is_refused(tmp_path, good_pdf, unit):
+    from pypdf.generic import FloatObject
+    w = PdfWriter(clone_from=PdfReader(good_pdf))
+    w.pages[0][NameObject("/UserUnit")] = FloatObject(unit)
+    with open(tmp_path / "unit.pdf", "wb") as fh:
+        w.write(fh)
+    with pytest.raises(EcgPdfError, match="UserUnit"):
+        read_ecg_pdf(str(tmp_path / "unit.pdf"))
+
+
+def test_an_explicit_default_user_unit_is_accepted(tmp_path, good_pdf):
+    w = PdfWriter(clone_from=PdfReader(good_pdf))
+    w.pages[0][NameObject("/UserUnit")] = NumberObject(1)
+    with open(tmp_path / "unit1.pdf", "wb") as fh:
+        w.write(fh)
+    assert read_ecg_pdf(str(tmp_path / "unit1.pdf")) is not None
+
+
 def test_a_fifo_is_refused_without_blocking(tmp_path):
     os.mkfifo(tmp_path / "pipe.pdf")
     with pytest.raises(EcgPdfError, match="not a regular file"):

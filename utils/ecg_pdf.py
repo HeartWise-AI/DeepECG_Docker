@@ -156,7 +156,18 @@ def _mat_mul(a, b):
 
 
 def _display_transform(page):
-    """User space -> the page as displayed (honours /Rotate)."""
+    """User space -> the page as displayed (honours /Rotate).
+
+    A page with a non-default /UserUnit is refused: its user-space unit is not 1/72 inch, so the
+    grid spacing measured here would not be points per millimetre.
+    """
+    user_unit = page.get("/UserUnit", 1)
+    try:
+        user_unit = float(user_unit)
+    except (TypeError, ValueError):
+        raise EcgPdfError("unsupported page /UserUnit") from None
+    if user_unit != 1:
+        raise EcgPdfError("unsupported page /UserUnit (only the default 1 is accepted)")
     box = page.cropbox
     x0, y0, x1, y1 = (float(v) for v in (box.left, box.bottom, box.right, box.top))
     try:

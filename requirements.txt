@@ -13,7 +13,7 @@ safetensors==0.8.0
 # PDF inputs (utils/ecg_pdf.py, utils/ecg_page_renderer.py)
 pypdf[crypto]==6.21.4   # crypto: cryptography, for AES-encrypted (owner-password-only) PDFs
 matplotlib==3.10.9
-scipy
+scipy==1.17.1
 git+https://github.com/HeartWise-AI/HeartWise_StatPlots.git
 
 filelock
