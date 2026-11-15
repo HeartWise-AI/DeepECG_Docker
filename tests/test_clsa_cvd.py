@@ -82,3 +82,17 @@ def test_protected_synthetic_model_golden():
     np.testing.assert_allclose(r['risk_Aplus'],golden['full_precision_Aplus'],atol=1e-6,rtol=0)
     np.testing.assert_allclose(r['risk_ecg_age_sex'],golden['external'],atol=1e-6,rtol=0)
     assert all(k['strict_load'] for k in m.checkpoint_audit)
+
+
+@pytest.mark.parametrize('missing',[None,pd.NA,np.nan])
+def test_null_hypertension_cell_is_a_row_error(tmp_path,missing):
+    f=tmp_path/'good.npy';np.save(f,np.zeros((12,2500)))
+    class Dummy:
+        def predict(self,x,age,female,hypertension=None,batch_size=32):
+            assert hypertension is not None and np.isfinite(hypertension).all()
+            return outputs_from_folds(np.tile(np.arange(1,6)[:,None]/10,(1,len(x))),PARAMS,age,female,hypertension)
+    htn=pd.Series([1,missing],dtype='object')
+    d=pd.DataFrame({'npy_path':[str(f),str(f)],'age':[60,60],'female':[0,1],'hypertension':htn})
+    a=run_table(d,Dummy(),'mv250',batch_size=4)
+    assert a.ecg_ok.tolist()==[True,False]
+    assert a.error.iloc[1]=='Invalid or missing waveform/clinical input'

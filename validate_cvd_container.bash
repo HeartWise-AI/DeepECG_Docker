@@ -27,6 +27,11 @@ import json,sys
 c={'weights_dir':'/models/weights','base_checkpoint':'/models/encoder.pt','params_path':'/app/clsa_cvd/model_params.json','format':'clsa','device':'cuda:0','precision':'float32','batch_size':32}
 open(sys.argv[1],'w').write(json.dumps(c,indent=2)+'\n')
 PY
+base_image="${CVD_BASE_IMAGE:-nvcr.io/nvidia/pytorch:26.08-py3}"
+# BuildKit may not leave the base in the daemon's image store; pull it so it can be inspected below.
+if ! "${docker_local[@]}" image inspect "$base_image" > /dev/null 2>&1; then
+    "${docker_local[@]}" pull "$base_image" > "$output_dir/base_pull.log" 2>&1
+fi
 build_args=(build -f Dockerfile.clsa-cvd --iidfile "$output_dir/image.id")
 if [[ -n "${CODEX_PROXY_CERT:-}" ]]; then
     build_args+=(--secret "id=proxy_ca,src=$CODEX_PROXY_CERT")
@@ -38,7 +43,7 @@ fi
 image_id=$(cat "$output_dir/image.id")
 metadata_format='{"Id":{{json .Id}},"RepoDigests":{{json .RepoDigests}},"Created":{{json .Created}},"Architecture":{{json .Architecture}},"Os":{{json .Os}}}'
 "${docker_local[@]}" image inspect --format "$metadata_format" "$image_id" > "$output_dir/image_metadata.json"
-"${docker_local[@]}" image inspect --format "$metadata_format" "${CVD_BASE_IMAGE:-nvcr.io/nvidia/pytorch:26.08-py3}" > "$output_dir/base_image_metadata.json"
+"${docker_local[@]}" image inspect --format "$metadata_format" "$base_image" > "$output_dir/base_image_metadata.json"
 "${docker_local[@]}" run --rm --gpus 'device=0' --read-only --tmpfs /tmp:rw,nosuid,size=512m \
     --mount "type=bind,src=$weights_dir,dst=/models/weights,readonly" \
     --mount "type=bind,src=$encoder_path,dst=/models/encoder.pt,readonly" \

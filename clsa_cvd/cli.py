@@ -19,7 +19,12 @@ def run_table(df,model,source_format,batch_size=32):
         for i in range(start,min(start+batch_size,len(df))):
             r=df.iloc[i]
             try:
-                c=validate_clinical(r.age,r.female,r.hypertension if 'hypertension' in df else None)
+                htn=None
+                if 'hypertension' in df:
+                    # A present column needs a value in every row; None is reserved for an absent column.
+                    if pd.isna(r.hypertension):raise ValueError('missing hypertension')
+                    htn=r.hypertension
+                c=validate_clinical(r.age,r.female,htn)
                 xs.append(load_waveform(r.npy_path,source_format));clinical.append(c);positions.append(i)
             except (ValueError,TypeError,OSError,EOFError):
                 # Keep details local; no potentially identifiable file paths in logs.
