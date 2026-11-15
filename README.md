@@ -11,6 +11,7 @@ This pipeline offers 3 modes of processing:
 - [Installation](#installation)
 - [Project Structure](#project-structure)
 - [Models](#models)
+- [Input data formats](#input-data-formats)
 - [Optimal Thresholds](#-optimal-thresholds)
 - [Configuration](#configuration)
 - [Usage](#usage)
@@ -25,19 +26,16 @@ This pipeline offers 3 modes of processing:
 
 ## 🚀 Features
 
-- BERT-based multilabel classification model for ECG diagnosis (77 classes)
-- EfficientNet-based multilabel classification model for ECG signals (77 classes)
-- WCR-based multilabel classification model for ECG signals (77 classes)
-- WCR-based binary classification model for ECG signals (LVEF <= 40%)
-- WCR-based binary classification model for ECG signals (LVEF < 50%)
-- WCR-based binary classification model for ECG signals (Incident AFIB at 5 years)
-- EfficientNet-based binary classification model for ECG signals (LVEF <= 40%)
-- EfficientNet-based binary classification model for ECG signals (LVEF < 50%)
-- EfficientNet-based binary classification model for ECG signals (Incident AFIB at 5 years)
-- DeepECG-Pop: the five-fold ECG ancestry score, with an external-validation pipeline
-- Dockerized deployment for easy setup and execution
-- Configurable pipeline for flexible usage
-- CPU & GPU support for accelerated processing
+- **14 pinned inference models** in one image (8 signal, 5 image, 1 text; full list in [Models](#models)):
+  - Signal models (12-lead XML or NPY): WCR and EfficientNetV2, each for 77 classes, LVEF <= 40%, LVEF < 50% and incident AFib at 5 years
+  - Image models (ECG page PNG or JPEG): DeepECG-SigLIP2 for 77 classes, SHD, LVEF <= 40%, LVEF < 50% and incident AFib at 5 years
+  - BERT (English/French) that turns the machine diagnosis text into 77-class ground truth for metrics
+- **Input type detected per file** from its extension: XML, NPY, PNG and JPEG rows can be mixed in one CSV, with no format flag (see [Input data formats](#input-data-formats))
+- **Single-lead NPY input** placed into one, several or all 12 leads (`single_lead` in `heartwise.config`)
+- **Holter / external-validation ingestion** (`ingestion/`, Icentia-11k adapter) that reuses the same preprocessing and models
+- **DeepECG-Ancestry (DeepECG-Pop)**: the five-fold ECG ancestry score and its external-validation pipeline, in its own image (`dockerfile.ancestry`)
+- Every model revision pinned in `models/manifest.json`; downloads are cached per commit
+- Configuration through `heartwise.config` only; CPU and GPU support
 
 ## 🛠️ Installation 
 
@@ -93,13 +91,16 @@ DeepECG_Docker/
 │   ├── manifest.json                 # Pinned Hugging Face revisions
 │   ├── bert_classifier.py
 │   ├── efficientnet_wrapper.py
-│   ├── heartwise_models_factory.py
-│   └── resnet_wrapper.py
+│   ├── heartwise_model_factory.py
+│   ├── resnet_wrapper.py
+│   ├── siglip2_wrapper.py            # DeepECG-SigLIP2 image models
+│   └── wcr_ecg_transformer.py        # WCR signal models
 │
 ├── inputs/
 │   ├── data_rows_template.csv          # Mixed NPY/XML example
 │   ├── data_rows_template_npy.csv      # NPY-only example
-│   └── data_rows_template_xml.csv      # XML-only example
+│   ├── data_rows_template_xml.csv      # XML-only example
+│   └── data_rows_template_png.csv      # PNG image example
 │
 ├── outputs/
 │   ├── batch_1/                    # Preprocessing reports per batch
@@ -120,55 +121,95 @@ DeepECG_Docker/
 │   ├── mapping.py, metrics.py          # Dataset-independent: label mapping, metrics
 │   └── icentia11k/                     # Icentia-11k single-lead Holter (see its README)
 │
+├── ancestry/                           # DeepECG-Ancestry pipeline (own image, see below)
+│
 ├── utils/
 │   └── ...
 │
-├── dockerfile
+├── dockerfile                          # Main inference image
+├── dockerfile.ancestry                 # DeepECG-Ancestry image
 ├── heartwise.config
 ├── api_key.json
 ├── main.py
 ├── README.md
 ├── requirements.txt
-└── run_pipeline.sh
+└── run_pipeline.bash
 ```
 
 ## Models
 
-1. **BertClassifier**: 
-   - Utilizes the BERT architecture fine-tuned to classify ECG diagnosis into 77 classes.
-   - More information [here](https://huggingface.co/heartwise/bert_diagnosis2classification)
+Every model below is pinned to an exact Hugging Face commit in [`models/manifest.json`](models/manifest.json) (the ancestry folds in [`ancestry/model_manifest.json`](ancestry/model_manifest.json)). Which models run for a task is set in `heartwise.config` with `signal_models` and `image_models`; the per-task mapping is `MODEL_MAPPING` in [`utils/constants.py`](utils/constants.py). Output files are named after the value in the "Model name" column.
 
-2. **EfficientV2_77_classes**:
-   - Utilizes the EfficientNetV2 architecture to classify ECG signals into 77 classes.
-   - More information [here](https://huggingface.co/heartwise/efficientnetv2_77_classes)
+### Signal models (12-lead XML or NPY)
 
-3. **EfficientV2_LVEF_Equal_Under_40**:
-   - Utilizes the EfficientNetV2 architecture to classify ECG signals into binary classification of LVEF <= 40%.
-   - More information [here](https://huggingface.co/heartwise/efficientnetv2_lvef_equal_under_40)
+| Architecture | Config value (`signal_models`) | Model name | Task | CSV label / file column | Weights |
+| --- | --- | --- | --- | --- | --- |
+| WCR | `wcr` | `wcr_77_classes` | 77 ECG findings (multilabel) | `ecg_machine_diagnosis` / `77_classes_ecg_file_name` | [`heartwise/wcr_77_classes`](https://huggingface.co/heartwise/wcr_77_classes) |
+| WCR | `wcr` | `wcr_lvef_equal_under_40` | LVEF <= 40% | `lvef_40` / `lvef_40_ecg_file_name` | [`heartwise/wcr_lvef_equal_under_40`](https://huggingface.co/heartwise/wcr_lvef_equal_under_40) |
+| WCR | `wcr` | `wcr_lvef_under_50` | LVEF < 50% | `lvef_50` / `lvef_50_ecg_file_name` | [`heartwise/wcr_lvef_under_50`](https://huggingface.co/heartwise/wcr_lvef_under_50) |
+| WCR | `wcr` | `wcr_afib_5y` | Incident AFib at 5 years | `afib_5y` / `afib_ecg_file_name` | [`heartwise/wcr_afib_5y`](https://huggingface.co/heartwise/wcr_afib_5y) |
+| EfficientNetV2 | `efficientnet` | `efficientnetv2_77_classes` | 77 ECG findings (multilabel) | `ecg_machine_diagnosis` / `77_classes_ecg_file_name` | [`heartwise/efficientnetv2_77_classes`](https://huggingface.co/heartwise/efficientnetv2_77_classes) |
+| EfficientNetV2 | `efficientnet` | `efficientnetv2_lvef_equal_under_40` | LVEF <= 40% | `lvef_40` / `lvef_40_ecg_file_name` | [`heartwise/efficientnetv2_lvef_equal_under_40`](https://huggingface.co/heartwise/efficientnetv2_lvef_equal_under_40) |
+| EfficientNetV2 | `efficientnet` | `efficientnetv2_lvef_under_50` | LVEF < 50% | `lvef_50` / `lvef_50_ecg_file_name` | [`heartwise/efficientnetv2_lvef_under_50`](https://huggingface.co/heartwise/efficientnetv2_lvef_under_50) |
+| EfficientNetV2 | `efficientnet` | `efficientnetv2_afib_5y` | Incident AFib at 5 years | `afib_5y` / `afib_ecg_file_name` | [`heartwise/efficientnetv2_afib_5y`](https://huggingface.co/heartwise/efficientnetv2_afib_5y) |
 
-4. **EfficientV2_Under_50**:
-   - Utilizes the EfficientNetV2 architecture to classify ECG signals into binary classification of LVEF < 50%.
-   - More information [here](https://huggingface.co/heartwise/efficientnetv2_lvef_under_50)
+### Image models (ECG page PNG or JPEG)
 
-5. **EfficientV2_Incident_AFIB_At_5_Years**:
-   - Utilizes the EfficientNetV2 architecture to classify ECG signals into binary classification of incident AFIB at 5 years.
-   - More information [here](https://huggingface.co/heartwise/efficientnetv2_afib_5y)
+One shared SigLIP-2 ViT-B/16 encoder ([`heartwise/SigLIP-2_BaseEncoder`](https://huggingface.co/heartwise/SigLIP-2_BaseEncoder)) with one linear probe per task. All five are selected with `image_models: deepecg_siglip2`. See [DeepECG-PNG](#️-deepecg-png-ecg-images) for preprocessing and outputs.
 
-6. **WCR_77_classes**:
-   - Utilizes the WCR architecture to classify ECG signals into 77 classes.
-   - More information [here](https://huggingface.co/heartwise/wcr_77_classes)
+| Model name | Task | CSV label / file column | Weights |
+| --- | --- | --- | --- |
+| `deepecg_siglip2_77_classes` | 77 ECG findings (multilabel) | `ecg_machine_diagnosis` / `77_classes_ecg_file_name` | [`heartwise/SigLIP2_77_classes`](https://huggingface.co/heartwise/SigLIP2_77_classes) |
+| `deepecg_siglip2_shd` | Structural heart disease (SHD) | `shd` / `shd_ecg_file_name` | [`heartwise/SigLIP2_SHD`](https://huggingface.co/heartwise/SigLIP2_SHD) |
+| `deepecg_siglip2_lvef_equal_under_40` | LVEF <= 40% | `lvef_40` / `lvef_40_ecg_file_name` | [`heartwise/SigLIP2_LVEF_equal_under_40`](https://huggingface.co/heartwise/SigLIP2_LVEF_equal_under_40) |
+| `deepecg_siglip2_lvef_under_50` | LVEF < 50% | `lvef_50` / `lvef_50_ecg_file_name` | [`heartwise/SigLIP2_LVEF_under_50`](https://huggingface.co/heartwise/SigLIP2_LVEF_under_50) |
+| `deepecg_siglip2_afib_5y` | Incident AFib at 5 years | `afib_5y` / `afib_ecg_file_name` | [`heartwise/SigLIP2_AFIB_5Y`](https://huggingface.co/heartwise/SigLIP2_AFIB_5Y) |
 
-7. **WCR_LVEF_Equal_Under_40**:
-   - Utilizes the WCR architecture to classify ECG signals into binary classification of LVEF <= 40%.
-   - More information [here](https://huggingface.co/heartwise/wcr_lvef_equal_under_40)
+SHD has an image model only: a `shd_ecg_file_name` that points to a signal file gets no prediction.
 
-8. **WCR_LVEF_Under_50**:
-   - Utilizes the WCR architecture to classify ECG signals into binary classification of LVEF < 50%.
-   - More information [here](https://huggingface.co/heartwise/wcr_lvef_under_50)
+### Text model (ground truth for the 77 classes)
 
-9. **WCR_Incident_AFIB_At_5_Years**:
-   - Utilizes the WCR architecture to classify ECG signals into binary classification of incident AFIB at 5 years.
-   - More information [here](https://huggingface.co/heartwise/wcr_afib_5y)
+| Model name | Role | Weights |
+| --- | --- | --- |
+| `Bert_diagnosis2classification_En_Fr` | Converts the `ecg_machine_diagnosis` text (English or French) into 77 labels, used as ground truth for the 77-class metrics. Runs for the 77-class task on rows that have diagnosis text; its probabilities are written next to the model probabilities as `<finding>_bert_model` columns. | [`heartwise/Bert_diagnosis2classification_En_Fr`](https://huggingface.co/heartwise/Bert_diagnosis2classification_En_Fr) |
+
+`models/manifest.json` also pins the earlier English-only [`heartwise/Bert_diagnosis2classification`](https://huggingface.co/heartwise/Bert_diagnosis2classification); the pipeline does not select it.
+
+### Models outside the main pipeline
+
+| Model | Input | Where it runs | Weights |
+| --- | --- | --- | --- |
+| DeepECG-Ancestry (DeepECG-Pop), five-fold ensemble on the WCR SSL backbone | 12-lead NPY, plus genotypes and ancestry calls for validation | `dockerfile.ancestry` and the `ancestry` CLI, not `main.py` (see [DeepECG-Ancestry](#-deepecg-ancestry-external-validation)) | `heartwise/DeepECG-SSL_Ancestry` (access-gated; manifest revision is still `PENDING-UPLOAD`) |
+
+## Input data formats
+
+Each file listed in a `<task>_ecg_file_name` column is routed by its extension, so one CSV can mix all
+formats below. Paths are relative to `ecg_signals_path` (`/app/ecg_signals` in Docker) or absolute.
+
+| Format | Extension | Goes to | What is accepted | Template |
+| --- | --- | --- | --- | --- |
+| XML, MHI layout | `.xml` | Signal models | `Waveform.LeadData` blocks with a `LeadID` per lead (GE MUSE style export) | [data_rows_template_xml.csv](inputs/data_rows_template_xml.csv) |
+| XML, CLSA layout | `.xml` | Signal models | `RestingECGMeasurements` with `LeadOrder` and per-lead `StripData.WaveformData` (CardioSoft style) | [data_rows_template_xml.csv](inputs/data_rows_template_xml.csv) |
+| NumPy array | `.npy` | Signal models | 12 leads, `(samples, 12)` or `(12, samples)`, at least 2500 samples; longer signals are downsampled by an integer step to 2500 (10 s at 250 Hz). Arrays with NaN are refused. With `single_lead` set, one lead of shape `(2500,)`, `(2500, 1)` or `(1, 2500)` ([Single-lead input](#single-lead-input)) | [data_rows_template_npy.csv](inputs/data_rows_template_npy.csv) |
+| ECG page image | `.png`, `.jpg`, `.jpeg` | Image models | A rendered 12-lead page; a real non-animated PNG or single-picture JPEG, at most 50 megapixels ([DeepECG-PNG](#️-deepecg-png-ecg-images)) | [data_rows_template_png.csv](inputs/data_rows_template_png.csv) |
+
+Any other XML layout is reported as `Unknown XML format` in the preprocessing report and skipped; see
+[Adding Support for New XML Formats](#-adding-support-for-new-xml-formats). PDF ECG reports, DICOM
+waveforms and scanned images are not read by the pipeline on `main`.
+
+Columns of the input CSV, per task:
+
+| Task | Label column | File column | Label values | Signal models | Image models |
+| --- | --- | --- | --- | --- | --- |
+| 77 findings | `ecg_machine_diagnosis` (report text, scored by BERT) | `77_classes_ecg_file_name` | free text | yes | yes |
+| LVEF <= 40% | `lvef_40` | `lvef_40_ecg_file_name` | 0/1 | yes | yes |
+| LVEF < 50% | `lvef_50` | `lvef_50_ecg_file_name` | 0/1 | yes | yes |
+| Incident AFib at 5 years | `afib_5y` | `afib_ecg_file_name` | 0/1 | yes | yes |
+| Structural heart disease | `shd` | `shd_ecg_file_name` | 0/1 | no | yes |
+
+Labels are needed only for metrics; rows without labels still get predictions. Signal files are
+preprocessed to `(2500, 12)` arrays, saved as `.base64` files in `preprocessing_folder`, so two signal
+files may not share a basename. Images are decoded in memory and nothing derived from them is written.
 
 ## 📊 Optimal Thresholds
 
@@ -191,6 +232,8 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
 | EfficientNetV2 | AFIB 5Y | **Missing** | — | — |
 | EfficientNetV2 | LQTS | **Missing** | — | — |
 | EfficientNetV2 | LQTS TYPE | **Missing** | — | — |
+| DeepECG-SigLIP2 | 77 classes | None by design (probabilities only) | | |
+| DeepECG-SigLIP2 | SHD, LVEF <= 40%, LVEF < 50%, AFIB 5Y | Available | Validation set (Youden index) | `thresholds.json` in each pinned Hugging Face snapshot |
 
 ### Notes
 - **WCR 77-class thresholds** were computed on the MHI training set using the Youden index (maximizing sensitivity + specificity - 1). The full JSON includes per-label AUC, AUPRC, F1, threshold, and prevalence metrics.
