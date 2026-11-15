@@ -532,6 +532,13 @@ class AnalysisPipeline:
             ), df_probabilities
 
     @staticmethod
+    def _log_skipped_pages(model_name: str, n_rows: int, n_done: int) -> None:
+        """Warn (count only: no path) about the rows the image DataLoader left out."""
+        if n_done < n_rows:
+            logger.warning("%s: %d PDF row(s) without a readable ECG skipped "
+                           "(listed in unreadable_images_*.csv)", model_name, n_rows - n_done)
+
+    @staticmethod
     def _run_image_analysis_impl(
         model,
         df: pd.DataFrame,
@@ -579,6 +586,8 @@ class AnalysisPipeline:
             probabilities_rows, ground_truth, predictions = [], [], []
             with torch.no_grad():
                 for batch in tqdm(dataloader, total=len(dataloader)):
+                    if batch is None:      # no row of the batch loaded (PDFs without a readable ECG)
+                        continue
                     sig_prob = model(batch['ecg_signal']).detach().cpu().numpy()
                     texts = list(batch['diagnosis'])
                     bert_prob = np.full_like(sig_prob, np.nan)
@@ -595,6 +604,7 @@ class AnalysisPipeline:
             bert_columns = [f"{pattern}_bert_model" for pattern in ECG_PATTERNS]
             sig_columns = [f"{pattern}_sig_model" for pattern in ECG_PATTERNS]
             df_probabilities = pd.DataFrame(probabilities_rows, columns=['file_name'] + bert_columns + sig_columns)
+            AnalysisPipeline._log_skipped_pages(model_name, len(df), len(df_probabilities))
 
             if len(ground_truth) <= 1:
                 logger.warning("Skipping 77-class metrics: %d ECG(s) with report text", len(ground_truth))
@@ -611,11 +621,14 @@ class AnalysisPipeline:
         probabilities_rows = []
         with torch.no_grad():
             for batch in tqdm(dataloader, total=len(dataloader)):
+                if batch is None:          # no row of the batch loaded (PDFs without a readable ECG)
+                    continue
                 sig_prob = model(batch['ecg_signal']).detach().cpu().numpy()[:, 0]
                 labels = batch['diagnosis'].detach().cpu().numpy()
                 for i, file_name in enumerate(batch['file_name']):
                     probabilities_rows.append([file_name, labels[i], float(sig_prob[i])])
         df_probabilities = pd.DataFrame(probabilities_rows, columns=['file_name', 'ground_truth', 'predictions'])
+        AnalysisPipeline._log_skipped_pages(model_name, len(df), len(df_probabilities))
 
         labelled = df_probabilities[df_probabilities['ground_truth'].notna()]
         if len(labelled) <= 1:

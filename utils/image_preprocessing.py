@@ -1,3 +1,4 @@
+import io
 import os
 import struct
 
@@ -23,6 +24,33 @@ def _check_size(kind: str, width: int, height: int) -> None:
         raise ValueError(f"{kind} declares {width}x{height} pixels (> {MAX_IMAGE_PIXELS})")
 
 
+def _check_png_header(f) -> None:
+    """The header checks of open_png on a binary file object positioned at its start."""
+    if f.read(8) != PNG_SIGNATURE:
+        raise ValueError("not a PNG file")
+    header = f.read(8)
+    if len(header) != 8 or header[4:] != b"IHDR":
+        raise ValueError("PNG without an IHDR header")
+    width, height = struct.unpack(">II", f.read(8))
+    if width * height > MAX_IMAGE_PIXELS:
+        raise ValueError(f"PNG declares {width}x{height} pixels (> {MAX_IMAGE_PIXELS})")
+    f.seek(8 + 8 + struct.unpack(">I", header[:4])[0] + 4)   # past IHDR data + CRC
+    for _ in range(MAX_PNG_CHUNKS):                            # chunks before the image data
+        chunk = f.read(8)
+        if len(chunk) < 8:
+            break                                              # truncated: Pillow refuses it
+        length, kind = struct.unpack(">I", chunk[:4])[0], chunk[4:]
+        if kind == b"acTL":
+            raise ValueError("animated PNG (APNG) is not an ECG page")
+        if kind == b"IHDR":                                    # Pillow would take the later size
+            raise ValueError("PNG with more than one IHDR header")
+        if kind in (b"IDAT", b"IEND"):
+            break
+        f.seek(length + 4, 1)
+    else:
+        raise ValueError(f"PNG with more than {MAX_PNG_CHUNKS} chunks before its image data")
+
+
 def open_png(path: str) -> Image.Image:
     """
     Open a PNG with Pillow's PNG decoder only, after checking its header.
@@ -37,30 +65,22 @@ def open_png(path: str) -> Image.Image:
         ValueError: if the file is not an acceptable PNG.
     """
     with open(path, "rb") as f:
-        if f.read(8) != PNG_SIGNATURE:
-            raise ValueError("not a PNG file")
-        header = f.read(8)
-        if len(header) != 8 or header[4:] != b"IHDR":
-            raise ValueError("PNG without an IHDR header")
-        width, height = struct.unpack(">II", f.read(8))
-        if width * height > MAX_IMAGE_PIXELS:
-            raise ValueError(f"PNG declares {width}x{height} pixels (> {MAX_IMAGE_PIXELS})")
-        f.seek(8 + 8 + struct.unpack(">I", header[:4])[0] + 4)   # past IHDR data + CRC
-        for _ in range(MAX_PNG_CHUNKS):                            # chunks before the image data
-            chunk = f.read(8)
-            if len(chunk) < 8:
-                break                                              # truncated: Pillow refuses it
-            length, kind = struct.unpack(">I", chunk[:4])[0], chunk[4:]
-            if kind == b"acTL":
-                raise ValueError("animated PNG (APNG) is not an ECG page")
-            if kind == b"IHDR":                                    # Pillow would take the later size
-                raise ValueError("PNG with more than one IHDR header")
-            if kind in (b"IDAT", b"IEND"):
-                break
-            f.seek(length + 4, 1)
-        else:
-            raise ValueError(f"PNG with more than {MAX_PNG_CHUNKS} chunks before its image data")
+        _check_png_header(f)
     return Image.open(path, formats=["PNG"])
+
+
+def open_png_bytes(data: bytes) -> Image.Image:
+    """
+    open_png for a PNG held in memory (the page extracted from a PDF): the same header
+    checks, then Pillow's PNG decoder only.
+
+    Raises:
+        ValueError: if the bytes are not an acceptable PNG.
+    """
+    buffer = io.BytesIO(data)
+    _check_png_header(buffer)
+    buffer.seek(0)
+    return Image.open(buffer, formats=["PNG"])
 
 
 def open_jpeg(path: str) -> Image.Image:
@@ -152,9 +172,9 @@ def open_ecg_image(path: str) -> Image.Image:
     raise ValueError(f"unsupported image type {extension!r} (only .png, .jpg, .jpeg)")
 
 
-def load_ecg_image(path: str, preprocessing: dict) -> torch.Tensor:
+def preprocess_ecg_image(image: Image.Image, preprocessing: dict) -> torch.Tensor:
     """
-    Load an ECG page image and preprocess it exactly as DeepECG-PNG was trained
+    Preprocess a decoded ECG page exactly as DeepECG-PNG was trained
     (DeepECG-PNG utils.image.process_image, no augmentation):
 
     1. convert to grayscale ("L"; color_mode "rgb" keeps RGB),
@@ -165,7 +185,7 @@ def load_ecg_image(path: str, preprocessing: dict) -> torch.Tensor:
     5. per-channel (x - mean) / std (v2.Normalize).
 
     Args:
-        path: Path to the PNG or JPEG page.
+        image: The page, as decoded by open_ecg_image / open_png_bytes.
         preprocessing: The weights' config.json "preprocessing" block
             (resize [h, w], color_mode, mean [3], std [3]).
 
@@ -174,13 +194,74 @@ def load_ecg_image(path: str, preprocessing: dict) -> torch.Tensor:
     """
     height, width = (int(v) for v in preprocessing["resize"])
     gray = str(preprocessing.get("color_mode", "grayscale")).lower().startswith("gray")
-    # header checked first, then only the decoder of the file's own format (see open_ecg_image)
-    with open_ecg_image(path) as image:
-        image = image.convert("L" if gray else "RGB")
-        image = image.resize((width, height), Image.BILINEAR)
-        array = np.asarray(image, dtype=np.uint8)
+    image = image.convert("L" if gray else "RGB")
+    image = image.resize((width, height), Image.BILINEAR)
+    array = np.asarray(image, dtype=np.uint8)
     array = np.repeat(array[None], 3, axis=0) if gray else array.transpose(2, 0, 1)
     tensor = torch.from_numpy(np.ascontiguousarray(array)).to(torch.float32).mul_(1.0 / 255)
     mean = torch.tensor(preprocessing["mean"], dtype=torch.float32).view(-1, 1, 1)
     std = torch.tensor(preprocessing["std"], dtype=torch.float32).view(-1, 1, 1)
     return tensor.sub_(mean).div_(std)
+
+
+def load_ecg_image(path: str, preprocessing: dict) -> torch.Tensor:
+    """
+    Load a PNG or JPEG ECG page and preprocess it (preprocess_ecg_image).
+
+    Returns:
+        Float32 tensor of shape (3, height, width).
+    """
+    # header checked first, then only the decoder of the file's own format (see open_ecg_image)
+    with open_ecg_image(path) as image:
+        return preprocess_ecg_image(image, preprocessing)
+
+
+def load_ecg_pdf(path: str, preprocessing: dict) -> torch.Tensor:
+    """
+    Load the ECG of a vector ECG PDF and preprocess it as a PNG page.
+
+    The page is redrawn as a DeepECG-PNG training page in memory (utils.ecg_pdf), decoded with
+    the checks of open_png and preprocessed by preprocess_ecg_image; the PNG bytes and the
+    decoded page are dropped once the tensor exists. Nothing is written to disk.
+
+    Raises:
+        ValueError (utils.ecg_pdf.EcgPdfError for the PDF itself): if no page can be extracted.
+    """
+    from utils.ecg_pdf import PAGE_SIZE, extract_png_from_pdf   # pypdf + matplotlib: PDF runs only
+
+    with open_png_bytes(extract_png_from_pdf(path)) as image:
+        if image.size != PAGE_SIZE:
+            raise ValueError(f"extracted page is {image.size[0]}x{image.size[1]}, expected "
+                             f"{PAGE_SIZE[0]}x{PAGE_SIZE[1]}")
+        return preprocess_ecg_image(image, preprocessing)
+
+
+def is_pdf(path: str) -> bool:
+    return os.path.splitext(str(path))[1].lower() == ".pdf"
+
+
+def load_ecg_page(path: str, preprocessing: dict) -> torch.Tensor:
+    """The model input of an image-model row: a PDF report (load_ecg_pdf) or a PNG / JPEG page
+    (load_ecg_image), by the file's extension."""
+    if is_pdf(path):
+        return load_ecg_pdf(path, preprocessing)
+    return load_ecg_image(path, preprocessing)
+
+
+def check_ecg_page(path: str) -> None:
+    """
+    The check run on every image-model file before inference. A PNG / JPEG page is decoded in
+    full, as the model reads it. A PDF only gets utils.ecg_pdf.check_pdf (size, header,
+    encryption, page count): its page is extracted later, one row at a time, while the model
+    reads it.
+
+    Raises:
+        ValueError (or an OS / decoder error) if the file cannot be used.
+    """
+    if is_pdf(path):
+        from utils.ecg_pdf import check_pdf
+
+        check_pdf(path)
+        return
+    with open_ecg_image(path) as image:
+        image.load()

@@ -31,17 +31,26 @@ DIAGNOSIS_TO_FILE_COLUMNS = {
     'shd': 'shd_ecg_file_name'
 }
 
-# Input type of an ECG file, detected from its extension: images go to the image models
-# as they are; every other file (XML, NPY) is a signal and goes through the signal preprocessing.
+# Input type of an ECG file, detected from its extension: images (PNG/JPEG pages, and PDF
+# reports, whose page is extracted in memory when it is read) go to the image models as they
+# are; every other file (XML, NPY) is a signal and goes through the signal preprocessing.
 SIGNAL = 'signal'
 IMAGE = 'image'
 INPUT_TYPES = (SIGNAL, IMAGE)
-IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg')
+IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.pdf')
+
+# Source format of an ECG file, by extension; separate from the model input type above
+SOURCE_FORMATS = {'.xml': 'xml', '.npy': 'npy', '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.pdf': 'pdf'}
 
 
 def input_type_of(file_name) -> str:
-    """'image' for a .png/.jpg/.jpeg file name, 'signal' for anything else."""
+    """'image' for a .png/.jpg/.jpeg/.pdf file name, 'signal' for anything else."""
     return IMAGE if str(file_name).lower().endswith(IMAGE_EXTENSIONS) else SIGNAL
+
+
+def source_format_of(file_name) -> str | None:
+    """'xml', 'npy', 'png', 'jpeg' or 'pdf' from the file name's extension; None for any other."""
+    return SOURCE_FORMATS.get(os.path.splitext(str(file_name))[1].lower())
 
 
 # Models available per task and per input type. heartwise.config picks among them
