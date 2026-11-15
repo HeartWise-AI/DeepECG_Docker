@@ -1005,10 +1005,20 @@ plus `age` (years), `female` (0/1), and optional `hypertension` (0/1).
 `npy_path` is required. Outcome labels and a Hugging Face token are not required
 when the approved artifacts are mounted locally. CSV and Parquet are supported.
 
+The task runs in its own image, `Dockerfile.clsa-cvd` (see below), not in the main
+`dockerfile`: its folds load only with the upstream `Jwoo5/fairseq-signals` commit and
+PyTorch 2.14 pinned there. The main image's fairseq-signals fork refuses them at strict load.
+
 ```bash
-python main.py --task clsa_cvd --config clsa_cvd.example.json \
-  --input inputs/clsa_ecgs.parquet --out outputs/clsa_cvd.parquet
+docker build -f Dockerfile.clsa-cvd -t deepecg-clsa-cvd .
+docker run --rm --gpus all \
+  -v /approved/models:/models:ro -v $(pwd)/inputs:/app/inputs:ro -v $(pwd)/outputs:/app/outputs \
+  deepecg-clsa-cvd --config /app/clsa_cvd.example.json \
+  --input /app/inputs/clsa_ecgs.parquet --out /app/outputs/clsa_cvd.parquet
 ```
+
+From a checkout with that environment, `python main.py --task clsa_cvd ...` with the same
+arguments routes to the same code.
 
 Set the config paths to the five final CLSA fold safetensors and matching WCRv2
 encoder. Paths are relative to the config file unless absolute. Choose `format`
@@ -1074,6 +1084,12 @@ not start/reconfigure a daemon, read API keys or publish the image. Once this
 passes, repeat the protected cohort parity check in the built image before
 claiming deployment validation. The present executor lacks Docker, its daemon
 socket, CAP_SYS_ADMIN and unprivileged user namespaces, so it cannot run this gate.
+
+Verified outside Docker (2026-11-15): with the host's PyTorch 2.14.0 (NVIDIA 26.08 build),
+Python 3.12 and `Jwoo5/fairseq-signals@f8f0ff1`, the real-weight regression
+(`tests/test_clsa_cvd.py::test_protected_synthetic_model_golden`) passes on CPU against the
+NAS bundle `DeepECG_SSL_WCRv2_CLSA_CVD_v1`: five folds strictly loaded, outputs equal to the
+golden values within 1e-6. The built-image run above is still pending.
 
 For the legacy Dockerfile's optional `RUN_MODELS_SETUP=true` build, supply its
 key JSON with BuildKit, for example `--secret id=hf_api_key,src=/approved/key.json`.

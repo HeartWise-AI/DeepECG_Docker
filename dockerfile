@@ -35,7 +35,6 @@ COPY ingestion/ ingestion/
 COPY models/ models/
 COPY utils/ utils/
 COPY thresholds/ thresholds/
-COPY clsa_cvd/ clsa_cvd/
 COPY heartwise.config heartwise.config
 COPY main.py main.py
 COPY models_setup.py models_setup.py
