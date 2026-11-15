@@ -16,6 +16,7 @@ This pipeline offers 3 modes of processing:
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [DeepECG-Ancestry (external validation)](#-deepecg-ancestry-external-validation)
+- [CLSA incident CVD](#clsa-incident-cvd-five-fold-ensemble)
 - [Testing](#testing)
 - [Docker](#docker)
 - [DeepECG-PNG (ECG images)](#️-deepecg-png-ecg-images)
@@ -28,12 +29,13 @@ This pipeline offers 3 modes of processing:
 
 - **14 pinned inference models** in one image (8 signal, 5 image, 1 text; full list in [Models](#models)):
   - Signal models (12-lead XML or NPY): WCR and EfficientNetV2, each for 77 classes, LVEF <= 40%, LVEF < 50% and incident AFib at 5 years
-  - Image models (ECG page PNG or JPEG): DeepECG-SigLIP2 for 77 classes, SHD, LVEF <= 40%, LVEF < 50% and incident AFib at 5 years
+  - Image models (ECG page PNG or JPEG, or vector PDF report): DeepECG-SigLIP2 for 77 classes, SHD, LVEF <= 40%, LVEF < 50% and incident AFib at 5 years
   - BERT (English/French) that turns the machine diagnosis text into 77-class ground truth for metrics
-- **Input type detected per file** from its extension: XML, NPY, PNG and JPEG rows can be mixed in one CSV, with no format flag (see [Input data formats](#input-data-formats))
+- **Input type detected per file** from its extension: XML, NPY, PNG, JPEG and PDF rows can be mixed in one CSV, with no format flag (see [Input data formats](#input-data-formats))
 - **Single-lead NPY input** placed into one, several or all 12 leads (`single_lead` in `heartwise.config`)
 - **Holter / external-validation ingestion** (`ingestion/`, Icentia-11k adapter) that reuses the same preprocessing and models
 - **DeepECG-Ancestry (DeepECG-Pop)**: the five-fold ECG ancestry score and its external-validation pipeline, in its own image (`dockerfile.ancestry`)
+- **CLSA incident CVD**: five-fold DeepECG-SSL WCRv2 ensemble for incident cardiovascular disease, in its own image (`Dockerfile.clsa-cvd`)
 - Every model revision pinned in `models/manifest.json`; downloads are cached per commit
 - Configuration through `heartwise.config` only; CPU and GPU support
 
@@ -122,12 +124,14 @@ DeepECG_Docker/
 │   └── icentia11k/                     # Icentia-11k single-lead Holter (see its README)
 │
 ├── ancestry/                           # DeepECG-Ancestry pipeline (own image, see below)
+├── clsa_cvd/                           # CLSA incident CVD task (own image, see below)
 │
 ├── utils/
 │   └── ...
 │
 ├── dockerfile                          # Main inference image
 ├── dockerfile.ancestry                 # DeepECG-Ancestry image
+├── Dockerfile.clsa-cvd                 # CLSA incident CVD image
 ├── heartwise.config
 ├── api_key.json
 ├── main.py
@@ -153,7 +157,7 @@ Every model below is pinned to an exact Hugging Face commit in [`models/manifest
 | EfficientNetV2 | `efficientnet` | `efficientnetv2_lvef_under_50` | LVEF < 50% | `lvef_50` / `lvef_50_ecg_file_name` | [`heartwise/efficientnetv2_lvef_under_50`](https://huggingface.co/heartwise/efficientnetv2_lvef_under_50) |
 | EfficientNetV2 | `efficientnet` | `efficientnetv2_afib_5y` | Incident AFib at 5 years | `afib_5y` / `afib_ecg_file_name` | [`heartwise/efficientnetv2_afib_5y`](https://huggingface.co/heartwise/efficientnetv2_afib_5y) |
 
-### Image models (ECG page PNG or JPEG)
+### Image models (ECG page PNG or JPEG, or PDF report)
 
 One shared SigLIP-2 ViT-B/16 encoder ([`heartwise/SigLIP-2_BaseEncoder`](https://huggingface.co/heartwise/SigLIP-2_BaseEncoder)) with one linear probe per task. All five are selected with `image_models: deepecg_siglip2`. See [DeepECG-PNG](#️-deepecg-png-ecg-images) for preprocessing and outputs.
 
@@ -180,6 +184,7 @@ SHD has an image model only: a `shd_ecg_file_name` that points to a signal file 
 | Model | Input | Where it runs | Weights |
 | --- | --- | --- | --- |
 | DeepECG-Ancestry (DeepECG-Pop), five-fold ensemble on the WCR SSL backbone | 12-lead NPY, plus genotypes and ancestry calls for validation | `dockerfile.ancestry` and the `ancestry` CLI, not `main.py` (see [DeepECG-Ancestry](#-deepecg-ancestry-external-validation)) | `heartwise/DeepECG-SSL_Ancestry` (access-gated; manifest revision is still `PENDING-UPLOAD`) |
+| CLSA incident CVD: five-fold DeepECG-SSL WCRv2 ensemble. Outputs `p_ecg` (calibrated ECG model), `risk_Aplus` (with hypertension) and `risk_ecg_age_sex` (MHI variant) | 12-lead NPY (`clsa` 500 Hz CardioSoft ADC, `muse` 250 Hz or `mv250` 250 Hz in mV), plus `age`, `female` and optional `hypertension`, in CSV or Parquet | `Dockerfile.clsa-cvd` (`python -m clsa_cvd.cli`), not the main image (see [CLSA incident CVD](#clsa-incident-cvd-five-fold-ensemble)) | [`heartwise/DeepECG-SSL-CLSA-CVD`](https://huggingface.co/heartwise/DeepECG-SSL-CLSA-CVD); NAS `/media/data1/models/DeepECG-SSL/DeepECG_SSL_WCRv2_CLSA_CVD_v1`; encoder `deepecg-ssl-v2-wcr-amp-preserved-encoder.pt` |
 
 ## Input data formats
 
@@ -192,10 +197,11 @@ formats below. Paths are relative to `ecg_signals_path` (`/app/ecg_signals` in D
 | XML, CLSA layout | `.xml` | Signal models | `RestingECGMeasurements` with `LeadOrder` and per-lead `StripData.WaveformData` (CardioSoft style) | [data_rows_template_xml.csv](inputs/data_rows_template_xml.csv) |
 | NumPy array | `.npy` | Signal models | 12 leads, `(samples, 12)` or `(12, samples)`, at least 2500 samples; longer signals are downsampled by an integer step to 2500 (10 s at 250 Hz). Arrays with NaN are refused. With `single_lead` set, one lead of shape `(2500,)`, `(2500, 1)` or `(1, 2500)` ([Single-lead input](#single-lead-input)) | [data_rows_template_npy.csv](inputs/data_rows_template_npy.csv) |
 | ECG page image | `.png`, `.jpg`, `.jpeg` | Image models | A rendered 12-lead page; a real non-animated PNG or single-picture JPEG, at most 50 megapixels ([DeepECG-PNG](#️-deepecg-png-ecg-images)) | [data_rows_template_png.csv](inputs/data_rows_template_png.csv) |
+| ECG PDF report | `.pdf` | Image models | A vector (not scanned) PDF with one ECG page in the 3x4 + lead II rhythm layout, at most 20 MB and 20 pages. The leads are read from the drawing, redrawn as a training-style page in memory and scored like a PNG; refused PDFs are listed in `unreadable_images_<ts>.csv` ([PDF reports](#️-deepecg-png-ecg-images)) | same columns as images |
 
 Any other XML layout is reported as `Unknown XML format` in the preprocessing report and skipped; see
-[Adding Support for New XML Formats](#-adding-support-for-new-xml-formats). PDF ECG reports, DICOM
-waveforms and scanned images are not read by the pipeline on `main`.
+[Adding Support for New XML Formats](#-adding-support-for-new-xml-formats). DICOM
+waveforms and scanned ECGs (images of paper or scanned PDFs) are not read.
 
 Columns of the input CSV, per task:
 
@@ -499,6 +505,105 @@ software regression check, not a clinical or ancestry-performance analysis.
 single site cannot answer, [`inputs/README_ancestry_inputs.md`](inputs/README_ancestry_inputs.md)
 for the three input files, and [`docs/ANCESTRY_DEPLOY.md`](docs/ANCESTRY_DEPLOY.md) for shipping
 the image to a site that cannot build it.
+
+## CLSA incident CVD (five-fold ensemble)
+
+This dedicated task preserves ECG amplitude and accepts baseline ECG NPY files
+plus `age` (years), `female` (0/1), and optional `hypertension` (0/1).
+`npy_path` is required. Outcome labels and a Hugging Face token are not required
+when the approved artifacts are mounted locally. CSV and Parquet are supported.
+
+The task runs in its own image, `Dockerfile.clsa-cvd` (see below), not in the main
+`dockerfile`: its folds load only with the upstream `Jwoo5/fairseq-signals` commit and
+PyTorch 2.14 pinned there. The main image's fairseq-signals fork refuses them at strict load.
+
+```bash
+docker build -f Dockerfile.clsa-cvd -t deepecg-clsa-cvd .
+docker run --rm --gpus all \
+  -v /approved/models:/models:ro -v $(pwd)/inputs:/app/inputs:ro -v $(pwd)/outputs:/app/outputs \
+  deepecg-clsa-cvd --config /app/clsa_cvd.example.json \
+  --input /app/inputs/clsa_ecgs.parquet --out /app/outputs/clsa_cvd.parquet
+```
+
+From a checkout with that environment, `python main.py --task clsa_cvd ...` with the same
+arguments routes to the same code.
+
+Set the config paths to the five final CLSA fold safetensors and matching WCRv2
+encoder. Paths are relative to the config file unless absolute. Choose `format`
+explicitly: `clsa` means 500-Hz CardioSoft ADC (multiply by 0.005 mV, polyphase
+resample); `muse` means 250-Hz MUSE ADC (multiply by 0.00488 mV); `mv250` means
+already-scaled millivolts at 250 Hz. The lead order must be I, II, III, aVR, aVL,
+aVF, V1–V6. This task bypasses the legacy batch spectral scaling and filtering.
+
+Outputs are `p_ecg` (calibrated Model A), `risk_Aplus` (when hypertension is
+provided), and `risk_ecg_age_sex` (the unrecalibrated MHI variant). The external
+variant uses the mean of *uncalibrated* fold probabilities; it is not Model A+.
+Rows with invalid/missing inputs retain their position and receive `ecg_ok=false`
+and an error; the command exits 2 if any row fails. Model loading/inference errors
+are fatal. Age checks accept 18–100 years; CLSA development ages were 45–85.
+
+Default `precision: "float32"` disables TF32 for reproducible single/batch
+inference. Historical saved predictions were computed with CUDA bfloat16,
+batch size 128. To reproduce them, set `precision: "bfloat16"` and
+`batch_size: 128`. These arithmetic modes differ slightly: in the protected
+3,906-ECG audit, IEEE float32 differed from historical calibrated ECG scores by
+up to 0.001780 and A+ by 0.000998. Historical bfloat16 mode matched within
+0.000000085. Do not claim identical outputs across precision modes. The
+full-precision logistic coefficients reproduce saved A+ equation outputs within
+2.3e-16 when supplied the stored ECG probabilities.
+
+The validated local environment used PyTorch NVIDIA 26.08 (CUDA 13.4) and
+fairseq-signals commit `f8f0ff1c788a82c2059cb452cd5462898867489e`.
+Container execution is still pending; the legacy Docker dependency stack has
+not been certified for this task. Mount model artifacts read-only. API keys are
+no longer copied into the image; existing tasks that need a key must mount their
+key file at runtime. No CVD weights, patient data or credentials are committed.
+
+Tests: `PYTHONPATH=. python -m pytest -q tests/`. Protected parity and benchmark
+scripts are maintained in the CLSA review workspace, with aggregate reports.
+
+The protected suite passed all 18 tests with local artifacts. The real-weight
+synthetic regression is skipped unless `CLSA_CVD_TEST_BUNDLE` and
+`CLSA_CVD_TEST_ENCODER` are set; it never downloads weights. The shareable
+synthetic generator and expected outputs are in `tests/fixtures/clsa_cvd_synthetic.json`.
+
+### Candidate CVD container build
+
+`Dockerfile.clsa-cvd` is a separate candidate that uses the validated NVIDIA
+26.08 Python/PyTorch/CUDA family and pins the actual Jwoo5 fairseq-signals commit.
+`requirements-clsa.txt` pins the observed direct runtime versions; their wheel
+metadata resolves successfully. This is not a completed container-build result.
+The image asserts Python 3.12, PyTorch 2.14 and CUDA 13.4 before accepting a build.
+
+On an approved Docker/GPU executor:
+
+```bash
+bash validate_cvd_container.bash \
+  /approved/models/DeepECG_SSL_WCRv2_CLSA_CVD_v1/weights \
+  /approved/models/wcr-v2/deepecg-ssl-v2-wcr-amp-preserved-encoder.pt \
+  /approved/output/clsa_container_validation
+```
+
+The runner checks the explicit local daemon, builds the image, records its immutable
+ID and base-image metadata, mounts all model inputs read-only, verifies all seven
+artifact hashes, and exercises synthetic single/batch inference. Proxy CA trust
+is mounted at build time via `CODEX_PROXY_CERT` when configured. The runner does
+not start/reconfigure a daemon, read API keys or publish the image. Once this
+passes, repeat the protected cohort parity check in the built image before
+claiming deployment validation. The present executor lacks Docker, its daemon
+socket, CAP_SYS_ADMIN and unprivileged user namespaces, so it cannot run this gate.
+
+Verified outside Docker (2026-11-15): with the host's PyTorch 2.14.0 (NVIDIA 26.08 build),
+Python 3.12 and `Jwoo5/fairseq-signals@f8f0ff1`, the real-weight regression
+(`tests/test_clsa_cvd.py::test_protected_synthetic_model_golden`) passes on CPU against the
+NAS bundle `DeepECG_SSL_WCRv2_CLSA_CVD_v1`: five folds strictly loaded, outputs equal to the
+golden values within 1e-6. The built-image run above is still pending.
+
+For the legacy Dockerfile's optional `RUN_MODELS_SETUP=true` build, supply its
+key JSON with BuildKit, for example `--secret id=hf_api_key,src=/approved/key.json`.
+The temporary mount is available only to the setup step and is not copied into
+an image layer. The default setup-disabled build and the CVD candidate do not
+require that key. This build path still requires validation on a Docker executor.
 
 ## Testing
 
@@ -1039,103 +1144,3 @@ If you find this repository useful, please cite our work:
 }
 
 ```
-
-
-## CLSA incident CVD (five-fold ensemble)
-
-This dedicated task preserves ECG amplitude and accepts baseline ECG NPY files
-plus `age` (years), `female` (0/1), and optional `hypertension` (0/1).
-`npy_path` is required. Outcome labels and a Hugging Face token are not required
-when the approved artifacts are mounted locally. CSV and Parquet are supported.
-
-The task runs in its own image, `Dockerfile.clsa-cvd` (see below), not in the main
-`dockerfile`: its folds load only with the upstream `Jwoo5/fairseq-signals` commit and
-PyTorch 2.14 pinned there. The main image's fairseq-signals fork refuses them at strict load.
-
-```bash
-docker build -f Dockerfile.clsa-cvd -t deepecg-clsa-cvd .
-docker run --rm --gpus all \
-  -v /approved/models:/models:ro -v $(pwd)/inputs:/app/inputs:ro -v $(pwd)/outputs:/app/outputs \
-  deepecg-clsa-cvd --config /app/clsa_cvd.example.json \
-  --input /app/inputs/clsa_ecgs.parquet --out /app/outputs/clsa_cvd.parquet
-```
-
-From a checkout with that environment, `python main.py --task clsa_cvd ...` with the same
-arguments routes to the same code.
-
-Set the config paths to the five final CLSA fold safetensors and matching WCRv2
-encoder. Paths are relative to the config file unless absolute. Choose `format`
-explicitly: `clsa` means 500-Hz CardioSoft ADC (multiply by 0.005 mV, polyphase
-resample); `muse` means 250-Hz MUSE ADC (multiply by 0.00488 mV); `mv250` means
-already-scaled millivolts at 250 Hz. The lead order must be I, II, III, aVR, aVL,
-aVF, V1–V6. This task bypasses the legacy batch spectral scaling and filtering.
-
-Outputs are `p_ecg` (calibrated Model A), `risk_Aplus` (when hypertension is
-provided), and `risk_ecg_age_sex` (the unrecalibrated MHI variant). The external
-variant uses the mean of *uncalibrated* fold probabilities; it is not Model A+.
-Rows with invalid/missing inputs retain their position and receive `ecg_ok=false`
-and an error; the command exits 2 if any row fails. Model loading/inference errors
-are fatal. Age checks accept 18–100 years; CLSA development ages were 45–85.
-
-Default `precision: "float32"` disables TF32 for reproducible single/batch
-inference. Historical saved predictions were computed with CUDA bfloat16,
-batch size 128. To reproduce them, set `precision: "bfloat16"` and
-`batch_size: 128`. These arithmetic modes differ slightly: in the protected
-3,906-ECG audit, IEEE float32 differed from historical calibrated ECG scores by
-up to 0.001780 and A+ by 0.000998. Historical bfloat16 mode matched within
-0.000000085. Do not claim identical outputs across precision modes. The
-full-precision logistic coefficients reproduce saved A+ equation outputs within
-2.3e-16 when supplied the stored ECG probabilities.
-
-The validated local environment used PyTorch NVIDIA 26.08 (CUDA 13.4) and
-fairseq-signals commit `f8f0ff1c788a82c2059cb452cd5462898867489e`.
-Container execution is still pending; the legacy Docker dependency stack has
-not been certified for this task. Mount model artifacts read-only. API keys are
-no longer copied into the image; existing tasks that need a key must mount their
-key file at runtime. No CVD weights, patient data or credentials are committed.
-
-Tests: `PYTHONPATH=. python -m pytest -q tests/`. Protected parity and benchmark
-scripts are maintained in the CLSA review workspace, with aggregate reports.
-
-The protected suite passed all 18 tests with local artifacts. The real-weight
-synthetic regression is skipped unless `CLSA_CVD_TEST_BUNDLE` and
-`CLSA_CVD_TEST_ENCODER` are set; it never downloads weights. The shareable
-synthetic generator and expected outputs are in `tests/fixtures/clsa_cvd_synthetic.json`.
-
-### Candidate CVD container build
-
-`Dockerfile.clsa-cvd` is a separate candidate that uses the validated NVIDIA
-26.08 Python/PyTorch/CUDA family and pins the actual Jwoo5 fairseq-signals commit.
-`requirements-clsa.txt` pins the observed direct runtime versions; their wheel
-metadata resolves successfully. This is not a completed container-build result.
-The image asserts Python 3.12, PyTorch 2.14 and CUDA 13.4 before accepting a build.
-
-On an approved Docker/GPU executor:
-
-```bash
-bash validate_cvd_container.bash \
-  /approved/models/DeepECG_SSL_WCRv2_CLSA_CVD_v1/weights \
-  /approved/models/wcr-v2/deepecg-ssl-v2-wcr-amp-preserved-encoder.pt \
-  /approved/output/clsa_container_validation
-```
-
-The runner checks the explicit local daemon, builds the image, records its immutable
-ID and base-image metadata, mounts all model inputs read-only, verifies all seven
-artifact hashes, and exercises synthetic single/batch inference. Proxy CA trust
-is mounted at build time via `CODEX_PROXY_CERT` when configured. The runner does
-not start/reconfigure a daemon, read API keys or publish the image. Once this
-passes, repeat the protected cohort parity check in the built image before
-claiming deployment validation. The present executor lacks Docker, its daemon
-socket, CAP_SYS_ADMIN and unprivileged user namespaces, so it cannot run this gate.
-
-Verified outside Docker (2026-11-15): with the host's PyTorch 2.14.0 (NVIDIA 26.08 build),
-Python 3.12 and `Jwoo5/fairseq-signals@f8f0ff1`, the real-weight regression
-(`tests/test_clsa_cvd.py::test_protected_synthetic_model_golden`) passes on CPU against the
-NAS bundle `DeepECG_SSL_WCRv2_CLSA_CVD_v1`: five folds strictly loaded, outputs equal to the
-golden values within 1e-6. The built-image run above is still pending.
-
-For the legacy Dockerfile's optional `RUN_MODELS_SETUP=true` build, supply its
-key JSON with BuildKit, for example `--secret id=hf_api_key,src=/approved/key.json`.
-The temporary mount is available only to the setup step and is not copied into
-an image layer. The default setup-disabled build and the CVD candidate do not
-require that key. This build path still requires validation on a Docker executor.
