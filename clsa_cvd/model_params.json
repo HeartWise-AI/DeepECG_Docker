@@ -1,0 +1,67 @@
+{
+  "description": "DeepECG-SSL fine-tuned in CLSA for incident CVD by Follow-up 2 (median 5.8 y). Ensemble of 5 cross-validation fold models.",
+  "input": {
+    "leads": 12,
+    "sampling_rate_hz": 250,
+    "duration_s": 10,
+    "samples": 2500,
+    "units": "mV",
+    "normalisation": "none (amplitude-preserving)",
+    "lead_order": "I, II, III, aVR, aVL, aVF, V1-V6"
+  },
+  "per_fold_platt": {
+    "0": {
+      "a": 0.9256001662643487,
+      "b": -1.2964684731565865
+    },
+    "1": {
+      "a": 0.7505578577075713,
+      "b": -1.1098622868479822
+    },
+    "2": {
+      "a": 0.6849553209687097,
+      "b": -1.3305760314820416
+    },
+    "3": {
+      "a": 0.8646998199738609,
+      "b": -0.9854216020249019
+    },
+    "4": {
+      "a": 0.7763569971752428,
+      "b": -1.204451555024041
+    }
+  },
+  "model_A_plus": {
+    "formula": "logit(risk) = intercept + b_ecg*ecg_logit + b_age*age + b_female*female + b_htn*hypertension",
+    "intercept": -3.8386085094487012,
+    "b_ecg": 0.6502693992781706,
+    "b_age": 0.04871459335113484,
+    "b_female": -0.3648226286135894,
+    "b_htn": 0.34160917240450983,
+    "ecg_logit": "logit of the mean over folds of Platt-calibrated fold probabilities",
+    "age": "years",
+    "female": "1 if female",
+    "hypertension": "1 if self-reported physician-diagnosed hypertension"
+  },
+  "model_ecg_age_sex_external": {
+    "formula": "logit(risk) = intercept + b_ecg*ecg_logit_uncal + b_age*age + b_female*female",
+    "intercept": -4.685164180420436,
+    "b_ecg": 0.5186974036163096,
+    "b_age": 0.052019636929571025,
+    "b_female": -0.3711663016453705,
+    "ecg_logit_uncal": "logit of the mean over the 5 folds of UNCALIBRATED fold sigmoid outputs",
+    "use": "validated at MHI (no hypertension variable); fitted on CLSA development out-of-fold predictions, applied unchanged. Overpredicts at MHI (slope 0.81, CITL -0.66): recalibrate locally."
+  },
+  "age_sex_reference": {
+    "intercept": -6.624631360106959,
+    "b_age": 0.07239711085716635,
+    "b_female": -0.4616633628268495
+  },
+  "performance": {
+    "clsa_test_Aplus_auroc": "0.733 (0.707-0.759), n=3,906, 394 events",
+    "clsa_test_FRS_auroc": 0.689,
+    "clsa_test_PREVENT_auroc": 0.715,
+    "mhi_ecg_age_sex_auroc": "0.761 (0.751-0.771), n=21,647, 2,190 events; age+sex 0.728"
+  },
+  "parameter_provenance": "Full-precision development-only logistic fits reproduced from the original recipe; every coefficient rounds to the original four-decimal coefficient; A+ verified against all 3906 saved test outputs."
+}

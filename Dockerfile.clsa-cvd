@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+# Candidate build for the validated CVD environment; container validation is pending.
+ARG CVD_BASE_IMAGE=nvcr.io/nvidia/pytorch:26.08-py3
+FROM ${CVD_BASE_IMAGE}
+WORKDIR /app
+COPY requirements-clsa.txt /app/requirements-clsa.txt
+# The optional CA mount supports the configured session proxy without persisting trust material.
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then export PIP_CERT=/run/secrets/proxy_ca; fi; \
+    python -m pip install --no-cache-dir -r /app/requirements-clsa.txt
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then export GIT_SSL_CAINFO=/run/secrets/proxy_ca; fi; \
+    git init /app/fairseq-signals && \
+    git -C /app/fairseq-signals remote add origin https://github.com/Jwoo5/fairseq-signals.git && \
+    git -C /app/fairseq-signals fetch --depth 1 origin f8f0ff1c788a82c2059cb452cd5462898867489e && \
+    git -C /app/fairseq-signals checkout --detach FETCH_HEAD && \
+    test "$(git -C /app/fairseq-signals rev-parse HEAD)" = f8f0ff1c788a82c2059cb452cd5462898867489e
+# Reference inference uses PYTHONPATH source imports; optional training extensions are unnecessary.
+ENV PYTHONPATH=/app/fairseq-signals
+ENV PYTHONDONTWRITEBYTECODE=1 HF_HOME=/tmp/huggingface TORCH_HOME=/tmp/torch HF_HUB_OFFLINE=1
+COPY clsa_cvd/ /app/clsa_cvd/
+COPY clsa_cvd.example.json /app/clsa_cvd.example.json
+COPY tests/fixtures/clsa_cvd_synthetic.json /app/tests/fixtures/clsa_cvd_synthetic.json
+COPY container_validate_cvd.py /app/container_validate_cvd.py
+RUN python -c "import sys,torch; assert sys.version_info[:2] == (3,12); assert torch.__version__.startswith('2.14.'); assert torch.version.cuda == '13.4'; import clsa_cvd.model; from fairseq_signals.utils import checkpoint_utils"
+ENTRYPOINT ["python", "-m", "clsa_cvd.cli"]
+CMD ["--help"]
