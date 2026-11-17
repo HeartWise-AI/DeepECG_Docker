@@ -3,7 +3,7 @@
   "models": {
     "deepecg_pop_ancestry": {
       "repository": "heartwise/DeepECG-SSL_Ancestry",
-      "revision": "PENDING-UPLOAD"
+      "revision": "961e9c75f79764a568334a58ec4fd31a9f66bdb9"
     }
   }
 }
