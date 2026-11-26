@@ -30,7 +30,7 @@ import main as pipeline  # noqa: E402
 from models import siglip2_wrapper  # noqa: E402
 from models.bert_classifier import BertClassifier_En_Fr  # noqa: E402
 from utils import analysis_pipeline  # noqa: E402
-from utils.constants import DIAGNOSIS_TO_FILE_COLUMNS, ECG_PATTERNS, IMAGE, SIGNAL  # noqa: E402
+from utils.constants import DIAGNOSIS_TO_FILE_COLUMNS, ECG_PATTERNS, IMAGE, MODEL_MAPPING, SIGNAL  # noqa: E402
 from utils.image_preprocessing import load_ecg_image  # noqa: E402
 os.chdir(_cwd)
 
@@ -252,7 +252,9 @@ def test_missing_png_is_reported_and_skipped(world):
     shd = pd.read_csv(_one(out, '_shd_probabilities.csv'))
     assert shd['file_name'].tolist() == ['ecg_0.png', 'ecg_1.png']
     missing = pd.read_csv(_one(out, 'missing_files_'))
-    assert missing['file_name'].eq('not_there.png').all() and len(missing) == len(DIAGNOSIS_TO_FILE_COLUMNS)
+    # one row per task the selected image model runs (the DINOv3-only tasks hcm and aco are not checked)
+    siglip2_tasks = [t for t in DIAGNOSIS_TO_FILE_COLUMNS if 'deepecg_siglip2' in MODEL_MAPPING[t][IMAGE]]
+    assert missing['file_name'].eq('not_there.png').all() and len(missing) == len(siglip2_tasks) == 5
 
 
 def test_input_type_is_detected_from_the_extension():

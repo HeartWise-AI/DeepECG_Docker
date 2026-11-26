@@ -23,6 +23,7 @@ from models.siglip2_wrapper import (
     DeepECG_SigLIP2_LVEF_Under_50,
     DeepECG_SigLIP2_SHD
 )
+from models.dinov3_wrapper import DeepECG_DINOv3_Wrapper, TASK_MODELS as DINOV3_TASK_MODELS
 
 __all__ = [
     'BertClassifier',
@@ -40,5 +41,7 @@ __all__ = [
     'DeepECG_SigLIP2_LVEF_Equal_Under_40',
     'DeepECG_SigLIP2_LVEF_Under_50',
     'DeepECG_SigLIP2_SHD',
+    'DeepECG_DINOv3_Wrapper',
+    'DINOV3_TASK_MODELS',
 ]
 
