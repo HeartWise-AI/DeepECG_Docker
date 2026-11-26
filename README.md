@@ -211,7 +211,28 @@ HCM 3-class have none. The loader refuses a head whose `head.json` names another
 The architecture is built locally (the gated `facebook/dinov3-vitb16-pretrain-lvd1689m` is never
 contacted); `base/epoch_030.pt` loads strictly under any transformers block layout. Pages get the SigLIP2
 preprocessing at 448x896, plus EXIF orientation and white compositing of transparent pages (both no-ops for
-opaque, upright pages). Research use only: no calibration analysis, no external validation.
+opaque, upright pages). Research use only: no calibration analysis, no external validation, single centre
+(MHI).
+
+**Licence.** The encoder weights derive from Meta's DINOv3 ViT-B/16 and are distributed under the
+[DINOv3 License](https://ai.meta.com/resources/models-and-libraries/dinov3-license/); anyone running or
+redistributing these models (including images built with `RUN_MODELS_SETUP=true`) must accept its terms.
+
+**Relation to the PACS-AI container.** PACS-AI (`model-examples/DeepECG-CLIP-DINOv3` in
+HeartWise-AI/pacs-ai-backend, v1.1.0) serves the fine-tuned ACO and ACCO-vs-AICO models plus six clean
+probes from `heartwise/deepecg_clip_dinov3_acs` @ `badd718`, not this bank. The `aco` row above is the frozen
+probe (test AUROC 0.87), not the fine-tuned model (0.92). A later PACS-AI change may switch to this bank while
+keeping the fine-tuned heads.
+
+**HCM 3-class.** This loader supports softmax heads (`classifier.activation: softmax`, no cutoffs). The
+PACS-AI head format is sigmoid only, so `hcm_3class` cannot be served there until that format gains softmax
+support; here it stays off by default.
+
+**Parity check** (`scripts/dinov3_probe_parity.py`): compares every head of a probe folder with the saved
+scores of its fit (feature to score, tolerance 2e-5) and runs a few test pages end to end. `--probes-dir`
+selects the folder under `--snapshot`; by default it uses `probes_all18` when present (the NAS copy, where
+`probes/` holds only the six heads PACS-AI serves) and `probes` otherwise. The loader takes the same choice as
+`_DeepECG_DINOv3_Bank(folder, device, probes_dir=...)`; the served path always reads `probes/`.
 
 **Single image, outside the CSV pipeline** (`models/dinov3_bank.py`, which needs only torch, transformers, safetensors and `utils/`):
 
