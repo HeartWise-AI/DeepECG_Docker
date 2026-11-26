@@ -38,6 +38,11 @@ sys.path.insert(0, REPO)
 _models = types.ModuleType("models")
 _models.__path__ = [os.path.join(REPO, "models")]
 sys.modules["models"] = _models
+# The DeepECG-PNG venv this runs in ships its own top-level `utils` package, which would shadow
+# this repo's (no utils/__init__.py: a namespace package). Bind `utils` to this repo explicitly.
+_utils = types.ModuleType("utils")
+_utils.__path__ = [os.path.join(REPO, "utils")]
+sys.modules["utils"] = _utils
 from models import dinov3_bank as dw  # noqa: E402
 
 TOLERANCE = 2e-5
@@ -52,7 +57,7 @@ def cache(path: str) -> dict:
     return torch.load(path, map_location="cpu", weights_only=False, mmap=True)
 
 
-def saved_scores(predictions: dict, provenance: dict, head: dict, split: str, n_rows: int):
+def saved_scores(predictions: dict, provenance: dict, head: dict, split: str, n_rows: int, labels=None):
     """[(output, rows or None, saved scores)] for one split, or a reason string."""
     names = list((provenance.get("verification") or {}).get("scores_vs_saved_report_predictions") or {})
     if "cls77" == provenance.get("cohort"):
@@ -64,13 +69,27 @@ def saved_scores(predictions: dict, provenance: dict, head: dict, split: str, n_
     key = f"{safe(provenance['task'])}__{split}__score"
     if key in predictions:                                   # scripts/probe_report.py fit_binary
         return [(head["outputs"][0], predictions[f"{safe(provenance['task'])}__{split}__rows"], predictions[key])]
-    suffix = "sv" if split == "val" else "st"                # scripts/probe_extra_cohorts.py report
+    # scripts/probe_extra_cohorts.py report: "<view>__<table>__sv|st", view names unmodified, table "w_o aug"
+    # for the clean arm and "w_ aug" for the aug arm; ACCO vs AICO rows are the occlusion ECGs only.
+    suffix = "sv" if split == "val" else "st"
+    table = {"clean": "w_o aug", "aug": "w_ aug"}.get(provenance.get("arm"))
+    if table is None:
+        return f"unknown probe arm {provenance.get('arm')!r}"
+    keep = None
+    if "in_B == 1" in (provenance.get("row_filter") or ""):
+        keep = np.asarray(labels)[:, 2] == 1                 # acs label columns: ACO, ACCO, in_B
+    n = n_rows if keep is None else int(keep.sum())
     found = []
-    for output, name in zip(head["outputs"], names):
-        candidates = [k for k in predictions if k.endswith(f"__{safe(name)}__{suffix}")]
-        if not candidates:
-            return f"no saved key for {name!r} ({split})"
-        found.append((output, candidates, None))
+    for name in names:
+        key = f"{name}__{table}__{suffix}"
+        if key not in predictions:
+            return f"no saved key {key!r}"
+        output = name.split(": ", 1)[1] if ": " in name else head["outputs"][0]
+        if output not in head["outputs"]:
+            return f"view {name!r} names no output of the head"
+        if len(predictions[key]) != n:
+            return f"{key} has {len(predictions[key])} rows, the cache {n}"
+        found.append((output, keep, predictions[key]))
     return found
 
 
@@ -90,22 +109,13 @@ def compare_head(key: str, snapshot: str, bank) -> dict:
         data = cache(provenance["split_files"][split]["path"])
         features = data["features"].float()
         ours = dw.head_probabilities(features, head).numpy()
-        saved = saved_scores(predictions, provenance, head, split, len(features))
+        saved = saved_scores(predictions, provenance, head, split, len(features), data.get("labels"))
         if isinstance(saved, str):
             result["splits"][split] = {"status": "not compared", "reason": saved}
             continue
         diffs = {}
         for output, rows, scores in saved:
             j = head["outputs"].index(output)
-            if scores is None:                               # probe_extra keys: pick the matching view
-                best = None
-                for candidate in rows:
-                    s = predictions[candidate]
-                    if len(s) == len(ours):
-                        d = float(np.abs(ours[:, j] - s).max())
-                        best = d if best is None else min(best, d)
-                diffs[output] = best if best is not None else "row count differs from the cache (row filter)"
-                continue
             mine = ours[:, j] if rows is None else ours[np.asarray(rows), j]
             diffs[output] = float(np.abs(mine - np.asarray(scores, dtype=np.float64)).max())
         numeric = [v for v in diffs.values() if isinstance(v, float)]
