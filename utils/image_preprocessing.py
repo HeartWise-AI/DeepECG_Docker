@@ -4,7 +4,7 @@ import struct
 
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageOps
 
 # ECG pages are ~1-3 Mpx: anything far above is refused before Pillow allocates it.
 MAX_IMAGE_PIXELS = 50_000_000
@@ -184,14 +184,28 @@ def preprocess_ecg_image(image: Image.Image, preprocessing: dict) -> torch.Tenso
     4. uint8 -> float32 in [0, 1] (v2.ToDtype(scale=True) multiplies by 1/255),
     5. per-channel (x - mean) / std (v2.Normalize).
 
+    Two optional steps come first, for real-world pages, when the block asks for them (the
+    DINOv3 models do; SigLIP2 does not, so its inputs are unchanged): ``exif_transpose`` applies
+    a photo's EXIF orientation, and ``alpha_background: "white"`` composites a transparent page
+    onto white. Neither changes an opaque, upright page such as the training renders.
+
     Args:
         image: The page, as decoded by open_ecg_image / open_png_bytes.
         preprocessing: The weights' config.json "preprocessing" block
-            (resize [h, w], color_mode, mean [3], std [3]).
+            (resize [h, w], color_mode, mean [3], std [3]; optional exif_transpose, alpha_background).
 
     Returns:
         Float32 tensor of shape (3, height, width).
     """
+    if preprocessing.get("exif_transpose"):
+        image = ImageOps.exif_transpose(image)
+    background = preprocessing.get("alpha_background")
+    if background is not None:
+        if background != "white":
+            raise ValueError(f"unsupported alpha_background {background!r}")
+        if image.mode in ("RGBA", "LA", "PA") or (image.mode == "P" and "transparency" in image.info):
+            rgba = image.convert("RGBA")
+            image = Image.alpha_composite(Image.new("RGBA", rgba.size, (255, 255, 255, 255)), rgba)
     height, width = (int(v) for v in preprocessing["resize"])
     gray = str(preprocessing.get("color_mode", "grayscale")).lower().startswith("gray")
     image = image.convert("L" if gray else "RGB")
