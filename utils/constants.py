@@ -22,13 +22,16 @@ from models.siglip2_wrapper import (
     DeepECG_SigLIP2_LVEF_Under_50,
     DeepECG_SigLIP2_SHD
 )
+from models.dinov3_wrapper import TASK_MODELS as DINOV3_MODELS
 
 DIAGNOSIS_TO_FILE_COLUMNS = {
     'ecg_machine_diagnosis': '77_classes_ecg_file_name',
     'afib_5y': 'afib_ecg_file_name',
     'lvef_40': 'lvef_40_ecg_file_name',
     'lvef_50': 'lvef_50_ecg_file_name',
-    'shd': 'shd_ecg_file_name'
+    'shd': 'shd_ecg_file_name',
+    'hcm': 'hcm_ecg_file_name',
+    'aco': 'aco_ecg_file_name'
 }
 
 # Input type of an ECG file, detected from its extension: images (PNG/JPEG pages, and PDF
@@ -53,34 +56,46 @@ def source_format_of(file_name) -> str | None:
     return SOURCE_FORMATS.get(os.path.splitext(str(file_name))[1].lower())
 
 
+def _dinov3(task: str) -> dict:
+    """The DINOv3 image models of a task: clean probes (deepecg_dinov3) and augmented probes
+    (deepecg_dinov3_aug)."""
+    return {'deepecg_dinov3': DINOV3_MODELS[(task, 'clean')].name,
+            'deepecg_dinov3_aug': DINOV3_MODELS[(task, 'aug')].name}
+
+
 # Models available per task and per input type. heartwise.config picks among them
-# with signal_models and image_models.
+# with signal_models and image_models. Two DINOv3 heads are loadable (models/dinov3_bank.py,
+# DeepECG_DINOv3_Predictor heads=...) but are not pipeline tasks, by decision (2026-11-26): HCM
+# 3-class (softmax, probabilities only; the pipeline's metrics are binary or 77-label) and ACCO vs
+# AICO (weak, test AUROC 0.59-0.61, and only meaningful for occlusion ECGs).
 MODEL_MAPPING = {
     'ecg_machine_diagnosis': {
         SIGNAL: {'efficientnet': EfficientNetV2_77_classes.name, 'wcr': WCR_77_classes.name},
-        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_77_classes.name},
+        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_77_classes.name, **_dinov3('77_classes')},
         'bert': BertClassifier_En_Fr.name
     },
     'afib_5y': {
         SIGNAL: {'efficientnet': EfficientNetV2_AFIB_5Y.name, 'wcr': WCR_AFIB_5Y.name},
-        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_AFIB_5Y.name},
+        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_AFIB_5Y.name, **_dinov3('afib_5y')},
         'bert': None
     },
     'lvef_40': {
         SIGNAL: {'efficientnet': EfficientNetV2_LVEF_Equal_Under_40.name, 'wcr': WCR_LVEF_Equal_Under_40.name},
-        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_LVEF_Equal_Under_40.name},
+        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_LVEF_Equal_Under_40.name, **_dinov3('lvef_equal_under_40')},
         'bert': None
     },
     'lvef_50': {
         SIGNAL: {'efficientnet': EfficientNetV2_LVEF_Under_50.name, 'wcr': WCR_LVEF_Under_50.name},
-        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_LVEF_Under_50.name},
+        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_LVEF_Under_50.name, **_dinov3('lvef_under_50')},
         'bert': None
     },
     'shd': {
         SIGNAL: {},
-        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_SHD.name},
+        IMAGE: {'deepecg_siglip2': DeepECG_SigLIP2_SHD.name, **_dinov3('shd')},
         'bert': None
-    }
+    },
+    'hcm': {SIGNAL: {}, IMAGE: _dinov3('hcm'), 'bert': None},
+    'aco': {SIGNAL: {}, IMAGE: _dinov3('aco'), 'bert': None}
 }
 
 # Models run when heartwise.config does not choose

@@ -64,6 +64,10 @@
     "wcr_lvef_under_50": {
       "repository": "heartwise/wcr_lvef_under_50",
       "revision": "f279a3692c575cb13b35d03024557975fe6da7cf"
+    },
+    "dinov3_siglip2_epoch030": {
+      "repository": "heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030",
+      "revision": "3eab18b498f1b05f7749052fd40d00980b4c16d1"
     }
   }
 }
