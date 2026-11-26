@@ -10,7 +10,8 @@ architecture are swapped for the tiny ones, and:
     off by default and gates acco_vs_aico on aco;
   * the encoder loads from either transformers block layout;
   * the page fixes (EXIF orientation, transparency) leave opaque upright pages unchanged.
-With DINOV3_SNAPSHOT=<local copy of the Hugging Face repository>, the real heads are checked too.
+With DINOV3_SNAPSHOT=<local copy of the Hugging Face repository>, the real heads are checked too
+(DINOV3_PROBES_DIR=probes_all18 for the NAS copy, whose probes/ holds only the six PACS-AI heads).
 """
 import hashlib
 import json
@@ -208,6 +209,19 @@ def test_an_encoder_other_than_the_pinned_one_is_refused(snapshot, monkeypatch):
         _bank(snapshot)
 
 
+def test_a_renamed_probe_folder_loads_with_probes_dir(snapshot):
+    """NAS layout after the 6-head swap: the 18-head set lives in probes_all18/."""
+    import shutil
+    shutil.move(os.path.join(snapshot, 'probes'), os.path.join(snapshot, 'probes_all18'))
+    with pytest.raises(FileNotFoundError):
+        _bank(snapshot)
+    bank = db._DeepECG_DINOv3_Bank(snapshot, torch.device('cpu'), probes_dir='probes_all18')
+    assert bank.load_head('shd_clean', ('SHD',))['outputs'] == ['SHD']
+    for bad in ('/abs', '../probes', ''):
+        with pytest.raises(ValueError):
+            db._DeepECG_DINOv3_Bank(snapshot, torch.device('cpu'), probes_dir=bad)
+
+
 def test_probabilities_follow_the_published_formula(snapshot):
     from safetensors.torch import load_file
     bank = _bank(snapshot)
@@ -292,7 +306,8 @@ def test_page_fixes_leave_opaque_upright_pages_unchanged(tmp_path):
 
 @pytest.mark.skipif(not os.environ.get('DINOV3_SNAPSHOT'), reason='set DINOV3_SNAPSHOT to a local copy of the repository')
 def test_published_heads_load_against_the_published_encoder():
-    bank = db._DeepECG_DINOv3_Bank(os.environ['DINOV3_SNAPSHOT'], torch.device('cpu'))
+    bank = db._DeepECG_DINOv3_Bank(os.environ['DINOV3_SNAPSHOT'], torch.device('cpu'),
+                                   probes_dir=os.environ.get('DINOV3_PROBES_DIR', 'probes'))
     assert bank.encoder_sha256 == db.ENCODER_SHA256
     for (task, variant), cls in dw.TASK_MODELS.items():
         head = bank.load_head(f'{cls.task}_{variant}', cls.expected_outputs)

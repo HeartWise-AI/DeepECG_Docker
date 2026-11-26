@@ -149,9 +149,14 @@ class _DeepECG_DINOv3_Bank:
 
     MAX_CACHED_ROWS = 500_000
 
-    def __init__(self, folder: str, device: torch.device):
+    def __init__(self, folder: str, device: torch.device, probes_dir: str = "probes"):
+        # probes_dir: the probe folder under ``folder``. The served snapshot always uses probes/;
+        # scripts/dinov3_probe_parity.py passes another name (e.g. probes_all18 on the NAS).
         self.folder = os.path.abspath(folder)
-        config_path = self._required("probes/config.json")
+        if not probes_dir or os.path.isabs(probes_dir) or ".." in probes_dir.split("/"):
+            raise ValueError(f"probes_dir must be a relative folder under {self.folder}: {probes_dir!r}")
+        self.probes_dir = probes_dir.strip("/")
+        config_path = self._required(f"{self.probes_dir}/config.json")
         encoder_path = self._required(ENCODER_FILE)
         self.config = _read_json(config_path)
         checkpoint = self.config.get("checkpoint", {})
@@ -192,15 +197,15 @@ class _DeepECG_DINOv3_Bank:
         """Load and validate probes/<head_key>/, caching it."""
         if head_key in self.heads:
             return self.heads[head_key]
-        name = f"{REPO_ID}/probes/{head_key}"
-        base = f"probes/{head_key}"
+        name = f"{REPO_ID}/probes/{head_key}"   # the head's published identity, whatever the local folder
+        base = f"{self.probes_dir}/{head_key}"
         config_path = self._required(f"{base}/config.json")
         metadata_path = self._required(f"{base}/head.json")
         classifier_path = self._required(f"{base}/classifier.safetensors")
         thresholds_path = self._required(f"{base}/thresholds.json")
 
         if _read_json(config_path) != self.config:
-            raise RuntimeError(f"{config_path}: head configuration differs from probes/config.json")
+            raise RuntimeError(f"{config_path}: head configuration differs from {self.probes_dir}/config.json")
         metadata = _read_json(metadata_path)
         threshold_document = _read_json(thresholds_path)
         outputs = metadata.get("outputs")

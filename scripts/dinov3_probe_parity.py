@@ -7,6 +7,10 @@ transformers, safetensors and numpy), from a checkout of this branch:
         --snapshot /media/data1/models/DeepECG-PNG/acs_ft20_dinov3_siglip2_epoch030 \\
         --images 16 --device cuda:0 --out dinov3_parity.json
 
+--probes-dir picks the probe folder under --snapshot. Default: probes_all18 when it exists (the
+NAS layout once probes/ holds only the six heads served by PACS-AI), otherwise probes (the
+Hugging Face archive layout, all 18 heads). The script compares every head of that folder.
+
 1. Feature -> score, every head: the val and test features cached for the fit (provenance.json
    split_files) go through models/dinov3_bank.head_probabilities (float32, as served) and are
    compared with the saved scores of the fit (provenance.json predictions). Pass: max |diff| <= 2e-5.
@@ -70,8 +74,13 @@ def saved_scores(predictions: dict, provenance: dict, head: dict, split: str, n_
     return found
 
 
+def default_probes_dir(snapshot: str) -> str:
+    """probes_all18 (NAS, after the 6-head probes/ swap) when present, else probes."""
+    return "probes_all18" if os.path.isdir(os.path.join(snapshot, "probes_all18")) else "probes"
+
+
 def compare_head(key: str, snapshot: str, bank) -> dict:
-    folder = os.path.join(snapshot, "probes", key)
+    folder = os.path.join(snapshot, bank.probes_dir, key)
     provenance = json.load(open(os.path.join(folder, "provenance.json")))
     task = key.rsplit("_", 1)[0]                              # <task>_clean / <task>_aug
     head = bank.load_head(key, dw.PROBE_OUTPUTS[task])
@@ -113,7 +122,7 @@ def image_parity(snapshot: str, bank, n_images: int) -> dict:
     from utils.image_preprocessing import load_ecg_page
     out = {}
     for key in ("aco_clean", "shd_clean"):
-        provenance = json.load(open(os.path.join(snapshot, "probes", key, "provenance.json")))
+        provenance = json.load(open(os.path.join(snapshot, bank.probes_dir, key, "provenance.json")))
         data = cache(provenance["split_files"]["test"]["path"])
         files = list(data["files"])[:n_images]
         cached = data["features"][: len(files)].float()
@@ -135,14 +144,18 @@ def image_parity(snapshot: str, bank, n_images: int) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--snapshot", required=True, help="local copy of the repository (base/ and probes/)")
+    parser.add_argument("--probes-dir", default=None,
+                        help="probe folder under --snapshot (default: probes_all18 if present, else probes)")
     parser.add_argument("--images", type=int, default=8)
     parser.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--out", default="dinov3_parity.json")
     args = parser.parse_args()
-    bank = dw._DeepECG_DINOv3_Bank(args.snapshot, torch.device(args.device))
-    keys = sorted(d for d in os.listdir(os.path.join(args.snapshot, "probes"))
-                  if os.path.isdir(os.path.join(args.snapshot, "probes", d)))
-    report = {"tolerance": TOLERANCE, "environment": {"torch": torch.__version__,
+    probes_dir = args.probes_dir or default_probes_dir(args.snapshot)
+    bank = dw._DeepECG_DINOv3_Bank(args.snapshot, torch.device(args.device), probes_dir=probes_dir)
+    root = os.path.join(args.snapshot, probes_dir)
+    keys = sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d)))
+    print(f"probes folder: {root} ({len(keys)} heads)")
+    report = {"tolerance": TOLERANCE, "probes_dir": probes_dir, "n_heads": len(keys), "environment": {"torch": torch.__version__,
               "transformers": __import__("transformers").__version__, "device": args.device},
               "feature_to_score": [compare_head(k, args.snapshot, bank) for k in keys]}
     if args.images > 0:
