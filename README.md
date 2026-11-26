@@ -29,7 +29,7 @@ This pipeline offers 3 modes of processing:
 
 - **14 pinned inference models** in one image (8 signal, 5 image, 1 text; full list in [Models](#models)):
   - Signal models (12-lead XML or NPY): WCR and EfficientNetV2, each for 77 classes, LVEF <= 40%, LVEF < 50% and incident AFib at 5 years
-  - Image models (ECG page PNG or JPEG, or vector PDF report): DeepECG-SigLIP2 for 77 classes, SHD, LVEF <= 40%, LVEF < 50% and incident AFib at 5 years
+  - Image models (ECG page PNG or JPEG, or vector PDF report): DeepECG-SigLIP2 for 77 classes, SHD, LVEF <= 40%, LVEF < 50% and incident AFib at 5 years; DeepECG-DINOv3 (frozen probes on the DINOv3-SigLIP2 encoder) for the same five plus HCM and acute coronary occlusion (ACO)
   - BERT (English/French) that turns the machine diagnosis text into 77-class ground truth for metrics
 - **Input type detected per file** from its extension: XML, NPY, PNG, JPEG and PDF rows can be mixed in one CSV, with no format flag (see [Input data formats](#input-data-formats))
 - **Single-lead NPY input** placed into one, several or all 12 leads (`single_lead` in `heartwise.config`)
@@ -96,6 +96,8 @@ DeepECG_Docker/
 │   ├── heartwise_model_factory.py
 │   ├── resnet_wrapper.py
 │   ├── siglip2_wrapper.py            # DeepECG-SigLIP2 image models
+│   ├── dinov3_bank.py                # DeepECG-DINOv3 encoder, probe heads, single-image predictor and CLI
+│   ├── dinov3_wrapper.py             # DeepECG-DINOv3 task models of the CSV pipeline
 │   └── wcr_ecg_transformer.py        # WCR signal models
 │
 ├── inputs/
@@ -171,6 +173,67 @@ One shared SigLIP-2 ViT-B/16 encoder ([`heartwise/SigLIP-2_BaseEncoder`](https:/
 
 SHD has an image model only: a `shd_ecg_file_name` that points to a signal file gets no prediction.
 
+### DINOv3 image models (ECG page PNG or JPEG, or PDF report)
+
+The DINOv3 ViT-B/16 image tower of DeepECG-PNG's DINOv3-SigLIP2 pretraining (W&B
+`mhi_ai/deepecg_dinov3_siglip2` run zo59vdxk, epoch 30) with frozen linear probes, all in one pinned
+repository: [`heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030`](https://huggingface.co/heartwise/DeepECG-PNG_DINOv3-SigLIP2_epoch030)
+(`base/epoch_030.pt` + `probes/<head>/`). One encoder pass per page feeds every head. Each probe comes in two
+versions, chosen in `heartwise.config`:
+
+- `image_models: deepecg_dinov3`: probes fitted on clean rendered pages (`<task>_clean`). Use for native
+  digital ECG pages (exports, PDFs, renders).
+- `image_models: deepecg_dinov3_aug`: probes fitted on a 25/25/25/25 mix of clean, photographed,
+  multi-layout and both (`<task>_aug`). Use for photographs and other layouts.
+
+The output file names carry the choice (`deepecg_dinov3_...` or `deepecg_dinov3_aug_...`).
+
+| Model name (clean / aug) | Prediction | Task / CSV columns | Probe folder | Test AUROC (clean) |
+|---|---|---|---|---|
+| `deepecg_dinov3[_aug]_77_classes` | 77 ECG findings (multilabel, probabilities only) | `ecg_machine_diagnosis` / `77_classes_ecg_file_name` | `ecg77_*` | 0.97 (macro) |
+| `deepecg_dinov3[_aug]_shd` | Structural heart disease (EchoNext definition) | `shd` / `shd_ecg_file_name` | `shd_*` | 0.77 |
+| `deepecg_dinov3[_aug]_lvef_equal_under_40` | LVEF <= 40% | `lvef_40` / `lvef_40_ecg_file_name` | `lvef_le40_*` | 0.89 |
+| `deepecg_dinov3[_aug]_lvef_under_50` | LVEF < 50% | `lvef_50` / `lvef_50_ecg_file_name` | `lvef_lt50_*` | 0.87 |
+| `deepecg_dinov3[_aug]_afib_5y` | Incident AFib at 5 years | `afib_5y` / `afib_ecg_file_name` | `afib_5y_*` | 0.68 |
+| `deepecg_dinov3[_aug]_hcm` | Confirmed HCM vs rest | `hcm` / `hcm_ecg_file_name` | `hcm_*` | 0.71 |
+| `deepecg_dinov3[_aug]_aco` | Acute coronary occlusion | `aco` / `aco_ecg_file_name` | `aco_*` | 0.87 |
+
+Off by default (decision of 2026-11-26), loadable only on request through the single-image predictor
+(`heads=` / `--heads`): `hcm_3class` (rest / probable / confirmed HCM, softmax, probabilities only, test
+macro AUROC 0.64) and `acco_vs_aico` (complete vs incomplete occlusion, test AUROC 0.61, only meaningful for
+ECGs with an occlusion; the predictor marks it not applicable when `aco` is negative). No amyloidosis head
+exists for this encoder.
+
+Each head is `z = (feature - mean) / scale`, `sigmoid(z @ weight.T + bias)` (softmax for `hcm_3class`),
+float32, on the encoder's 1536-d concat[CLS, mean patch tokens] computed under bfloat16 autocast as at probe
+fitting. Thresholds are validation Youden points from each head's `thresholds.json`; the 77 classes and
+HCM 3-class have none. The loader refuses a head whose `head.json` names another encoder file or SHA-256.
+The architecture is built locally (the gated `facebook/dinov3-vitb16-pretrain-lvd1689m` is never
+contacted); `base/epoch_030.pt` loads strictly under any transformers block layout. Pages get the SigLIP2
+preprocessing at 448x896, plus EXIF orientation and white compositing of transparent pages (both no-ops for
+opaque, upright pages). Research use only: no calibration analysis, no external validation.
+
+**Single image, outside the CSV pipeline** (`models/dinov3_bank.py`, which needs only torch, transformers, safetensors and `utils/`):
+
+```python
+from models.dinov3_bank import DeepECG_DINOv3_Predictor
+predictor = DeepECG_DINOv3_Predictor(variant="clean", device="cuda:0", hugging_face_api_key=key)
+# or snapshot_folder="/path/to/local/copy" (base/ and probes/), no download
+result = predictor.predict_image("page.png")   # path (PNG / JPEG / PDF) or PIL image
+# {"variant": "clean", "encoder_sha256": "...", "heads": [
+#   {"id": "shd", "label": "SHD (...)", "probability": 0.38, "threshold": 0.537, "positive": false, "applicable": true},
+#   {"id": "ecg77:Afib", "label": "Afib", "probability": 0.01, "threshold": null, "positive": null, "applicable": true}, ...]}
+```
+
+```bash
+python -m models.dinov3_bank --image page1.png page2.pdf --variant clean --device cuda:0 \
+    --snapshot /path/to/local/copy        # or --api-key-file api_key.json
+# one JSON line per image; --heads aco shd ... selects heads (hcm_3class, acco_vs_aico only when named)
+```
+
+`threshold` is null for probability-only outputs, `positive` is null when there is no threshold or the head
+is not applicable. Single-output heads use the probe task as `id`; the 77 classes use `ecg77:<label>`.
+
 ### Text model (ground truth for the 77 classes)
 
 | Model name | Role | Weights |
@@ -240,6 +303,8 @@ Optimal classification thresholds are stored in `utils/constants.py` and in JSON
 | EfficientNetV2 | LQTS TYPE | **Missing** | — | — |
 | DeepECG-SigLIP2 | 77 classes | None by design (probabilities only) | | |
 | DeepECG-SigLIP2 | SHD, LVEF <= 40%, LVEF < 50%, AFIB 5Y | Available | Validation set (Youden index) | `thresholds.json` in each pinned Hugging Face snapshot |
+| DeepECG-DINOv3 | 77 classes, HCM 3-class | None by design (probabilities only; reference values in `thresholds.json` `reference_thresholds`) | | |
+| DeepECG-DINOv3 | SHD, LVEF <= 40%, LVEF < 50%, AFIB 5Y, HCM, ACO | Available | Validation set (Youden index) | `probes/<head>/thresholds.json` in the pinned snapshot |
 
 ### Notes
 - **WCR 77-class thresholds** were computed on the MHI training set using the Youden index (maximizing sensitivity + specificity - 1). The full JSON includes per-label AUC, AUPRC, F1, threshold, and prevalence metrics.
@@ -299,7 +364,7 @@ CSV and metrics JSON/CSV per selected model and task.
      - `output_folder`: The directory where the output files will be saved. Example: `/app/outputs`.
      - `hugging_face_api_key_path`: The path to the file containing the HuggingFace API key. Example: `/app/api_key.json`.
      - `signal_models`: Models run on signal files (`.xml`, `.npy`), comma-separated, among `efficientnet`, `wcr`. Example: `efficientnet,wcr`.
-     - `image_models`: Models run on ECG page images (`.png`, `.jpg`, `.jpeg`) and ECG PDF reports (`.pdf`), among `deepecg_siglip2`. Example: `deepecg_siglip2`.
+     - `image_models`: Models run on ECG page images (`.png`, `.jpg`, `.jpeg`) and ECG PDF reports (`.pdf`), among `deepecg_siglip2`, `deepecg_dinov3` (clean probes) and `deepecg_dinov3_aug` (augmented probes). Example: `deepecg_siglip2` or `deepecg_dinov3`.
      - `data_path`: The path to the input CSV file containing the data. Example: `/app/inputs/data_rows_template.csv`.
      - `mode`: The mode of the pipeline (overwriten by docker command line). Example: `analysis` | `preprocessing` | `full_run`.
      - `ecg_signals_path`: The path to the ecg signals files parsed in docker command line. Example: `/app/ecg_signals`.
