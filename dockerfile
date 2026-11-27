@@ -18,8 +18,12 @@ COPY requirements.txt .
 
 # Install CUDA PyTorch first, then resolve the remaining dependencies from PyPI.
 # The PyTorch index also mirrors Pillow, but does not carry its security release.
-RUN uv pip install --system --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0 && \
+RUN uv pip install --system --index-url https://download.pytorch.org/whl/cu128 torch==2.11.0 && \
     uv pip install --system -r requirements.txt
+
+# torch imports resolve the inductor cache directory from the login name, which fails for a
+# --user UID with no passwd entry (getpwuid KeyError). Give it a fixed, writable location.
+ENV TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor
 
 # Pin the upstream Python 3.11 compatibility fixes. Its setup.py still declares
 # the old Hydra/OmegaConf bounds; use the compatible versions for this image.

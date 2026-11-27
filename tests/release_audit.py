@@ -168,7 +168,7 @@ chk('docs', 'the deliverable is named in all three docs',
 # ---------------------------------------------------------------- 5. the image
 df, base = (ROOT / 'dockerfile.ancestry').read_text(), (ROOT / 'dockerfile').read_text()
 for what, needle in (('same python base', 'FROM python:3.11'),
-                     ('same torch', 'torch==2.8.0'),
+                     ('same torch', 'torch==2.11.0'),
                      ('same fairseq-signals commit',
                       '980e705ce957c6f46b62f0ca2cfa2d846e112bae'),
                      ('same credential step', 'python -m utils.credentials')):
