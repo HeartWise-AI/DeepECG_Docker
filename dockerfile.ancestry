@@ -27,7 +27,7 @@ COPY requirements.txt requirements.ancestry.txt ./
 
 # CUDA torch first, then the rest from PyPI -- same reason as `dockerfile`: the PyTorch index
 # mirrors Pillow without its security release.
-RUN uv pip install --system --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0 && \
+RUN uv pip install --system --index-url https://download.pytorch.org/whl/cu128 torch==2.11.0 && \
     uv pip install --system -r requirements.ancestry.txt
 
 # The same fairseq-signals commit the WCR models load through. The ancestry fold heads are
@@ -77,6 +77,7 @@ ENV FAIRSEQ_ROOT=/app/fairseq-signals \
     PLINK2=/opt/bin/plink2 \
     PLINK1=/opt/bin/plink \
     MPLCONFIGDIR=/tmp/mpl \
+    TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor \
     PYTHONUNBUFFERED=1
 
 # Imports performed by the build can create this cache as root. Keep the runtime cache writable
