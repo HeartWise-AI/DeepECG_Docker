@@ -235,6 +235,11 @@ def main():
         for path in (source / folder).iterdir():
             if path.suffix in ('.py', '.json'):
                 shutil.copyfile(path, context / folder / path.name)
+    # The dockerfile also copies the external-validation adapters (one subfolder per dataset).
+    for path in (source / 'ingestion').rglob('*'):
+        if path.suffix in ('.py', '.csv', '.md'):
+            (context / path.relative_to(source)).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, context / path.relative_to(source))
     for path in context.rglob('*'):
         path.chmod(0o755 if path.is_dir() else 0o644)
     checks = work / 'checks'
